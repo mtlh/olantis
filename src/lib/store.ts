@@ -151,7 +151,8 @@ export function useSnapshots(portfolios: Portfolio[]) {
     if (!portfolios.length || totalValue === 0) return;
     const isDemo = typeof document !== "undefined" && document.cookie.includes("olantis_demo=1");
     if (isDemo) return;
-    fetch("/api/snapshots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: totalValue }) }).then(() => refresh()).catch(() => {});
+    const pfVals = portfolios.map((p) => ({ id: p.id, value: p.holdings.reduce((a, h:any) => { const v=h.shares*h.currentPrice; return a+ (h.currency==="GBX"||h.currency==="GBp" ? v/100 : v); }, 0) }));
+    fetch("/api/snapshots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: totalValue, portfolios: pfVals }) }).then(() => refresh()).catch(() => {});
   }, [totalValue]);
   return { snapshots: data.total, byPortfolio: data.byPortfolio, refresh };
 }

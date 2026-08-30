@@ -33,9 +33,13 @@ export async function GET() {
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId || userId === "demo") return Response.json({ ok: true, skipped: "demo" });
-  const { value, date } = await req.json();
+  const { value, date, portfolios: pfVals, portfolioId, portfolioValue } = await req.json();
   const d = date ?? new Date().toISOString().split("T")[0];
   const db = getDb();
-  await db.insert(snapshots).values({ userId, date: d, value: Number(value) }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: Number(value) } });
+  if (value != null) await db.insert(snapshots).values({ userId, date: d, value: Number(value) }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: Number(value) } });
+  const batch: { portfolioId: string; value: number }[] = [];
+  if (Array.isArray(pfVals)) for (const p of pfVals) if (p?.id) batch.push({ portfolioId: p.id, value: Number(p.value) });
+  if (portfolioId) batch.push({ portfolioId, value: Number(portfolioValue ?? value) });
+  for (const b of batch) await db.insert(portfolioSnapshots).values({ userId, portfolioId: b.portfolioId, date: d, value: b.value }).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: b.value } });
   return Response.json({ ok: true });
 }
