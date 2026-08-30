@@ -7,3 +7,49 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Olantis — Agent Rules (project-specific)
+
+## Project
+- Name: **olantis** (Personal Finance — Portfolio Dashboard). Tagline: "Your portfolios, beautifully simple."
+- Stack: Next.js 16.3.3 (Turbopack) + React 19.2.8, Tailwind 4 + tw-animate-css, shadcn + Base UI, Recharts, Drizzle ORM + Neon Postgres (serverless), WorkOS AuthKit Next.js 4.3.1, Yahoo Finance, Vercel Cron (06:00 UTC daily refresh).
+- Design: black glass `glass` / `glass-card` (backdrop-blur), grey cards, colour only for charts. See `src/app/globals.css`. Logo in `src/components/Logo.tsx`.
+- Routes: `/` → landing (public, redirects to `/dashboard` if signed in), `/dashboard` → app (auth required, demo bypass), `/login` → `GET` WorkOS `getSignInUrl()` redirect, `/signin` → `redirect("/login")`, `/callback` → `handleAuth`, `/logout` → `signOut({returnTo:"/"})`, `/api/demo` → set `olantis_demo=1` + `redirect("/dashboard")`, `/api/demo?clear=1` → clear demo + `redirect("/")`.
+- DB schema: `src/lib/db/schema.ts` — accounts/portfolios/holdings/snapshots, isolated by `userId`. Seeding in `src/app/api/demo/route.ts`.
+
+## Git Control (this repo only)
+- **Remote**: `origin` = `https://github.com/mtlh/olantis.git` (private). **Branch**: `master` (not `main`) — `origin/HEAD -> origin/master`. Always `master`.
+- **GitHub CLI on Windows**: `gh` is NOT in PATH for PowerShell. Use full path: `& "C:\Program Files\GitHub CLI\gh.exe" ...` (version 2.98.0). Auth: `mtlh` logged in via keyring, scopes `repo workflow gist read:org`.
+- **Create/check repo**: `& "C:\Program Files\GitHub CLI\gh.exe" repo view mtlh/olantis --json name,visibility,url` → `PRIVATE`. If creating fresh: `& "C:\Program Files\GitHub CLI\gh.exe" repo create olantis --private --source=. --remote=origin` — expect "Name already exists" if linked.
+- **Workflow**: `git status`; `git diff --stat`; `git add <files>` (e.g. `src/app/page.tsx src/app/dashboard/page.tsx`); `git commit -m "type: message"`; `git push origin master`. Never force push to `master` without explicit ask. Never amend after push. Keep commits concise (e.g. `feat: split routes / and /dashboard, demo -> /dashboard`).
+- **Check before push**: `git log --oneline -3` — latest `d52a6d6 feat: split routes / and /dashboard, demo -> /dashboard`.
+- **Vercel git link**: already `vercel git connect https://github.com/mtlh/olantis.git` → "mtlh/olantis is already connected". `.vercel/project.json` confirms link.
+
+## Vercel Deployment (project-specific)
+- **Project**: `olantis` in team `mtlhs-projects`. IDs: `projectId=prj_WeClpTjEIndqh9AW8IBT1WsTP2pG`, `orgId=team_rZcougDtgd3bcmkavBTGm01K`. Config: `.vercel/project.json`.
+- **URLs**: Production `https://olantis.vercel.app` (aliased), deployments like `https://olantis-*.vercel.app` (e.g. `olantis-kdnbxvsj6...`). CLI: `vercel project ls` lists `olantis` → `olantis.vercel.app` Node 24.x.
+- **CLI on Windows**: `vercel` 53.1.0 via npm (`C:\Users\matth\AppData\Roaming\npm\vercel.ps1`). PowerShell wraps `node.exe` — ignore `NativeCommandError` wrapper, read stdout.
+- **Deploy**: Preferred is git push (auto-build via GitHub integration). Manual: `vercel --prod --yes` from repo root (uses `.vercel/project.json`). Verify: `vercel ls` (check latest `● Ready Production`), or `curl.exe -I https://olantis.vercel.app` / fetch HTML. After env changes must redeploy.
+- **Environments**: Single env `production` currently. Local source of truth is `.env.local` (vars listed below are placeholders — never commit real values):
+  ```
+  WORKOS_CLIENT_ID=client_...               # from WorkOS dashboard
+  WORKOS_API_KEY=sk_test_...                # sensitive — vercel env only
+  WORKOS_REDIRECT_URI=http://localhost:3000/callback       # local — on Vercel use https://olantis.vercel.app/callback
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI=http://localhost:3000/callback # same split
+  WORKOS_COOKIE_PASSWORD=<32+ char random>  # openssl rand -base64 32
+  CRON_SECRET=<random>                      # for /api/cron/refresh
+  NEON_BRANCH=production
+  DATABASE_URL=postgresql://...             # Neon pooled URL — sensitive
+  DATABASE_URL_UNPOOLED=postgresql://...    # Neon direct URL — sensitive
+  ```
+  Vercel commands:
+  - List: `vercel env ls` / `vercel env ls --format json`
+  - Sync one var (force overwrite): `vercel env add WORKOS_CLIENT_ID production --value "..." --force --yes`
+  - Pull to local: `vercel env pull .env.local` (overwrites — backup first)
+  - Redirect vars on Vercel must be `https://olantis.vercel.app/callback` (not localhost) or WorkOS login breaks in prod.
+  - After `env add`, always `vercel --prod --yes` (env only applies on next build). Demo redirect check: `curl.exe -I https://olantis.vercel.app/api/demo` → `307 Location: /dashboard`.
+- **Build check** locally before push: `npm run build` (Next 16 Turbopack → expect `✓ Compiled successfully`, `Generating static pages (20/20)` listing `ƒ /` `ƒ /dashboard` `○ /signin`).
+
+## Local Dev
+- `npm run dev` (requires `.env.local`), `npm run build` / `npm run lint`. No middleware file — WorkOS handled via `withAuth({ensureSignedIn:false})` per-page + `handleAuth` callback.
+- Don't commit `.env.local`, `.neon`, `.vercel` (in `.gitignore` after `d52a6d6` adds `.vercel`).
