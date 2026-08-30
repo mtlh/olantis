@@ -146,7 +146,7 @@ export function useSnapshots(portfolios: Portfolio[]) {
     } catch {}
   }, []);
   useEffect(() => { refresh(); }, [refresh, portfolios.length]);
-  const totalValue = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h) => a + h.shares * h.currentPrice, 0), 0);
+  const totalValue = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => { const v=h.shares*h.currentPrice; return a+ (h.currency==="GBX"||h.currency==="GBp" ? v/100 : v); }, 0), 0);
   useEffect(() => {
     if (!portfolios.length || totalValue === 0) return;
     const isDemo = typeof document !== "undefined" && document.cookie.includes("olantis_demo=1");

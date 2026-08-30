@@ -282,7 +282,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                               <div className="px-1 pb-1 space-y-0.5">
                                 {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
                                 {ps.map((p, pIdx)=>{
-                                  const val=p.holdings.reduce((s,h)=>s+h.shares*h.currentPrice,0);
+                                  const val=p.holdings.reduce((s,h:any)=>s+holdingValueGBP(h),0);
                                   const active=activeId===p.id;
                                   const baseColor = (p as any).color || portfolioTint(provColor, pIdx, ps.length);
                                   const selectedBg = baseColor;
@@ -313,7 +313,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                       <div key={h.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs">
                                         <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                                         <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
-                                        <span className="text-zinc-500">£{(h.shares*h.currentPrice).toFixed(0)}</span>
+                                        <span className="text-zinc-500">£{holdingValueGBP(h).toFixed(0)}</span>
                                         <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" onClick={()=> openDirectEdit(h)}><Pencil className="w-3 h-3"/></Button>
                                         <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-red-400" onClick={async()=>{ await fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}); onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }}><Trash2 className="w-3 h-3"/></Button>
                                       </div>
@@ -329,7 +329,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                         <div className="space-y-1">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct portfolios</div>
                           {direct.map((p, di)=>{
-                            const val=p.holdings.reduce((s,h)=>s+h.shares*h.currentPrice,0);
+                            const val=p.holdings.reduce((s,h:any)=>s+holdingValueGBP(h),0);
                             const active=activeId===p.id;
                             const baseColor = (p as any).color || portfolioTint((acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, direct.length);
                             const selectedBg = baseColor;
@@ -363,7 +363,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                             <div key={h.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs">
                               <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                               <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
-                              <span className="text-zinc-500">£{(h.shares*h.currentPrice).toFixed(0)}</span>
+                              <span className="text-zinc-500">£{holdingValueGBP(h).toFixed(0)}</span>
                               <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-red-400" onClick={async()=>{ await fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}); onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }}><Trash2 className="w-3 h-3"/></Button>
                             </div>
                           ))}
@@ -383,7 +383,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                 </div>
                 <div className="px-1.5 pb-1.5 space-y-1">
                     {(filteredPortfolios(unassigned)).map((p, ui) => {
-                    const val = p.holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0);
+                    const val = p.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
                     const active = activeId === p.id;
                     const baseColor = (p as any).color || PALETTE[ui % PALETTE.length].value;
                     const selectedBg = baseColor;

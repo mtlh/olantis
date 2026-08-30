@@ -58,6 +58,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const [wizardProviderId, setWizardProviderId] = useState<string | null>(null);
   const [showHolding, setShowHolding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isManual, setIsManual] = useState(false);
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
   const [allocMode, setAllocMode] = useState<"holding" | "account">("holding");
   const [saving, setSaving] = useState(false);
@@ -134,13 +135,13 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
 
   const allocation = useMemo(() => {
     if (allocMode === "account") {
-      const portTotal = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h) => a + h.shares * h.currentPrice, 0), 0);
-      const directTotal = (directHoldings as any[]).reduce((s, h) => s + h.shares * h.currentPrice, 0);
+      const portTotal = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0), 0);
+      const directTotal = (directHoldings as any[]).reduce((s, h:any) => s + holdingValueGBP(h), 0);
       const total = portTotal + directTotal;
       if (!total) return [];
       if (accounts.length === 0) {
         return portfolios.map((p, i) => {
-          const v = p.holdings.reduce((a, h) => a + h.shares * h.currentPrice, 0);
+          const v = p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0);
           const c = (p as any).color || CHART_COLORS[i % CHART_COLORS.length];
           return { name: p.name, value: v, color: c, pct: (v / total) * 100 };
         });
@@ -148,12 +149,12 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       const byAccount = new Map<string, number>();
       let unassignedVal = 0;
       for (const p of portfolios) {
-        const v = p.holdings.reduce((a, h) => a + h.shares * h.currentPrice, 0);
+        const v = p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0);
         if (p.accountId) byAccount.set(p.accountId, (byAccount.get(p.accountId) ?? 0) + v);
         else unassignedVal += v;
       }
       for (const h of (directHoldings as any[])) {
-        const v = h.shares * h.currentPrice;
+        const v = holdingValueGBP(h);
         if ((h as any).accountId) byAccount.set((h as any).accountId, (byAccount.get((h as any).accountId) ?? 0) + v);
         else if ((h as any).providerId) {
           const pr = providers.find(pp=> pp.id===(h as any).providerId);
@@ -172,21 +173,21 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     const portHoldings = active ? active.holdings : portfolios.flatMap((p) => p.holdings);
     const allHoldings = active ? portHoldings : [...portHoldings, ...(directHoldings as any[])];
     const holdings = allHoldings;
-    const total = holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0);
+    const total = holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
     if (!total) return [];
     if (active) {
       const prov = providers.find(pr=> pr.id===(active as any).providerId);
       const acc = accounts.find(a=> a.id===active.accountId);
       const base = (active as any).color || (prov as any)?.color || (acc as any)?.color || CHART_COLORS[0];
-      return holdings.map((h, i) => ({ name: h.symbol, value: h.shares * h.currentPrice, color: portfolioTint(base, i, holdings.length), pct: (h.shares * h.currentPrice / total) * 100 }));
+      return holdings.map((h:any, i) => ({ name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, holdings.length), pct: (holdingValueGBP(h) / total) * 100 }));
     }
-      return holdings.map((h, i) => {
+      return holdings.map((h:any, i) => {
       const parent = portfolios.find(p=> p.holdings.some(x=> x.id===h.id));
       let base: string | null = (parent as any)?.color || null;
       if (!base && (h as any).providerId) base = (providers.find(pr=> pr.id===(h as any).providerId) as any)?.color ?? null;
       if (!base && (h as any).accountId) base = (accounts.find(a=> a.id===(h as any).accountId) as any)?.color ?? null;
       base = base || CHART_COLORS[i % CHART_COLORS.length];
-      return { name: h.symbol, value: h.shares * h.currentPrice, color: portfolioTint(base, i, holdings.length), pct: (h.shares * h.currentPrice / total) * 100 };
+      return { name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, holdings.length), pct: (holdingValueGBP(h) / total) * 100 };
     });
   }, [active, portfolios, allocMode, accounts, providers, directHoldings]);
 
@@ -219,9 +220,10 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const [symbolSearching, setSymbolSearching] = useState(false);
   const [showSymbolMenu, setShowSymbolMenu] = useState(false);
 
+  const effectiveIsManual = active?.type === "manual" ? true : isManual;
   const validateHolding = useCallback(()=>{
     const e: Record<string,string>={};
-    if (active?.type === "manual") {
+    if (effectiveIsManual) {
       if(!form.symbol.trim()) e.symbol="Name required";
       else if(form.symbol.trim().length < 1 || form.symbol.trim().length > 40) e.symbol="1–40 characters";
     } else {
@@ -233,11 +235,11 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     if(form.currentPrice && Number(form.currentPrice)<=0) e.currentPrice="Must be > 0";
     if(!form.purchaseDate) e.purchaseDate="Date required";
     return e;
-  },[form, active?.type]);
+  },[form, effectiveIsManual]);
 
   useEffect(()=>{
     const q = form.symbol.trim();
-    if (!showHolding || q.length <2 || editingId || active?.type === "manual") { setSymbolResults([]); setShowSymbolMenu(false); return; }
+    if (!showHolding || q.length <2 || editingId || effectiveIsManual) { setSymbolResults([]); setShowSymbolMenu(false); return; }
     const t = setTimeout(async ()=>{
       setSymbolSearching(true);
       try {
@@ -250,7 +252,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       finally { setSymbolSearching(false); }
     }, 320);
     return ()=> clearTimeout(t);
-  }, [form.symbol, showHolding, editingId, active?.type]);
+  }, [form.symbol, showHolding, editingId, effectiveIsManual]);
 
   const selectSearchResult = (r: any) => {
     setForm(f=> ({ ...f, symbol: r.symbol?.toUpperCase() ?? f.symbol, name: r.name ?? r.longname ?? f.name, exchange: r.exchange ?? f.exchange, currentPrice: r.price != null ? String(r.price) : f.currentPrice, currency: r.currency ?? r.currency ?? f.currency }));
@@ -260,8 +262,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     else if (r.symbol) fetchQuote(r.symbol);
   };
 
-  const openAdd = () => { setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
-  const openEdit = (h: any) => { setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: (h as any).exchange ?? "", currency: (h as any).currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openAdd = () => { const manualDefault = active?.type === "manual"; setIsManual(manualDefault); setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openEdit = (h: any) => { const manualDetected = active?.type === "manual" || !/^[A-Z0-9.\-]{1,12}$/i.test(h.symbol); setIsManual(manualDetected); setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: (h as any).exchange ?? "", currency: (h as any).currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
 
   const fetchQuote = async (sym:string)=>{
     if(!sym.trim() || sym.length<1) return;
@@ -298,8 +300,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const filteredHoldings = useMemo(() => {
     if (!active) return [];
     let hs = active.holdings.filter((h) => !q || h.symbol.toLowerCase().includes(q.toLowerCase()) || h.name.toLowerCase().includes(q.toLowerCase()));
-    if (sort === "value") hs = [...hs].sort((a, b) => b.shares * b.currentPrice - a.shares * a.currentPrice);
-    else if (sort==="gain") hs = [...hs].sort((a, b) => (b.shares * b.currentPrice - b.shares * b.avgPrice) - (a.shares * a.currentPrice - a.shares * a.avgPrice));
+    if (sort === "value") hs = [...hs].sort((a:any, b:any) => holdingValueGBP(b) - holdingValueGBP(a));
+    else if (sort==="gain") hs = [...hs].sort((a:any, b:any) => (holdingValueGBP(b) - holdingCostGBP(b)) - (holdingValueGBP(a) - holdingCostGBP(a)));
     else hs = [...hs].sort((a,b)=> a.symbol.localeCompare(b.symbol));
     return hs;
   }, [active, q, sort]);
@@ -337,7 +339,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     if(portfolios.length===0) return;
     setRefreshing(true);
     try{
-      const symbols = portfolios.flatMap(p=>p.holdings.map(h=>({symbol:h.symbol,exchange:h.exchange})));
+      const symbols = portfolios.flatMap(p=>p.holdings.filter((h:any)=> /^[A-Z0-9.\-]{1,12}$/i.test(h.symbol)).map(h=>({symbol:h.symbol,exchange:h.exchange})));
       if(!symbols.length) { toast({title:"No holdings to refresh",variant:"info"}); return; }
       const r = await fetch("/api/quote",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols})});
       const quotes = await r.json();
@@ -354,7 +356,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const exportCsv = ()=>{
     if(!active) return;
     const rows = [["Symbol","Name","Shares","AvgPrice","CurrentPrice","Value","Gain","PurchaseDate"]];
-    for(const h of active.holdings){ const v=h.shares*h.currentPrice, c=h.shares*h.avgPrice; rows.push([h.symbol,h.name,String(h.shares),String(h.avgPrice),String(h.currentPrice),String(v),String(v-c),h.purchaseDate]); }
+    for(const h of active.holdings as any[]){ const v=holdingValueGBP(h), c=holdingCostGBP(h); rows.push([h.symbol,h.name,String(h.shares),String(h.avgPrice),String(h.currentPrice),String(v),String(v-c),h.purchaseDate]); }
     const csv = rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
     const blob = new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=`${active.name}-holdings.csv`; a.click(); URL.revokeObjectURL(url);
   };
@@ -548,18 +550,18 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredHoldings.map((h) => {
-                          const val = h.shares * h.currentPrice; const cost = h.shares * h.avgPrice; const pct = cost ? ((val - cost) / cost) * 100 : 0;
+                        {filteredHoldings.map((h:any) => {
+                          const val = holdingValueGBP(h); const cost = holdingCostGBP(h); const pct = cost ? ((val - cost) / cost) * 100 : 0;
                           return (
                             <TableRow key={h.id} className="border-white/5 hover:bg-white/[0.04]">
                               <TableCell>
                                 <div className="flex items-center gap-3">
                                   <div className="w-9 h-9 rounded-xl grid place-items-center font-bold text-xs bg-white/10 border border-white/10 text-white shrink-0">{h.symbol.slice(0, 3)}</div>
-                                  <div className="min-w-0"><div className="font-medium text-sm text-white truncate">{h.symbol}</div><div className="text-xs text-zinc-500 truncate max-w-[160px]">{h.name}</div><div className="text-xs text-zinc-600 md:hidden">{h.shares} × {fmtGBP(h.avgPrice)}</div></div>
+                                  <div className="min-w-0"><div className="font-medium text-sm text-white truncate">{h.symbol}</div><div className="text-xs text-zinc-500 truncate max-w-[160px]">{h.name}</div><div className="text-xs text-zinc-600 md:hidden">{h.shares} × {fmtPrice((h as any).avgPrice, (h as any).currency)}</div></div>
                                 </div>
                               </TableCell>
                               <TableCell className="text-sm text-zinc-400 hidden md:table-cell">{h.shares} × {fmtPrice(h.avgPrice, (h as any).currency)}</TableCell>
-                              <TableCell className="text-right font-semibold text-white tabular-nums">{fmtPrice(val, (h as any).currency)}</TableCell>
+                              <TableCell className="text-right font-semibold text-white tabular-nums">{fmtGBP(val)}</TableCell>
                               <TableCell className="text-right"><Badge variant="outline" className="border-white/10" style={{ color: pct >= 0 ? "#34d399" : "#f87171" }}>{fmtPct(pct)}</Badge></TableCell>
                               <TableCell className="text-right text-xs text-zinc-500 tabular-nums hidden sm:table-cell" title={h.lastRefreshedAt ? new Date(h.lastRefreshedAt * 1000).toLocaleString() : "Never refreshed (cron runs daily 06:00 UTC)"}>{fmtRelative(h.lastRefreshedAt)}</TableCell>
                               <TableCell>
@@ -776,7 +778,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                         const direct = portfolios.filter(p=> p.accountId===acc.id && !(p as any).providerId);
                         const viaProv = portfolios.filter(p=> provs.some(pr=> pr.id===(p as any).providerId));
                         const allPs = [...direct, ...viaProv];
-                        const accVal = allPs.reduce((s, p) => s + p.holdings.reduce((a, h) => a + h.shares * h.currentPrice, 0), 0);
+                        const accVal = allPs.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0), 0);
                         return (
                           <div key={acc.id} className="p-5">
                             <div className="flex items-center justify-between mb-3">
@@ -791,7 +793,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                               <div className="space-y-4">
                                 {provs.map(pr=>{
                                   const ps = portfolios.filter(p=> (p as any).providerId===pr.id);
-                                  const provVal = ps.reduce((s,p)=>s+p.holdings.reduce((a,h)=>a+h.shares*h.currentPrice,0),0);
+                                  const provVal = ps.reduce((s,p)=>s+p.holdings.reduce((a,h:any)=>a+holdingValueGBP(h),0),0);
                                   return (
                                     <div key={pr.id} className="rounded-xl bg-black/20 border border-white/5 p-3">
                                       <div className="flex items-center justify-between mb-2">
@@ -805,8 +807,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                       {ps.length===0 ? <p className="text-xs text-zinc-600 px-1">No portfolios in this provider.</p> : (
                                         <div className="grid md:grid-cols-2 gap-3">
                                           {ps.map((p) => {
-                                            const v = p.holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0);
-                                            const c = p.holdings.reduce((s, h) => s + h.shares * h.avgPrice, 0);
+                                            const v = p.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
+                                            const c = p.holdings.reduce((s, h:any) => s + holdingCostGBP(h), 0);
                                             const pct = c ? ((v - c) / c) * 100 : 0;
                                             return (
                                               <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
@@ -833,7 +835,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                               <div key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
                                                 <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
                                                 <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
-                                                <span className="text-sm font-semibold text-white">£{(h.shares*h.currentPrice).toFixed(0)}</span>
+                                                <span className="text-sm font-semibold text-white">{fmtGBP(holdingValueGBP(h))}</span>
                                               </div>
                                             ))}
                                           </div>
@@ -847,8 +849,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                     <div className="text-[10px] tracking-widest uppercase text-zinc-600 mb-2">No provider — direct</div>
                                     <div className="grid md:grid-cols-2 gap-3">
                                       {direct.map((p) => {
-                                        const v = p.holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0);
-                                        const c = p.holdings.reduce((s, h) => s + h.shares * h.avgPrice, 0);
+                                        const v = p.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
+                                        const c = p.holdings.reduce((s, h:any) => s + holdingCostGBP(h), 0);
                                         const pct = c ? ((v - c) / c) * 100 : 0;
                                         return (
                                           <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
@@ -876,7 +878,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                         <div key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
                                           <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
                                           <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
-                                          <span className="text-sm font-semibold text-white">£{(h.shares*h.currentPrice).toFixed(0)}</span>
+                                          <span className="text-sm font-semibold text-white">{fmtGBP(holdingValueGBP(h))}</span>
                                         </div>
                                       ))}
                                     </div>
@@ -895,8 +897,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                           </div>
                           <div className="grid md:grid-cols-2 gap-3">
                             {portfolios.filter((p) => !p.accountId && !(p as any).providerId).map((p) => {
-                              const v = p.holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0);
-                              const c = p.holdings.reduce((s, h) => s + h.shares * h.avgPrice, 0);
+                              const v = p.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
+                              const c = p.holdings.reduce((s, h:any) => s + holdingCostGBP(h), 0);
                               const pct = c ? ((v - c) / c) * 100 : 0;
                               return (
                                 <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
@@ -924,15 +926,27 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
             <DialogContent className="bg-zinc-900 border-white/10 text-white sm:max-w-lg">
               <DialogHeader><DialogTitle className="flex items-center gap-2">{editingId ? <Pencil className="w-4 h-4"/> : <Plus className="w-4 h-4"/>} {editingId ? "Edit holding" : "Add holding"}</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                {active?.type === "manual" ? (
+                {active?.type === "live" && !editingId && (
+                  <div className="flex gap-1 p-1 rounded-lg bg-white/5 border border-white/10">
+                    <Button variant={!effectiveIsManual ? "secondary" : "ghost"} size="sm" className="flex-1 h-7 text-xs" onClick={()=> setIsManual(false)}>Listed</Button>
+                    <Button variant={effectiveIsManual ? "secondary" : "ghost"} size="sm" className="flex-1 h-7 text-xs" onClick={()=> setIsManual(true)}>Cash / Manual</Button>
+                  </div>
+                )}
+                {active?.type === "live" && editingId && (
+                  <div className="flex gap-1 p-1 rounded-lg bg-white/5 border border-white/10">
+                    <Button variant={!effectiveIsManual ? "secondary" : "ghost"} size="sm" className="flex-1 h-7 text-xs" onClick={()=> setIsManual(false)}>Listed</Button>
+                    <Button variant={effectiveIsManual ? "secondary" : "ghost"} size="sm" className="flex-1 h-7 text-xs" onClick={()=> setIsManual(true)}>Cash / Manual</Button>
+                  </div>
+                )}
+                {effectiveIsManual ? (
                   <>
                     <div className="space-y-1.5">
                       <Label>Holding name *</Label>
                       <Input placeholder="e.g. Cash, Workplace Pension, Property" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} className={formErrors.symbol?"border-red-500/50":""} />
                       {formErrors.symbol && <p className="text-xs text-red-400">{formErrors.symbol}</p>}
-                      <p className="text-xs text-zinc-600">Manual — free-form, no ticker lookup needed</p>
+                      <p className="text-xs text-zinc-600">Manual — free-form, counts toward totals & charts. No ticker lookup.</p>
                     </div>
-                    <div className="space-y-1.5"><Label>Description (optional)</Label><Input placeholder="e.g. Barclays savings, Aviva pension" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                    <div className="space-y-1.5"><Label>Description (optional)</Label><Input placeholder="e.g. Uninvested cash, Barclays savings" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
                   </>
                 ) : (
                   <>
@@ -987,14 +1001,14 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                   </>
                 )}
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Shares *</Label><Input type="number" placeholder="10" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} className={formErrors.shares?"border-red-500/50":""} />{formErrors.shares && <p className="text-xs text-red-400">{formErrors.shares}</p>}</div>
-                  <div className="space-y-1.5"><Label>Avg price (cost) *</Label><Input type="number" placeholder="150.00" value={form.avgPrice} onChange={(e) => setForm({ ...form, avgPrice: e.target.value })} className={formErrors.avgPrice?"border-red-500/50":""} />{formErrors.avgPrice && <p className="text-xs text-red-400">{formErrors.avgPrice}</p>}</div>
+                  <div className="space-y-1.5"><Label>{effectiveIsManual ? "Amount (£) *" : "Shares *"}</Label><Input type="number" placeholder={effectiveIsManual ? "5000" : "10"} value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} className={formErrors.shares?"border-red-500/50":""} />{formErrors.shares && <p className="text-xs text-red-400">{formErrors.shares}</p>}{effectiveIsManual && <p className="text-xs text-zinc-600">Tip: use 1 share × price = total for cash</p>}</div>
+                  <div className="space-y-1.5"><Label>{effectiveIsManual ? "Price (per unit) *" : "Avg price (cost) *"}</Label><Input type="number" placeholder={effectiveIsManual ? "1.00" : "150.00"} value={form.avgPrice} onChange={(e) => setForm({ ...form, avgPrice: e.target.value })} className={formErrors.avgPrice?"border-red-500/50":""} />{formErrors.avgPrice && <p className="text-xs text-red-400">{formErrors.avgPrice}</p>}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Current price <span className="text-zinc-500 font-normal">(live)</span></Label><div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">{form.currentPrice ? `£${Number(form.currentPrice).toFixed(2)}` : "—"}<span className="ml-auto text-xs text-zinc-600">read-only</span></div><p className="text-xs text-zinc-600">Auto-filled from Yahoo; avg cost is what you paid</p></div>
+                  <div className="space-y-1.5"><Label>Current price {effectiveIsManual ? "" : <span className="text-zinc-500 font-normal">(live)</span>}</Label>{effectiveIsManual ? <Input type="number" placeholder="1.00" value={form.currentPrice} onChange={(e)=> setForm({...form, currentPrice:e.target.value})} /> : <div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">{form.currentPrice ? `£${Number(form.currentPrice).toFixed(2)}` : "—"}<span className="ml-auto text-xs text-zinc-600">read-only</span></div>}<p className="text-xs text-zinc-600">{effectiveIsManual ? "Keep equal to avg for cash" : "Auto-filled from Yahoo; avg cost is what you paid"}</p></div>
                   <div className="space-y-1.5"><Label>Purchase date</Label><Input type="date" value={form.purchaseDate} max={new Date().toISOString().split("T")[0]} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} className={formErrors.purchaseDate?"border-red-500/50":""} />{formErrors.purchaseDate && <p className="text-xs text-red-400">{formErrors.purchaseDate}</p>}</div>
                 </div>
-                {active && <div className="flex gap-2 p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-zinc-400"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5"/> Live prices refresh daily at 06:00 UTC. Use “Refresh prices” on dashboard for manual update (24h limit).</div>}
+                {active && <div className="flex gap-2 p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-zinc-400"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5"/> {effectiveIsManual ? "Manual holdings are excluded from price refresh and count toward portfolio value and charts." : "Live prices refresh daily at 06:00 UTC. Use “Refresh prices” on dashboard for manual update (24h limit)."}</div>}
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <Button variant="ghost" onClick={() => setShowHolding(false)} disabled={saving}>Cancel</Button>
