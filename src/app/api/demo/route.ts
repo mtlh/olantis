@@ -160,5 +160,5 @@ export async function GET(req: Request) {
   }
   jar.set("olantis_demo", "1", { httpOnly: false, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 7 });
   await seedDemo("demo");
-  redirect("/");
+  redirect("/dashboard");
 }

@@ -1,0 +1,41 @@
+import { Dashboard } from "@/components/Dashboard";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+
+export default async function DashboardPage() {
+  const jar = await cookies();
+  const isDemo = jar.get("olantis_demo")?.value === "1";
+  let user: any = null;
+  if (isDemo) user = { id: "demo", email: "demo@olantis.local", firstName: "Demo" };
+  else {
+    try {
+      const { withAuth } = await import("@workos-inc/authkit-nextjs");
+      const auth = await withAuth({ ensureSignedIn: false } as any);
+      user = (auth as any).user ?? null;
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      if (!msg.includes("isn't covered by the AuthKit")) throw e;
+      const h = await headers();
+      const c = await cookies();
+      const hasSession = c.getAll().some((x) => x.name === "wos-session");
+      if (hasSession) {
+        return (
+          <div className="min-h-screen flex items-center justify-center p-6">
+            <Card className="glass-card max-w-lg w-full">
+              <CardHeader><CardTitle className="text-white">Restart dev server</CardTitle></CardHeader>
+              <CardContent>
+                <p className="text-sm text-zinc-400">Proxy not covering /dashboard. Restart <code className="text-white">npm run dev</code>.</p>
+                <pre className="text-xs mt-3 p-3 rounded-xl bg-black/50 text-zinc-300">hasMiddleware: {String(!!h.get("x-workos-middleware"))}</pre>
+                <a href="/dashboard" className={buttonVariants({ className: "mt-4" })}>Retry</a>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
+    }
+  }
+  if (!user) redirect("/login");
+  return <Dashboard user={user} isDemo={isDemo} />;
+}
