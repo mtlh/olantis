@@ -144,7 +144,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
           const v = p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0);
           const c = (p as any).color || CHART_COLORS[i % CHART_COLORS.length];
           return { name: p.name, value: v, color: c, pct: (v / total) * 100 };
-        });
+        }).sort((a,b)=> b.value - a.value);
       }
       const byAccount = new Map<string, number>();
       let unassignedVal = 0;
@@ -168,7 +168,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
         return { name: acc.name, value: byAccount.get(acc.id) ?? 0, color: col, pct: ((byAccount.get(acc.id) ?? 0) / total) * 100 };
       }).filter((x) => x.value > 0);
       if (unassignedVal > 0) out.push({ name: "Unassigned", value: unassignedVal, color: "#71717a", pct: (unassignedVal / total) * 100 });
-      return out;
+      return out.sort((a,b)=> b.value - a.value);
     }
     const portHoldings = active ? active.holdings : portfolios.flatMap((p) => p.holdings);
     const allHoldings = active ? portHoldings : [...portHoldings, ...(directHoldings as any[])];
@@ -179,15 +179,17 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       const prov = providers.find(pr=> pr.id===(active as any).providerId);
       const acc = accounts.find(a=> a.id===active.accountId);
       const base = (active as any).color || (prov as any)?.color || (acc as any)?.color || CHART_COLORS[0];
-      return holdings.map((h:any, i) => ({ name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, holdings.length), pct: (holdingValueGBP(h) / total) * 100 }));
+      const sorted = [...holdings].sort((a:any,b:any)=> holdingValueGBP(b) - holdingValueGBP(a));
+      return sorted.map((h:any, i) => ({ name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, sorted.length), pct: (holdingValueGBP(h) / total) * 100 }));
     }
-      return holdings.map((h:any, i) => {
+      const sortedHoldings = [...holdings].sort((a:any,b:any)=> holdingValueGBP(b) - holdingValueGBP(a));
+      return sortedHoldings.map((h:any, i) => {
       const parent = portfolios.find(p=> p.holdings.some(x=> x.id===h.id));
       let base: string | null = (parent as any)?.color || null;
       if (!base && (h as any).providerId) base = (providers.find(pr=> pr.id===(h as any).providerId) as any)?.color ?? null;
       if (!base && (h as any).accountId) base = (accounts.find(a=> a.id===(h as any).accountId) as any)?.color ?? null;
       base = base || CHART_COLORS[i % CHART_COLORS.length];
-      return { name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, holdings.length), pct: (holdingValueGBP(h) / total) * 100 };
+      return { name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, sortedHoldings.length), pct: (holdingValueGBP(h) / total) * 100 };
     });
   }, [active, portfolios, allocMode, accounts, providers, directHoldings]);
 
