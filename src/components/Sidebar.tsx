@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PALETTE, portfolioTint } from "@/lib/colors";
+import { PALETTE, portfolioTint, tintColor } from "@/lib/colors";
 
 function fmtRelative(ts?: number | null) {
   if (!ts) return "never";
@@ -21,6 +21,15 @@ function fmtRelative(ts?: number | null) {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+function isLightColor(hex: string) {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    return lum > 180;
+  } catch { return false; }
 }
 
 export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, onCreate: _onCreate, onCreateAccount, onCreateProvider, onOpenWizard, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
@@ -168,7 +177,7 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
               const direct = filteredPortfolios(directByAccount.get(acc.id) ?? []);
               const accColor = (acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value;
               return (
-                <div key={acc.id} className="rounded-xl border overflow-hidden" style={{ borderColor: accColor + "22", background: accColor + "0A" }}>
+                <div key={acc.id} className="rounded-2xl border overflow-hidden shadow-sm" style={{ borderColor: accColor + "30", background: accColor + "18" }}>
                   <div className="flex items-center gap-1 p-1.5">
                     <Button variant="ghost" size="icon-xs" onClick={() => toggle(acc.id)} className="shrink-0"><ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? "" : "-rotate-90"}`} /></Button>
                     <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer" onClick={()=>toggle(acc.id)}>
@@ -189,22 +198,21 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                     </DropdownMenu>
                   </div>
                   {isOpen && (
-                    <div className="px-1.5 pb-1.5 space-y-2">
-                      {provs.length===0 && direct.length===0 && <p className="text-xs text-zinc-600 px-2 py-1.5">No providers or portfolios • add provider →</p>}
+                    <div className="px-3 pb-3 space-y-3">
+                      {provs.length===0 && direct.length===0 && <div className="p-4 rounded-xl border border-dashed border-white/10 bg-black/20 text-center"><p className="text-sm text-zinc-400">No providers yet</p><p className="text-xs text-zinc-600 mt-1">Add a provider like Vanguard or Trading 212</p><div className="flex gap-2 mt-3"><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>{setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true);}}><Plus className="w-3.5 h-3.5"/> Provider</Button><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3.5 h-3.5"/> Portfolio</Button></div></div>}
                       {provs.map((pr, pi)=>{
                         const ps = filteredPortfolios(portfoliosByProvider.get(pr.id) ?? []);
                         const isProvOpen = expandedProv[pr.id] ?? true;
                         const provTotal = providerTotals(pr.id);
                         const provColor = (pr as any).color || portfolioTint((acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, pi, provs.length);
                         return (
-                          <div key={pr.id} className="rounded-lg border overflow-hidden" style={{ borderColor: provColor + "18", background: provColor + "0A" }}>
+                          <div key={pr.id} className="rounded-lg border overflow-hidden" style={{ borderColor: provColor + "28", background: provColor + "15" }}>
                             <div className="flex items-center gap-1 p-1">
                               <Button variant="ghost" size="icon-xs" onClick={()=>toggleProv(pr.id)} className="shrink-0"><ChevronDown className={`w-3 h-3 transition-transform ${isProvOpen ? "" : "-rotate-90"}`} /></Button>
                               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: provColor }} />
                               <Briefcase className="w-3.5 h-3.5 text-zinc-600 shrink-0"/>
                               <span className="flex-1 truncate text-xs font-medium text-zinc-300">{pr.name}</span>
                               <span className="text-[11px] tabular-nums text-zinc-500">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
-                              <Button variant="ghost" size="icon-xs" onClick={()=>openWizard(acc.id, pr.id)}><Plus className="w-3 h-3"/></Button>
                               <DropdownMenu>
                                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
                                 <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
@@ -221,15 +229,18 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                                 {ps.map((p, pIdx)=>{
                                   const val=p.holdings.reduce((s,h)=>s+h.shares*h.currentPrice,0);
                                   const active=activeId===p.id;
-                                  const pfColor = (p as any).color || portfolioTint(provColor, pIdx, ps.length);
+                                  const baseColor = (p as any).color || portfolioTint(provColor, pIdx, ps.length);
+                                  const selectedBg = tintColor(baseColor, isLightColor(baseColor) ? -0.06 : 0.22);
+                                  const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
+                                  const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
                                   return (
-                                    <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-md border ${active?"bg-white text-black border-white":"bg-white/[0.04] text-zinc-300 border-white/[0.04] hover:border-white/10"}`} style={!active ? { borderLeftColor: pfColor, borderLeftWidth: 2 } : {}}>
-                                      <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-1.5 h-6 ${active?"hover:bg-black/5 text-black":"hover:bg-white/5"}`} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
-                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: pfColor }} />
-                                        <Folder className={`w-3 h-3 shrink-0 ${active?"text-black/60":"text-zinc-500"}`} />
-                                        <span className="truncate text-[11px] font-medium">{p.name}</span>
+                                    <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-md border ${active?"border-2 shadow-sm":"bg-white/[0.04] text-zinc-300 border-white/[0.04] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: baseColor, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                                      <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-1.5 h-6 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
+                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
+                                        <Folder className="w-3 h-3 shrink-0" style={{ color: active ? activeMuted : undefined }} />
+                                        <span className="truncate text-[11px] font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                                       </Button>
-                                      <span className={`text-[11px] tabular-nums pr-1 ${active?"text-black/60":"text-zinc-500"}`}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                                      <span className="text-[11px] tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                                       <DropdownMenu>
                                         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5"><MoreVertical className="w-3 h-3"/></Button>} />
                                         <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
@@ -251,16 +262,19 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                           {direct.map((p, di)=>{
                             const val=p.holdings.reduce((s,h)=>s+h.shares*h.currentPrice,0);
                             const active=activeId===p.id;
-                            const pfColor = (p as any).color || portfolioTint((acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, direct.length);
+                            const baseColor = (p as any).color || portfolioTint((acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, direct.length);
+                            const selectedBg = tintColor(baseColor, isLightColor(baseColor) ? -0.06 : 0.22);
+                            const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
+                            const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
                             return (
-                              <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border ${active?"bg-white text-black border-white":"bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={!active ? { borderLeftColor: pfColor, borderLeftWidth: 2 } : {}}>
-                                <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active?"hover:bg-black/5 text-black":"hover:bg-white/5"}`} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
-                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: pfColor }} />
-                                  <Folder className={`w-3.5 h-3.5 shrink-0 ${active?"text-black/60":"text-zinc-500"}`} />
-                                  <span className="truncate text-xs font-medium">{p.name}</span>
-                                  <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded capitalize ${active?"bg-black/10 text-black/60":"bg-white/5 text-zinc-500"}`}>{p.type}</span>
+                              <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border ${active?"border-2 shadow-sm":"bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: baseColor, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                                <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
+                                  <Folder className={`w-3.5 h-3.5 shrink-0`} style={{ color: active ? activeMuted : undefined }} />
+                                  <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
+                                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full capitalize font-medium" style={active ? { background: isLightColor(selectedBg) ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.18)", color: activeMuted } : {}}>{p.type}</span>
                                 </Button>
-                                <span className={`text-xs tabular-nums pr-1 hidden md:inline ${active?"text-black/60":"text-zinc-500"}`}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                                <span className="text-xs tabular-nums pr-1 hidden md:inline" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
                                   <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
@@ -273,10 +287,6 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                           })}
                         </div>
                       )}
-                      <div className="flex gap-1 pt-1">
-                        <Button variant="ghost" size="xs" className="flex-1 text-zinc-500 hover:text-white text-[11px]" onClick={()=>{setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true);}}><Plus className="w-3 h-3"/> Provider</Button>
-                        <Button variant="ghost" size="xs" className="flex-1 text-zinc-500 hover:text-white text-[11px]" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3 h-3"/> Portfolio</Button>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -290,16 +300,21 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                   <Button variant="ghost" size="icon-xs" onClick={() => openWizard(null)} aria-label="New portfolio"><Plus className="w-3.5 h-3.5" /></Button>
                 </div>
                 <div className="px-1.5 pb-1.5 space-y-1">
-                    {(filteredPortfolios(unassigned)).map((p) => {
+                    {(filteredPortfolios(unassigned)).map((p, ui) => {
                     const val = p.holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0);
                     const active = activeId === p.id;
+                    const baseColor = (p as any).color || PALETTE[ui % PALETTE.length].value;
+                    const selectedBg = tintColor(baseColor, isLightColor(baseColor) ? -0.06 : 0.22);
+                    const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
+                    const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
                     return (
-                      <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border transition-colors ${active ? "bg-white text-black border-white" : "bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`}>
-                        <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-black/5 text-black" : "hover:bg-white/5"}`} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
-                          <Folder className={`w-3.5 h-3.5 shrink-0 ${active ? "text-black/60" : "text-zinc-500"}`} />
-                          <span className="truncate text-xs font-medium">{p.name}</span>
+                      <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border transition-colors ${active ? "border-2 shadow-sm" : "bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: baseColor, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                        <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-black/10" : "hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor }} />
+                          <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
+                          <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                         </Button>
-                        <span className={`text-xs tabular-nums pr-1 ${active ? "text-black/60" : "text-zinc-500"}`}>£{val.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                        <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
                         <DropdownMenu>
                           <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
                           <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
@@ -316,17 +331,21 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
             )}
           </div>
           )}
-          <div className="mt-3 flex gap-2">
-            <Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 text-xs" onClick={() => openWizard(null)}>New portfolio</Button>
+          <div className="mt-4">
+            <Button size="default" className={`w-full h-10 font-medium ${portfolios.length>0 ? "bg-white/[0.06] border border-white/10 text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-400" : "bg-white text-black hover:bg-zinc-100 font-semibold shadow-lg"}`} onClick={() => openWizard(null)}><Plus className="w-4 h-4"/> {portfolios.length>0 ? "New portfolio" : "New portfolio"}</Button>
+            <p className="text-xs text-zinc-600 text-center mt-2">Account → Provider → Portfolio</p>
           </div>
         </div>
 
-        <div className="mt-6 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-          <div className="flex items-center gap-2 text-xs text-zinc-400"><Clock className="w-3.5 h-3.5" /> Prices update daily</div>
-          <p className="text-xs text-zinc-600 mt-1">Automated at 06:00 UTC via cron. No manual refresh needed.</p>
-          <p className="text-xs text-zinc-500 mt-2">Last refresh: {lastRefresh ? fmtRelative(lastRefresh) : "—"}</p>
-        </div>
       </nav>
+      <div className="mx-3 mb-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300"><Clock className="w-3.5 h-3.5 text-zinc-500" /> Prices update daily</div>
+        <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">Automated at 06:00 UTC via cron. No manual refresh needed.</p>
+        <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
+          <span className="text-[11px] text-zinc-600">Last refresh</span>
+          <span className="text-[11px] font-medium text-zinc-400">{lastRefresh ? fmtRelative(lastRefresh) : "—"}</span>
+        </div>
+      </div>
       <div className="p-3 border-t flex flex-col gap-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         <a href="/settings" className={buttonVariants({ variant: "ghost", size: "sm", className: "w-full justify-start gap-2 text-zinc-400 hover:text-white" })}><Settings className="w-4 h-4"/> Settings</a>
         <div className="flex gap-2">
@@ -438,13 +457,13 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
   return (
     <>
       <Button variant="ghost" size="icon" className="md:hidden fixed top-3 left-3 z-40 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu"><Menu className="w-4 h-4"/></Button>
-      <aside className="hidden md:flex w-[280px] shrink-0 flex-col h-screen sticky top-0 border-r bg-black/40 backdrop-blur-xl" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+      <aside className="hidden md:flex w-[360px] shrink-0 flex-col h-screen sticky top-0 border-r bg-black/40 backdrop-blur-xl" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
         {inner}
       </aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
           <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
-          <div className="w-[85vw] max-w-[320px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{inner}</div>
+          <div className="w-[85vw] max-w-[380px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{inner}</div>
         </div>
       )}
     </>

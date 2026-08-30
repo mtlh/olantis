@@ -53,6 +53,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const [refreshing, setRefreshing] = useState(false);
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
   useEffect(()=>{ if(activeId && !portfolios.find(p=>p.id===activeId)) setActiveId(null); },[portfolios,activeId]);
+  const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===(active as any).providerId); const acc = accounts.find(a=> a.id===active.accountId); return (active as any).color || (prov as any)?.color || (acc as any)?.color || "#60a5fa"; }, [active, providers, accounts]);
   const { transactions, refresh: refreshTx, create: createTx } = useTransactions(activeId);
   const overviewTx = useTransactions(null);
   const displayTx = activeId ? transactions : overviewTx.transactions;
@@ -359,8 +360,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
             <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId} onCreate={handleWizardCreate as any} inline />
           ) : active ? (
             <>
-              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.08] to-white/[0.02] p-6 md:p-8">
-                <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full bg-white/5 blur-3xl" />
+              <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: (activeBaseColor ?? "#60a5fa") + "30", background: `linear-gradient(to bottom right, ${(activeBaseColor ?? "#60a5fa")}1F, ${(activeBaseColor ?? "#60a5fa")}0A)` }}>
+                <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl" style={{ background: (activeBaseColor ?? "#60a5fa") + "18" }} />
                 <div className="relative flex flex-wrap items-start justify-between gap-6">
                   <div>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -379,7 +380,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
-                  <div className="p-4 rounded-xl bg-white text-black">
+                  <div className="p-4 rounded-xl bg-white text-black border-l-4" style={{ borderLeftColor: activeBaseColor ?? "#60a5fa" }}>
                     <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Value</div>
                     <div className="text-2xl font-bold mt-1">{fmtGBP(activeValue)}</div>
                     <div className="text-xs text-zinc-600 mt-1">Cost {fmtGBP(activeCost)}</div>
