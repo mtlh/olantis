@@ -175,10 +175,13 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
 
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"value" | "gain" | "symbol">("value");
-  const [form, setForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0] });
+  const [form, setForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "" });
   const [formErrors, setFormErrors] = useState<Record<string,string>>({});
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteInfo, setQuoteInfo] = useState<string>("");
+  const [symbolResults, setSymbolResults] = useState<any[]>([]);
+  const [symbolSearching, setSymbolSearching] = useState(false);
+  const [showSymbolMenu, setShowSymbolMenu] = useState(false);
 
   const validateHolding = useCallback(()=>{
     const e: Record<string,string>={};
@@ -191,14 +194,39 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     return e;
   },[form]);
 
-  const openAdd = () => { setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0] }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowHolding(true); };
-  const openEdit = (h: any) => { setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0] }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowHolding(true); };
+  useEffect(()=>{
+    const q = form.symbol.trim();
+    if (!showHolding || q.length < 2 || editingId) { setSymbolResults([]); setShowSymbolMenu(false); return; }
+    const t = setTimeout(async ()=>{
+      setSymbolSearching(true);
+      try {
+        const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const j = await r.json();
+        const arr = Array.isArray(j) ? j : [];
+        setSymbolResults(arr);
+        setShowSymbolMenu(arr.length > 0);
+      } catch { setSymbolResults([]); }
+      finally { setSymbolSearching(false); }
+    }, 320);
+    return ()=> clearTimeout(t);
+  }, [form.symbol, showHolding, editingId]);
+
+  const selectSearchResult = (r: any) => {
+    setForm(f=> ({ ...f, symbol: r.symbol?.toUpperCase() ?? f.symbol, name: r.name ?? r.longname ?? f.name, exchange: r.exchange ?? f.exchange, currentPrice: r.price != null ? String(r.price) : f.currentPrice }));
+    setShowSymbolMenu(false);
+    setSymbolResults([]);
+    if (r.price != null) setQuoteInfo(`Yahoo: £${Number(r.price).toFixed(2)} ${r.currency ?? r.exchange} • ${r.exchDisp ?? r.exchange}`);
+    else if (r.symbol) fetchQuote(r.symbol);
+  };
+
+  const openAdd = () => { setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openEdit = (h: any) => { setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: (h as any).exchange ?? "" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
 
   const fetchQuote = async (sym:string)=>{
     if(!sym.trim() || sym.length<1) return;
     setQuoteLoading(true); setQuoteInfo("");
     try{
-      const r = await fetch(`/api/quote?symbol=${encodeURIComponent(sym.trim())}`);
+      const r = await fetch(`/api/quote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbols: [{ symbol: sym.trim(), exchange: form.exchange || undefined }] }) });
       const j = await r.json();
       const q = j[sym.trim().toUpperCase()];
       if(q?.price){ setForm(f=>({...f, currentPrice: String(q.price)})); setQuoteInfo(`Live: £${Number(q.price).toFixed(2)} ${q.currency}`); }
@@ -215,7 +243,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     if(dup){ setFormErrors({symbol:"Already in this portfolio"}); return; }
     setSaving(true);
     try {
-      await upsertHolding(activeId, { id: editingId ?? undefined, symbol: form.symbol.toUpperCase().trim(), name: form.name?.trim() || form.symbol.toUpperCase().trim(), shares: Number(form.shares), avgPrice: Number(form.avgPrice), currentPrice: Number(form.currentPrice || form.avgPrice), currency: "GBP", purchaseDate: form.purchaseDate });
+      await upsertHolding(activeId, { id: editingId ?? undefined, symbol: form.symbol.toUpperCase().trim(), name: form.name?.trim() || form.symbol.toUpperCase().trim(), shares: Number(form.shares), avgPrice: Number(form.avgPrice), currentPrice: Number(form.currentPrice || form.avgPrice), currency: "GBP", purchaseDate: form.purchaseDate, exchange: form.exchange || undefined } as any);
       setShowHolding(false); toast({title: editingId?"Holding updated":"Holding added",description:form.symbol.toUpperCase(),variant:"success"});
     } catch(e:any){ toast({title:"Save failed",description:e.message||String(e),variant:"error"}); setFormErrors({symbol: e.message}); }
     finally{ setSaving(false); }
@@ -828,23 +856,61 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
               <DialogHeader><DialogTitle className="flex items-center gap-2">{editingId ? <Pencil className="w-4 h-4"/> : <Plus className="w-4 h-4"/>} {editingId ? "Edit holding" : "Add holding"}</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 relative">
                     <Label>Symbol *</Label>
                     <div className="flex gap-1.5">
-                      <Input placeholder="AAPL" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} onBlur={e=>e.target.value.trim() && fetchQuote(e.target.value)} className={formErrors.symbol?"border-red-500/50":""} />
-                      <Button variant="outline" size="sm" className="shrink-0 bg-white/5 border-white/10" onClick={()=>fetchQuote(form.symbol)} disabled={quoteLoading || !form.symbol.trim()}>{quoteLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <RefreshCw className="w-3.5 h-3.5"/>}</Button>
+                      <div className="relative flex-1">
+                        <Input placeholder="AAPL or Apple" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} onFocus={()=> symbolResults.length && setShowSymbolMenu(true)} onBlur={()=> setTimeout(()=> setShowSymbolMenu(false), 180)} className={formErrors.symbol?"border-red-500/50":""} autoComplete="off" />
+                        {showSymbolMenu && symbolResults.length>0 && (
+                          <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl overflow-hidden max-h-64 overflow-auto">
+                            {symbolResults.map((r:any)=> (
+                              <button key={r.symbol+r.exchange} type="button" onMouseDown={(e)=>{e.preventDefault(); selectSearchResult(r);}} className="w-full text-left px-3 py-2.5 hover:bg-white/5 flex items-center justify-between gap-2 border-b border-white/[0.04] last:border-0">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-white flex items-center gap-2"><span>{r.symbol}</span><Badge variant="outline" className="border-white/10 text-[10px] text-zinc-500">{r.exchange || r.exchDisp || "—"}</Badge>{r.price!=null && <span className="text-xs text-emerald-400">£{Number(r.price).toFixed(2)}</span>}</div>
+                                  <div className="text-xs text-zinc-500 truncate">{r.name}</div>
+                                </div>
+                                <Plus className="w-3.5 h-3.5 text-zinc-600 shrink-0"/>
+                              </button>
+                            ))}
+                            {symbolSearching && <div className="px-3 py-2 text-xs text-zinc-500 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin"/> Searching Yahoo…</div>}
+                          </div>
+                        )}
+                      </div>
+                      <Button variant="outline" size="sm" className="shrink-0 bg-white/5 border-white/10" onClick={()=>fetchQuote(form.symbol)} disabled={quoteLoading || !form.symbol.trim()} title="Fetch live price for this exchange">{quoteLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <RefreshCw className="w-3.5 h-3.5"/>}</Button>
                     </div>
                     {formErrors.symbol && <p className="text-xs text-red-400">{formErrors.symbol}</p>}
                     {quoteInfo && <p className="text-xs text-zinc-500">{quoteInfo}</p>}
+                    {!editingId && <p className="text-xs text-zinc-600">Type symbol or company name — Yahoo search</p>}
                   </div>
-                  <div className="space-y-1.5"><Label>Shares *</Label><Input type="number" placeholder="10" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} className={formErrors.shares?"border-red-500/50":""} />{formErrors.shares && <p className="text-xs text-red-400">{formErrors.shares}</p>}</div>
+                  <div className="space-y-1.5">
+                    <Label>Exchange</Label>
+                    <Select value={form.exchange || "__auto"} onValueChange={(v)=> setForm({...form, exchange: (v as string)==="__auto" ? "" : (v as string) ?? ""})}>
+                      <SelectTrigger className="h-10 bg-white/5 border-white/10"><span className="flex-1 text-left truncate text-sm">{form.exchange || "Auto"}</span></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__auto">Auto — from symbol/search</SelectItem>
+                        <SelectItem value="NASDAQ">NASDAQ</SelectItem>
+                        <SelectItem value="NYSE">NYSE</SelectItem>
+                        <SelectItem value="AMEX">AMEX</SelectItem>
+                        <SelectItem value="LSE">LSE (London)</SelectItem>
+                        <SelectItem value="NYSEARCA">NYSEARCA</SelectItem>
+                        <SelectItem value="OTC">OTC</SelectItem>
+                        <SelectItem value="EPA">EPA (Paris)</SelectItem>
+                        <SelectItem value="XETRA">XETRA</SelectItem>
+                        <SelectItem value="TSE">TSE (Tokyo)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-zinc-600">Mapped to Yahoo: LSE → .L</p>
+                  </div>
                 </div>
-                <div className="space-y-1.5"><Label>Name</Label><Input placeholder="Apple Inc — auto-filled if empty" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                <div className="space-y-1.5"><Label>Name</Label><Input placeholder="Apple Inc — auto-filled from Yahoo" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
                 <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5"><Label>Shares *</Label><Input type="number" placeholder="10" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} className={formErrors.shares?"border-red-500/50":""} />{formErrors.shares && <p className="text-xs text-red-400">{formErrors.shares}</p>}</div>
                   <div className="space-y-1.5"><Label>Avg price (cost) *</Label><Input type="number" placeholder="150.00" value={form.avgPrice} onChange={(e) => setForm({ ...form, avgPrice: e.target.value })} className={formErrors.avgPrice?"border-red-500/50":""} />{formErrors.avgPrice && <p className="text-xs text-red-400">{formErrors.avgPrice}</p>}</div>
-                  <div className="space-y-1.5"><Label>Current price</Label><Input type="number" placeholder="Same as avg if empty" value={form.currentPrice} onChange={(e) => setForm({ ...form, currentPrice: e.target.value })} className={formErrors.currentPrice?"border-red-500/50":""} />{formErrors.currentPrice && <p className="text-xs text-red-400">{formErrors.currentPrice}</p>}<p className="text-xs text-zinc-600">Leave blank to use avg price</p></div>
                 </div>
-                <div className="space-y-1.5"><Label>Purchase date</Label><Input type="date" value={form.purchaseDate} max={new Date().toISOString().split("T")[0]} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} className={formErrors.purchaseDate?"border-red-500/50":""} />{formErrors.purchaseDate && <p className="text-xs text-red-400">{formErrors.purchaseDate}</p>}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5"><Label>Current price</Label><Input type="number" placeholder="Same as avg if empty" value={form.currentPrice} onChange={(e) => setForm({ ...form, currentPrice: e.target.value })} className={formErrors.currentPrice?"border-red-500/50":""} />{formErrors.currentPrice && <p className="text-xs text-red-400">{formErrors.currentPrice}</p>}<p className="text-xs text-zinc-600">Leave blank to use avg price</p></div>
+                  <div className="space-y-1.5"><Label>Purchase date</Label><Input type="date" value={form.purchaseDate} max={new Date().toISOString().split("T")[0]} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} className={formErrors.purchaseDate?"border-red-500/50":""} />{formErrors.purchaseDate && <p className="text-xs text-red-400">{formErrors.purchaseDate}</p>}</div>
+                </div>
                 {active && <div className="flex gap-2 p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-zinc-400"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5"/> Live prices refresh daily at 06:00 UTC. Use “Refresh prices” on dashboard for manual update (24h limit).</div>}
               </div>
               <div className="flex justify-end gap-2 mt-6">

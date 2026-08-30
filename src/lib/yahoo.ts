@@ -24,3 +24,27 @@ export async function fetchQuotes(symbols: Array<{ symbol: string; exchange?: st
   }
   return out;
 }
+
+export async function searchSymbols(query: string) {
+  if (!query || query.trim().length < 1) return [];
+  try {
+    const res: any = await yf.search(query.trim());
+    const quotes = res.quotes ?? res ?? [];
+    const arr = Array.isArray(quotes) ? quotes : [];
+    return arr.slice(0, 8).map((q: any) => {
+      const symbol = q.symbol ?? "";
+      const name = q.longname ?? q.shortname ?? q.longName ?? q.shortName ?? symbol;
+      const exchange = q.exchange ?? q.exchDisp ?? "";
+      const exchDisp = q.exchDisp ?? q.exchange ?? "";
+      const type = q.quoteType ?? q.quotedType ?? "";
+      let normExchange = exchange;
+      const up = String(exchange).toUpperCase();
+      if (up === "NMS" || up === "NGM" || up === "NCM") normExchange = "NASDAQ";
+      else if (up === "NYQ" || up === "NYS") normExchange = "NYSE";
+      else if (up === "ASE" || up === "AMX") normExchange = "AMEX";
+      else if (up === "LSE" || up === "LON") normExchange = "LSE";
+      else if (up === "PNK" || up === "OTC") normExchange = "OTC";
+      return { symbol, name, exchange: normExchange, rawExchange: exchange, exchDisp, type, longname: name };
+    }).filter((r: any) => r.symbol);
+  } catch { return []; }
+}
