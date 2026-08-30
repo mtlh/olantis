@@ -22,17 +22,28 @@ export async function GET() {
   return Response.json(rows);
 }
 
+async function ensureColorColumn() { try { const { neon } = await import("@neondatabase/serverless"); const sql = neon(process.env.DATABASE_URL!); await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS color text`; } catch {} }
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const { name, id } = await req.json();
+  await ensureColorColumn();
+  const { name, id, color } = await req.json();
   const db = getDb();
   if (id) {
-    await db.update(accounts).set({ name }).where(eq(accounts.id, id));
+    const existing = await db.select().from(accounts).where(eq(accounts.id, id));
+    if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+    const set: any = {};
+    if (name !== undefined) {
+      if (!name?.trim() || name.trim().length < 2) return Response.json({ error: "name too short" }, { status: 400 });
+      set.name = name.trim();
+    }
+    if (color !== undefined) set.color = color || null;
+    if (Object.keys(set).length) await db.update(accounts).set(set).where(eq(accounts.id, id));
     return Response.json({ id });
   }
+  if (!name?.trim() || name.trim().length < 2) return Response.json({ error: "name too short" }, { status: 400 });
   const nid = crypto.randomUUID();
-  await db.insert(accounts).values({ id: nid, userId, name: name.trim(), createdAt: Math.floor(Date.now() / 1000) });
+  await db.insert(accounts).values({ id: nid, userId, name: name.trim(), color: color || null, createdAt: Math.floor(Date.now() / 1000) } as any);
   return Response.json({ id: nid });
 }
 
@@ -43,6 +54,8 @@ export async function DELETE(req: Request) {
   const id = searchParams.get("id");
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const db = getDb();
+  const existing = await db.select().from(accounts).where(eq(accounts.id, id));
+  if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
   await db.delete(accounts).where(eq(accounts.id, id));
   return Response.json({ ok: true });
 }

@@ -20,7 +20,7 @@ export async function fetchQuotes(symbols: Array<{ symbol: string; exchange?: st
       if (!price) continue;
       if (currency === "GBX" || currency === "GBp") { price /= 100; currency = "GBP"; }
       out[symbol] = { price, currency };
-    } catch (e) { console.warn(`yahoo miss ${ys}`, e); }
+    } catch {}
   }
   return out;
 }

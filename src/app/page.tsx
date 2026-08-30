@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
-import { ArrowRight, BarChart3, Clock3, Layers, LineChart, Lock, ShieldCheck, Sparkles, Wallet, EyeOff, Database, TrendingUp, Landmark } from "lucide-react";
+import { ArrowRight, BarChart3, Clock3, Layers, LineChart, Lock, ShieldCheck, Sparkles, Wallet, EyeOff, TrendingUp } from "lucide-react";
 
 export default async function Home() {
   const jar = await cookies();
@@ -47,9 +47,17 @@ export default async function Home() {
             <span className="hidden md:inline text-[10px] tracking-widest uppercase text-zinc-600 border border-white/10 px-2 py-0.5 rounded-full">Personal Finance</span>
           </a>
           <div className="flex items-center gap-2">
-            <a href="/dashboard" className={buttonVariants({ variant: "ghost", size: "sm", className: "text-zinc-400 hover:text-white" })}>Dashboard</a>
-            <a href="/login" className={buttonVariants({ variant: "ghost", size: "sm", className: "text-zinc-400 hover:text-white" })}>Sign in</a>
-            <a href="/login" className={buttonVariants({ size: "sm" })}>Get started <ArrowRight className="w-3.5 h-3.5" /></a>
+            {user ? (
+              <>
+                <a href="/dashboard" className={buttonVariants({ variant: "ghost", size: "sm", className: "text-zinc-400 hover:text-white" })}>Dashboard</a>
+                <a href={isDemo ? "/api/demo?clear=1" : "/logout"} className={buttonVariants({ size: "sm" })}>Sign out <ArrowRight className="w-3.5 h-3.5" /></a>
+              </>
+            ) : (
+              <>
+                <a href="/login" className={buttonVariants({ variant: "ghost", size: "sm", className: "text-zinc-400 hover:text-white" })}>Sign in</a>
+                <a href="/login" className={buttonVariants({ size: "sm" })}>Get started <ArrowRight className="w-3.5 h-3.5" /></a>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -59,21 +67,21 @@ export default async function Home() {
           <div className="grid md:grid-cols-2 gap-10 items-center">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-zinc-400">
-                <Sparkles className="w-3 h-3 text-zinc-300" /> Black glass • Grey cards • Colour only for charts
+                <Sparkles className="w-3 h-3 text-zinc-300" /> Unlimited portfolios • Live prices • Private by design
               </div>
               <h1 className="text-4xl md:text-[52px] font-bold tracking-tight text-white mt-5 leading-[0.95]">
                 Your portfolios,<br /><span className="text-zinc-500">beautifully simple.</span>
               </h1>
               <p className="text-sm md:text-[15px] leading-relaxed text-zinc-400 mt-4 max-w-[480px]">
-                Inspired by Umbris — stripped to essentials. Accounts group portfolios in the sidebar, live holdings, value over time. No spreadsheets. No clutter. Just clarity.
+                Organise every account, portfolio and holding in one place. Track live valuations, see allocation and performance over time. No spreadsheets. Just clarity.
               </p>
               <div className="flex flex-wrap gap-3 mt-7">
                 <a href="/login" className={buttonVariants({ size: "lg", className: "h-10 px-6 bg-white text-black hover:bg-zinc-200 font-semibold" })}>Sign in to dashboard <ArrowRight className="w-4 h-4" /></a>
                 <a href="/api/demo" className={buttonVariants({ variant: "outline", size: "lg", className: "h-10 px-6 bg-white/[0.06] border-white/10 hover:bg-white/10 text-white" })}>Try demo <ArrowRight className="w-4 h-4" /></a>
               </div>
-              <p className="text-xs text-zinc-600 mt-3">WorkOS auth • No credit card • Demo is instant • /dashboard when signed in</p>
+              <p className="text-xs text-zinc-600 mt-3">No credit card • Demo is instant • Set up in 60 seconds</p>
               <div className="flex flex-wrap items-center gap-6 mt-8 text-xs text-zinc-500">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400" />Live Yahoo prices</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400" />Live market prices</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400" />Private by design</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-300" />No tracking</span>
               </div>
@@ -123,25 +131,25 @@ export default async function Home() {
 
         <div className="max-w-6xl mx-auto w-full px-6 md:px-10">
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 py-6 border-y border-white/5 text-xs tracking-widest uppercase text-zinc-600">
-            <span className="flex items-center gap-2"><Landmark className="w-3.5 h-3.5" /> WorkOS AuthKit</span>
+            <span className="flex items-center gap-2"><ShieldCheck className="w-3.5 h-3.5" /> Encrypted & private</span>
             <span className="w-1 h-1 rounded-full bg-white/20" />
-            <span className="flex items-center gap-2"><Database className="w-3.5 h-3.5" /> Neon Postgres</span>
+            <span className="flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5" /> Live market prices</span>
             <span className="w-1 h-1 rounded-full bg-white/20" />
-            <span className="flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5" /> Yahoo Finance</span>
+            <span className="flex items-center gap-2"><Clock3 className="w-3.5 h-3.5" /> Automatic daily updates</span>
             <span className="w-1 h-1 rounded-full bg-white/20" />
-            <span>Vercel Cron 06:00 UTC</span>
+            <span className="flex items-center gap-2"><Layers className="w-3.5 h-3.5" /> Unlimited portfolios</span>
           </div>
         </div>
 
         <section className="max-w-6xl mx-auto w-full px-6 md:px-10 pt-10 pb-4">
           <div className="grid md:grid-cols-3 gap-4">
             {[
-              { icon: Layers, t: "Portfolios in nav", d: "Create unlimited portfolios, group by account (ISA, SIPP, GIA). Switch via left bar. Local-first, instant." },
-              { icon: LineChart, t: "Live tickers", d: "One-click refresh. GBX → GBP handled. Yahoo Finance chart history. Cron updates daily." },
-              { icon: BarChart3, t: "Charts that matter", d: "Value over time + allocation. Per-portfolio or total. Colour reserved only for data." },
-              { icon: ShieldCheck, t: "Private by design", d: "Your data isolated by user ID. No cross-user leakage. Drizzle + RLS-ready schema." },
-              { icon: Lock, t: "Bank-grade auth", d: "WorkOS AuthKit. No passwords stored. Session middleware covers every route." },
-              { icon: EyeOff, t: "No tracking", d: "No ads. No analytics cookies. No selling data. Your finances stay yours." },
+              { icon: Layers, t: "Organise by account", d: "Create accounts for each provider — ISA, SIPP, GIA — and group portfolios underneath. Rename, move and manage with ease." },
+              { icon: LineChart, t: "Holdings in seconds", d: "Add any ticker, set shares and average price. Live valuations update automatically, gains calculated for you." },
+              { icon: BarChart3, t: "See the full picture", d: "Value over time and allocation charts per portfolio or across everything. Track what's driving performance." },
+              { icon: ShieldCheck, t: "Private by design", d: "Your data is isolated and encrypted. Only you can see your portfolios — never shared, never sold." },
+              { icon: Lock, t: "Secure by default", d: "Passwordless sign-in, encrypted sessions. Your money view stays protected without extra effort." },
+              { icon: EyeOff, t: "No tracking, ever", d: "No ads, no analytics cookies, no selling data. Just your portfolios, beautifully simple." },
             ].map((f) => (
               <Card key={f.t} className="glass-card">
                 <CardHeader className="pb-2">
@@ -162,9 +170,9 @@ export default async function Home() {
                 <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mt-3">From zero to clarity in 60 seconds.</h2>
                 <div className="mt-8 space-y-6">
                   {[
-                    { n: "01", t: "Sign in with WorkOS", d: "One click. No password to remember. Encrypted session, midnight auto-refresh." },
-                    { n: "02", t: "Create accounts & portfolios", d: "Add ISA, SIPP, GIA accounts. Then portfolios: Live or Manual. Group them naturally." },
-                    { n: "03", t: "Add holdings & watch", d: "Search symbol, add shares & avg price. Live price + history fetched instantly." },
+                    { n: "01", t: "Sign in securely", d: "One click to your private dashboard. No passwords to remember." },
+                    { n: "02", t: "Create accounts & portfolios", d: "Set up ISAs, SIPPs or GIAs, then add Live or Manual portfolios inside each." },
+                    { n: "03", t: "Add holdings and track", d: "Enter a ticker, shares and avg price. Watch live values, gains and allocation update." },
                   ].map(s=> (
                     <div key={s.n} className="flex gap-4">
                       <span className="shrink-0 w-9 h-9 rounded-full bg-white text-black grid place-items-center text-xs font-bold">{s.n}</span>
@@ -185,7 +193,7 @@ export default async function Home() {
                   <div className="rounded-xl bg-white/[0.03] border border-white/5 p-4 mt-2">
                     <div className="text-xs text-zinc-500 mb-2">Built for the long term</div>
                     <div className="flex items-center gap-2 text-sm text-zinc-300"><ShieldCheck className="w-4 h-4 text-emerald-400" /> Your data never leaves your account</div>
-                    <div className="flex items-center gap-2 text-sm text-zinc-300 mt-2"><Database className="w-4 h-4 text-blue-400" /> Neon Postgres • instant branching</div>
+                    <div className="flex items-center gap-2 text-sm text-zinc-300 mt-2"><Clock3 className="w-4 h-4 text-blue-400" /> Prices refresh automatically every day</div>
                   </div>
                 </div>
               </div>
@@ -197,21 +205,21 @@ export default async function Home() {
           <Card className="glass-card overflow-hidden">
             <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-white/5 text-center">
               <div className="p-8"><div className="text-3xl font-bold text-white">£0</div><div className="text-xs tracking-widest uppercase text-zinc-500 mt-1">To start</div><p className="text-xs text-zinc-600 mt-2">Free while in beta</p></div>
-              <div className="p-8"><div className="text-3xl font-bold text-white">~100ms</div><div className="text-xs tracking-widest uppercase text-zinc-500 mt-1">To load dashboard</div><p className="text-xs text-zinc-600 mt-2">Edge-cached, Turbopack built</p></div>
-              <div className="p-8"><div className="text-3xl font-bold text-white">Daily</div><div className="text-xs tracking-widest uppercase text-zinc-500 mt-1">Price refresh</div><p className="text-xs text-zinc-600 mt-2">Cron at 06:00 UTC</p></div>
+              <div className="p-8"><div className="text-3xl font-bold text-white">Unlimited</div><div className="text-xs tracking-widest uppercase text-zinc-500 mt-1">Portfolios & holdings</div><p className="text-xs text-zinc-600 mt-2">Track everything in one place</p></div>
+              <div className="p-8"><div className="text-3xl font-bold text-white">Daily</div><div className="text-xs tracking-widest uppercase text-zinc-500 mt-1">Price updates</div><p className="text-xs text-zinc-600 mt-2">Automatic, hands-off</p></div>
             </div>
           </Card>
         </section>
 
         <section className="max-w-6xl mx-auto w-full px-6 md:px-10 py-10">
-          <div className="rounded-2xl bg-white text-black p-8 md:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="rounded-2xl bg-white text-zinc-900 p-8 md:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div>
-              <h3 className="text-2xl font-bold tracking-tight">Ready to get clarity?</h3>
+              <h3 className="text-2xl font-bold tracking-tight text-zinc-900">Ready to get organised?</h3>
               <p className="text-sm text-zinc-600 mt-1">Sign in takes 2 seconds. Your first portfolio takes 10 more.</p>
             </div>
             <div className="flex gap-3 shrink-0">
-              <a href="/login" className={buttonVariants({ size: "lg", className: "bg-black text-white hover:bg-zinc-800" })}>Sign in with WorkOS <ArrowRight className="w-4 h-4" /></a>
-              <a href="/api/demo" className={buttonVariants({ variant: "outline", size: "lg", className: "border-black/10 hover:bg-zinc-100" })}>Try demo</a>
+              <a href="/login" className={buttonVariants({ size: "lg", className: "!bg-zinc-900 !text-white hover:!bg-black border border-zinc-900" })}>Sign in <ArrowRight className="w-4 h-4" /></a>
+              <a href="/api/demo" className={buttonVariants({ variant: "outline", size: "lg", className: "!bg-white !text-zinc-900 !border-zinc-300 hover:!bg-zinc-50" })}>Try demo</a>
             </div>
           </div>
         </section>
@@ -219,7 +227,19 @@ export default async function Home() {
         <footer className="border-t border-white/5 mt-2">
           <div className="max-w-6xl mx-auto w-full px-6 md:px-10 py-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-zinc-600">
             <span className="flex items-center gap-2"><Logo size={24} /> © {new Date().getFullYear()} Olantis • Personal finance, simplified.</span>
-            <span className="flex items-center gap-4"><a href="/login" className="hover:text-zinc-300">Sign in</a><a href="/api/demo" className="hover:text-zinc-300">Demo</a><a href="/dashboard" className="hover:text-zinc-300">Dashboard</a><a href="https://github.com/mtlh/olantis" className="hover:text-zinc-300">GitHub</a></span>
+            <span className="flex items-center gap-4">
+              {user ? (
+                <>
+                  <a href="/dashboard" className="hover:text-zinc-300">Dashboard</a>
+                  <a href={isDemo ? "/api/demo?clear=1" : "/logout"} className="hover:text-zinc-300">Sign out</a>
+                </>
+              ) : (
+                <>
+                  <a href="/login" className="hover:text-zinc-300">Sign in</a>
+                  <a href="/login" className="hover:text-zinc-300">Get started</a>
+                </>
+              )}
+            </span>
           </div>
         </footer>
       </div>

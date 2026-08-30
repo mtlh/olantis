@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { accounts, portfolios, holdings, snapshots, portfolioSnapshots } from "@/lib/db/schema";
+import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { neon } from "@neondatabase/serverless";
 
 function weeklyDates(years = 3): string[] {
   const out: string[] = [];
@@ -27,13 +28,22 @@ async function seedDemo(userId: string) {
   const existing = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
   if (existing.length > 0) return;
   const now = Math.floor(Date.now() / 1000);
-  const accISA = { id: crypto.randomUUID(), userId, name: "ISA", createdAt: now };
-  const accFun = { id: crypto.randomUUID(), userId, name: "For Fun", createdAt: now };
-  await db.insert(accounts).values([accISA, accFun]);
-  const p1 = { id: crypto.randomUUID(), userId, accountId: accISA.id, name: "Global Tracker", type: "live", createdAt: now };
-  const p2 = { id: crypto.randomUUID(), userId, accountId: accFun.id, name: "SIPP", type: "live", createdAt: now };
-  const p3 = { id: crypto.randomUUID(), userId, accountId: accFun.id, name: "Retirement", type: "live", createdAt: now };
-  await db.insert(portfolios).values([p1, p2, p3]);
+  try {
+    const sql = neon(process.env.DATABASE_URL!);
+    await sql`CREATE TABLE IF NOT EXISTS providers (id text PRIMARY KEY, user_id text NOT NULL, account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, name text NOT NULL, created_at integer NOT NULL)`;
+    await sql`ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS provider_id text REFERENCES providers(id) ON DELETE SET NULL`;
+  } catch {}
+  const accHousehold = { id: crypto.randomUUID(), userId, name: "Household", createdAt: now };
+  const accPersonal = { id: crypto.randomUUID(), userId, name: "Personal", createdAt: now };
+  await db.insert(accounts).values([accHousehold, accPersonal]);
+  const provVanguard = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Vanguard", createdAt: now };
+  const provT212 = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Trading 212", createdAt: now };
+  const provHL = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, name: "Hargreaves Lansdown", createdAt: now };
+  try { await db.insert(providers).values([provVanguard, provT212, provHL]); } catch { const sql = neon(process.env.DATABASE_URL!); for(const pr of [provVanguard, provT212, provHL]) await sql`INSERT INTO providers (id, user_id, account_id, name, created_at) VALUES (${pr.id}, ${pr.userId}, ${pr.accountId}, ${pr.name}, ${pr.createdAt}) ON CONFLICT DO NOTHING`; }
+  const p1 = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA — Global Tracker", type: "live", createdAt: now };
+  const p2 = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 — Growth", type: "live", createdAt: now };
+  const p3 = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP — Retirement", type: "live", createdAt: now };
+  await db.insert(portfolios).values([p1, p2, p3] as any);
   const hs = [
     { id: crypto.randomUUID(), portfolioId: p1.id, symbol: "VWRP", name: "Vanguard FTSE All-World", shares: 120, avgPrice: 98, currentPrice: 106.4, currency: "GBP", purchaseDate: "2024-01-15", exchange: "LSE" },
     { id: crypto.randomUUID(), portfolioId: p1.id, symbol: "AAPL", name: "Apple Inc", shares: 15, avgPrice: 145, currentPrice: 178, currency: "USD", purchaseDate: "2024-03-10", exchange: "NASDAQ" },
@@ -153,6 +163,7 @@ export async function GET(req: Request) {
       const ps = await getDb().select().from(portfolios).where(eq(portfolios.userId, "demo"));
       for (const p of ps) await getDb().delete(holdings).where(eq(holdings.portfolioId, p.id));
       await getDb().delete(portfolios).where(eq(portfolios.userId, "demo"));
+      try { await db.delete(providers).where(eq(providers.userId, "demo")); } catch { try { const sql = neon(process.env.DATABASE_URL!); await sql`DELETE FROM providers WHERE user_id='demo'`; } catch {} }
       await getDb().delete(accounts).where(eq(accounts.userId, "demo"));
     } catch {}
     jar.delete("olantis_demo");

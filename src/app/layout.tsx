@@ -15,10 +15,11 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
+import { ToastProvider } from "@/components/ui/toast";
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full dark`}>
-      <body className="min-h-full antialiased">{children}</body>
+      <body className="min-h-full antialiased"><ToastProvider>{children}</ToastProvider></body>
     </html>
   );
 }

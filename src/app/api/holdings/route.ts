@@ -19,13 +19,21 @@ export async function POST(req: Request) {
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
   const body = await req.json();
   const { id, portfolioId, symbol, name, shares, avgPrice, currentPrice, currency, purchaseDate, exchange } = body;
+  if (!symbol?.trim()) return Response.json({ error: "symbol required" }, { status: 400 });
+  if (!shares || Number(shares) <= 0) return Response.json({ error: "shares must be > 0" }, { status: 400 });
+  if (avgPrice == null || Number(avgPrice) <= 0) return Response.json({ error: "avgPrice must be > 0" }, { status: 400 });
   const db = getDb();
-  const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
-  if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
   if (id) {
-    await db.update(holdings).set({ symbol: symbol.toUpperCase(), name, shares: Number(shares), avgPrice: Number(avgPrice), currentPrice: Number(currentPrice ?? avgPrice), currency, purchaseDate, exchange }).where(eq(holdings.id, id));
+    const existing = await db.select().from(holdings).where(eq(holdings.id, id));
+    if (!existing[0]) return Response.json({ error: "holding not found" }, { status: 404 });
+    const p = await db.select().from(portfolios).where(eq(portfolios.id, existing[0].portfolioId));
+    if (!p[0] || p[0].userId !== userId) return Response.json({ error: "forbidden" }, { status: 403 });
+    await db.update(holdings).set({ symbol: symbol.toUpperCase().trim(), name: name?.trim() || symbol.toUpperCase().trim(), shares: Number(shares), avgPrice: Number(avgPrice), currentPrice: Number(currentPrice ?? avgPrice), currency: currency || "GBP", purchaseDate, exchange }).where(eq(holdings.id, id));
     return Response.json({ id });
   }
+  if (!portfolioId) return Response.json({ error: "portfolioId required" }, { status: 400 });
+  const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
+  if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
   const nid = crypto.randomUUID();
   await db.insert(holdings).values({ id: nid, portfolioId, symbol: symbol.toUpperCase(), name: name || symbol, shares: Number(shares), avgPrice: Number(avgPrice), currentPrice: Number(currentPrice ?? avgPrice), currency: currency || "GBP", purchaseDate, exchange, lastRefreshedAt: null });
   return Response.json({ id: nid });
