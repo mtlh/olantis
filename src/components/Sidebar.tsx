@@ -1,6 +1,6 @@
 "use client";
-import { Portfolio, Account, Provider } from "@/lib/store";
-import { LayoutDashboard, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings } from "lucide-react";
+import { Portfolio, Account, Provider, Holding } from "@/lib/store";
+import { LayoutDashboard, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,6 +22,8 @@ function fmtRelative(ts?: number | null) {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 }
+function holdingValueGBP(h:any){ const raw=h.shares*h.currentPrice; if(h.currency==="GBX"||h.currency==="GBp") return raw/100; return raw; }
+function fmtPrice(n:number, currency?:string|null){ if(currency==="GBX"||currency==="GBp") return `${Math.round(n).toLocaleString("en-GB")}p`; if(currency==="GBP") return new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP",maximumFractionDigits:2}).format(n); if(currency==="USD") return `$${Number(n).toFixed(2)}`; if(currency==="EUR") return `€${Number(n).toFixed(2)}`; return `${Number(n).toFixed(2)}${currency?` ${currency}`:""}`; }
 function isLightColor(hex: string) {
   try {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -32,12 +34,14 @@ function isLightColor(hex: string) {
   } catch { return false; }
 }
 
-export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, onCreate: _onCreate, onCreateAccount, onCreateProvider, onOpenWizard, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
-  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; activeId: string | null; onSelect: (id: string | null) => void;
+export function Sidebar({ accounts, providers, portfolios, holdings, activeId, onSelect, onCreate: _onCreate, onCreateAccount, onCreateProvider, onOpenWizard, onCreateDirectHolding, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void;
   onCreate: (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => void;
   onCreateAccount: (name: string) => void;
   onCreateProvider?: (name: string, accountId: string) => Promise<any>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
+  onCreateDirectHolding?: (target: { accountId?: string | null; providerId?: string | null }, data: { symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; exchange?: string }) => Promise<void>;
+  onRefresh?: () => Promise<void>;
   isDemo?: boolean; accountsReady?: boolean; portfoliosReady?: boolean;
   onRenameAccount?: (id: string, name: string) => Promise<void>;
   onRenameProvider?: (id: string, name: string) => Promise<void>;
@@ -62,6 +66,13 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
   const [providerName, setProviderName] = useState("");
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [editProviderName, setEditProviderName] = useState("");
+  const [showDirectHolding, setShowDirectHolding] = useState(false);
+  const [directTarget, setDirectTarget] = useState<{ accountId?: string | null; providerId?: string | null } | null>(null);
+  const [directForm, setDirectForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", exchange: "", currentPrice: "", currency: "GBP" });
+  const [editingDirectId, setEditingDirectId] = useState<string | null>(null);
+  const [directSaving, setDirectSaving] = useState(false);
+  const [directSearchResults, setDirectSearchResults] = useState<any[]>([]);
+  const [directShowMenu, setDirectShowMenu] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [expandedProv, setExpandedProv] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
@@ -89,14 +100,21 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
     return m;
   },[portfolios]);
 
+  const directHoldings = holdings ?? [];
   const accountTotals = (aid: string) => {
     const direct = directByAccount.get(aid) ?? [];
     const provs = providersByAccount.get(aid) ?? [];
-    let sum = direct.reduce((s,p)=> s + p.holdings.reduce((a,h)=>a+h.shares*h.currentPrice,0),0);
-    for(const pr of provs){ const ps=portfoliosByProvider.get(pr.id)??[]; sum+= ps.reduce((s,p)=>s+p.holdings.reduce((a,h)=>a+h.shares*h.currentPrice,0),0); }
+    let sum = direct.reduce((s,p)=> s + p.holdings.reduce((a,h:any)=>a+holdingValueGBP(h),0),0);
+    for(const pr of provs){ const ps=portfoliosByProvider.get(pr.id)??[]; sum+= ps.reduce((s,p)=>s+p.holdings.reduce((a,h:any)=>a+holdingValueGBP(h),0),0); }
+    sum += directHoldings.filter((h:any)=> h.accountId===aid && !h.providerId && !h.portfolioId).reduce((s,h:any)=> s+holdingValueGBP(h),0);
+    for(const pr of provs){ sum += directHoldings.filter((h:any)=> h.providerId===pr.id).reduce((s,h:any)=> s+holdingValueGBP(h),0); }
     return sum;
   };
-  const providerTotals = (pid: string) => (portfoliosByProvider.get(pid)??[]).reduce((s,p)=>s+p.holdings.reduce((a,h)=>a+h.shares*h.currentPrice,0),0);
+  const providerTotals = (pid: string) => {
+    let sum = (portfoliosByProvider.get(pid)??[]).reduce((s,p)=>s+p.holdings.reduce((a,h:any)=>a+holdingValueGBP(h),0),0);
+    sum += directHoldings.filter((h:any)=> h.providerId===pid).reduce((s,h:any)=> s+holdingValueGBP(h),0);
+    return sum;
+  };
 
   const toggle = (id: string) => setExpanded((e) => ({ ...e, [id]: !(e[id] ?? true) }));
   const toggleProv = (id: string) => setExpandedProv((e)=> ({...e, [id]: !(e[id] ?? true)}));
@@ -136,6 +154,41 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
     if (err) return toast({title:err,variant:"error"});
     setSaving(true);
     try { await onRenamePortfolio?.(editingPortfolio.id, { name: editPName.trim(), type: editPType, accountId: editPAccount==="__none"?null:editPAccount, providerId: editPProvider==="__none"?null:editPProvider }); setEditingPortfolio(null); toast({title:"Portfolio updated",variant:"success"});} catch(e:any){toast({title:"Update failed",description:String(e.message||e),variant:"error"});} finally{setSaving(false);}
+  };
+  const handleCreateDirectHolding = async () => {
+    if(!directTarget && !editingDirectId) return;
+    if(!directForm.symbol.trim() || !directForm.shares || !directForm.avgPrice) return toast({title:"Fill symbol, shares & price", variant:"error"});
+    const isEdit = !!editingDirectId;
+    const target = directTarget ?? { accountId: null, providerId: null };
+    const payload: any = {
+      symbol: directForm.symbol.toUpperCase().trim(),
+      name: directForm.name.trim() || directForm.symbol.toUpperCase().trim(),
+      shares: Number(directForm.shares),
+      avgPrice: Number(directForm.avgPrice),
+      currentPrice: Number(directForm.currentPrice || directForm.avgPrice),
+      currency: (directForm as any).currency || "GBP",
+      exchange: directForm.exchange || undefined,
+      purchaseDate: new Date().toISOString().split("T")[0],
+    };
+    if (isEdit) payload.id = editingDirectId;
+    else {
+      payload.accountId = target.accountId ?? null;
+      payload.providerId = target.providerId ?? null;
+    }
+    setDirectSaving(true);
+    try {
+      const res = await fetch("/api/holdings", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      if(!res.ok) throw new Error(await res.text());
+      await onRefresh?.();
+      setShowDirectHolding(false); setDirectForm({ symbol:"", name:"", shares:"", avgPrice:"", exchange:"", currentPrice:"", currency:"GBP" }); setDirectSearchResults([]); setEditingDirectId(null);
+      toast({title: isEdit ? "Stock updated" : "Stock added", description: directForm.symbol.toUpperCase(), variant:"success"});
+    } catch(e:any){ toast({title:"Failed", description:String(e.message||e), variant:"error"}); } finally{ setDirectSaving(false); }
+  };
+  const openDirectEdit = (h:any) => {
+    setDirectTarget({ accountId: (h as any).accountId ?? null, providerId: (h as any).providerId ?? null });
+    setDirectForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), exchange: h.exchange ?? "", currentPrice: String(h.currentPrice ?? h.avgPrice), currency: (h as any).currency ?? "GBP" });
+    setEditingDirectId(h.id);
+    setShowDirectHolding(true);
   };
 
   const allHoldings = useMemo(() => portfolios.flatMap((p) => p.holdings), [portfolios]);
@@ -177,7 +230,7 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
               const direct = filteredPortfolios(directByAccount.get(acc.id) ?? []);
               const accColor = (acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value;
               return (
-                <div key={acc.id} className="rounded-2xl border overflow-hidden shadow-sm" style={{ borderColor: accColor + "30", background: accColor + "18" }}>
+                <div key={acc.id} className="rounded-2xl border overflow-hidden shadow-sm" style={{ borderColor: accColor + "40", background: accColor + "26" }}>
                   <div className="flex items-center gap-1 p-1.5">
                     <Button variant="ghost" size="icon-xs" onClick={() => toggle(acc.id)} className="shrink-0"><ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? "" : "-rotate-90"}`} /></Button>
                     <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer" onClick={()=>toggle(acc.id)}>
@@ -191,6 +244,7 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                       <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-40">
                         <DropdownMenuItem onClick={()=>{ setEditingAccount(acc); setEditAccountName(acc.name); }}><Pencil className="w-3.5 h-3.5"/>Rename account</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>{ setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true); }}><Briefcase className="w-3.5 h-3.5"/>New provider</DropdownMenuItem>
+                        <DropdownMenuItem onClick={()=>{ setDirectTarget({accountId: acc.id}); setDirectForm({symbol:"",name:"",shares:"",avgPrice:"",exchange:"",currentPrice:"",currency:"GBP"}); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>openWizard(acc.id, null)}><Layers className="w-3.5 h-3.5"/>New portfolio</DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-white/10"/>
                         <DropdownMenuItem variant="destructive" onClick={()=> onDeleteAccount?.(acc)}><Trash2 className="w-3.5 h-3.5"/>Delete account</DropdownMenuItem>
@@ -206,7 +260,7 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                         const provTotal = providerTotals(pr.id);
                         const provColor = (pr as any).color || portfolioTint((acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, pi, provs.length);
                         return (
-                          <div key={pr.id} className="rounded-lg border overflow-hidden" style={{ borderColor: provColor + "28", background: provColor + "15" }}>
+                          <div key={pr.id} className="rounded-lg border overflow-hidden" style={{ borderColor: provColor + "38", background: provColor + "20" }}>
                             <div className="flex items-center gap-1 p-1">
                               <Button variant="ghost" size="icon-xs" onClick={()=>toggleProv(pr.id)} className="shrink-0"><ChevronDown className={`w-3 h-3 transition-transform ${isProvOpen ? "" : "-rotate-90"}`} /></Button>
                               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: provColor }} />
@@ -215,9 +269,10 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                               <span className="text-[11px] tabular-nums text-zinc-500">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                               <DropdownMenu>
                                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
-                                <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
+                                <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-[220px]">
                                   <DropdownMenuItem onClick={()=>{setEditingProvider(pr); setEditProviderName(pr.name);}}><Pencil className="w-3.5 h-3.5"/>Rename provider</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={()=>openWizard(acc.id, pr.id)}><Plus className="w-3.5 h-3.5"/>New portfolio here</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={()=>{ setDirectTarget({providerId: pr.id, accountId: pr.accountId}); setDirectForm({symbol:"",name:"",shares:"",avgPrice:"",exchange:"",currentPrice:"",currency:"GBP"}); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
+                                  <DropdownMenuItem className="whitespace-nowrap" onClick={()=>openWizard(acc.id, pr.id)}><Plus className="w-3.5 h-3.5"/>New portfolio here</DropdownMenuItem>
                                   <DropdownMenuSeparator className="bg-white/10"/>
                                   <DropdownMenuItem variant="destructive" onClick={()=>onDeleteProvider?.(pr)}><Trash2 className="w-3.5 h-3.5"/>Delete provider</DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -230,11 +285,11 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                                   const val=p.holdings.reduce((s,h)=>s+h.shares*h.currentPrice,0);
                                   const active=activeId===p.id;
                                   const baseColor = (p as any).color || portfolioTint(provColor, pIdx, ps.length);
-                                  const selectedBg = tintColor(baseColor, isLightColor(baseColor) ? -0.06 : 0.22);
+                                  const selectedBg = baseColor;
                                   const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                                   const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
                                   return (
-                                    <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-md border ${active?"border-2 shadow-sm":"bg-white/[0.04] text-zinc-300 border-white/[0.04] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: baseColor, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                                    <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-md border ${active?"border-2 shadow-md":"bg-white/[0.04] text-zinc-300 border-white/[0.04] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
                                       <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-1.5 h-6 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
                                         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
                                         <Folder className="w-3 h-3 shrink-0" style={{ color: active ? activeMuted : undefined }} />
@@ -251,6 +306,20 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                                     </div>
                                   );
                                 })}
+                                {(holdings ?? []).filter((h:any)=> h.providerId===pr.id && !h.portfolioId).length>0 && (
+                                  <div className="mt-2 pt-2 border-t border-white/5">
+                                    <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1 mb-1">Direct stocks</div>
+                                    {(holdings ?? []).filter((h:any)=> h.providerId===pr.id && !h.portfolioId).map((h:any)=>(
+                                      <div key={h.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs">
+                                        <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
+                                        <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
+                                        <span className="text-zinc-500">£{(h.shares*h.currentPrice).toFixed(0)}</span>
+                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" onClick={()=> openDirectEdit(h)}><Pencil className="w-3 h-3"/></Button>
+                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-red-400" onClick={async()=>{ await fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}); onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }}><Trash2 className="w-3 h-3"/></Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -263,11 +332,11 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                             const val=p.holdings.reduce((s,h)=>s+h.shares*h.currentPrice,0);
                             const active=activeId===p.id;
                             const baseColor = (p as any).color || portfolioTint((acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, direct.length);
-                            const selectedBg = tintColor(baseColor, isLightColor(baseColor) ? -0.06 : 0.22);
+                            const selectedBg = baseColor;
                             const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                             const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
                             return (
-                              <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border ${active?"border-2 shadow-sm":"bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: baseColor, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                              <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border ${active?"border-2 shadow-md":"bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
                                 <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
                                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
                                   <Folder className={`w-3.5 h-3.5 shrink-0`} style={{ color: active ? activeMuted : undefined }} />
@@ -287,6 +356,19 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                           })}
                         </div>
                       )}
+                      {(holdings ?? []).filter((h:any)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0 && (
+                        <div className="space-y-1 mt-2 pt-2 border-t border-white/5">
+                          <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct stocks — {acc.name}</div>
+                          {(holdings ?? []).filter((h:any)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h:any)=>(
+                            <div key={h.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs">
+                              <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
+                              <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
+                              <span className="text-zinc-500">£{(h.shares*h.currentPrice).toFixed(0)}</span>
+                              <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-red-400" onClick={async()=>{ await fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}); onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }}><Trash2 className="w-3 h-3"/></Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -304,11 +386,11 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
                     const val = p.holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0);
                     const active = activeId === p.id;
                     const baseColor = (p as any).color || PALETTE[ui % PALETTE.length].value;
-                    const selectedBg = tintColor(baseColor, isLightColor(baseColor) ? -0.06 : 0.22);
+                    const selectedBg = baseColor;
                     const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                     const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
                     return (
-                      <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border transition-colors ${active ? "border-2 shadow-sm" : "bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: baseColor, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                      <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border transition-colors ${active ? "border-2 shadow-md" : "bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
                         <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-black/10" : "hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor }} />
                           <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
@@ -410,6 +492,58 @@ export function Sidebar({ accounts, providers, portfolios, activeId, onSelect, o
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={()=>setEditingProvider(null)}>Cancel</Button>
               <Button onClick={handleRenameProvider} disabled={saving || !editProviderName.trim()}>{saving?"Saving…":"Save"}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDirectHolding} onOpenChange={setShowDirectHolding}>
+        <DialogContent className="bg-zinc-900 border-white/10 text-white sm:max-w-md">
+          <DialogHeader><DialogTitle>Add stock directly — {directTarget?.providerId ? providers.find(p=>p.id===directTarget.providerId)?.name : accounts.find(a=>a.id===directTarget?.accountId)?.name ?? "—"}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Symbol *</Label>
+              <div className="relative">
+                <Input value={directForm.symbol} onChange={e=>{ const v=e.target.value.toUpperCase(); setDirectForm({...directForm, symbol:v}); if(v.trim().length>=2){ fetch(`/api/search?q=${encodeURIComponent(v)}`).then(r=>r.json()).then(j=>{ setDirectSearchResults(Array.isArray(j)?j:[]); setDirectShowMenu(true); }).catch(()=>{});} else { setDirectSearchResults([]); setDirectShowMenu(false);} }} placeholder="AAPL or Apple" autoComplete="off" />
+                {directShowMenu && directSearchResults.length>0 && (
+                  <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl max-h-48 overflow-auto">
+                    {directSearchResults.map((r:any)=>(
+                      <button key={r.symbol+r.exchange} type="button" onMouseDown={(e)=>{e.preventDefault(); setDirectForm({...directForm, symbol:r.symbol, name:r.name, exchange:r.exchange, currentPrice: r.price ? String(r.price) : directForm.currentPrice, currency: r.currency ?? directForm.currency}); setDirectShowMenu(false);}} className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between gap-2">
+                        <div><div className="text-sm text-white">{r.symbol} <span className="text-xs text-zinc-500">{r.exchange}</span>{r.price!=null && <span className="text-xs text-emerald-400 ml-1">{r.currency==="GBX"||r.currency==="GBp" ? `${Math.round(r.price).toLocaleString("en-GB")}p` : `£${Number(r.price).toFixed(2)}`}</span>}</div><div className="text-xs text-zinc-500 truncate">{r.name}</div></div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2"><Label>Name</Label><Input value={directForm.name} onChange={e=>setDirectForm({...directForm, name:e.target.value})} placeholder="Apple Inc" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Shares *</Label><Input type="number" value={directForm.shares} onChange={e=>setDirectForm({...directForm, shares:e.target.value})} placeholder="10" /></div>
+              <div className="space-y-2"><Label>Avg price *</Label><Input type="number" value={directForm.avgPrice} onChange={e=>setDirectForm({...directForm, avgPrice:e.target.value})} placeholder="150" /></div>
+            </div>
+            <div className="space-y-2">
+              <Label>Current price <span className="text-zinc-500 font-normal">(live)</span></Label>
+              <div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">
+                {directForm.currentPrice ? fmtPrice(Number(directForm.currentPrice), (directForm as any).currency) : "— auto-filled from Yahoo"}
+                <span className="ml-auto text-xs text-zinc-600">read-only</span>
+              </div>
+              <p className="text-xs text-zinc-600">Helps calculate gain; avg cost is what you paid</p>
+            </div>
+            <div className="space-y-2"><Label>Exchange</Label>
+              <Select value={directForm.exchange || "__auto"} onValueChange={v=> setDirectForm({...directForm, exchange: (v as string)==="__auto" ? "" : (v as string)})}>
+                <SelectTrigger><span className="flex-1 text-left truncate text-sm">{directForm.exchange || "Auto"}</span></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__auto">Auto</SelectItem>
+                  <SelectItem value="NASDAQ">NASDAQ</SelectItem>
+                  <SelectItem value="NYSE">NYSE</SelectItem>
+                  <SelectItem value="AMEX">AMEX</SelectItem>
+                  <SelectItem value="LSE">LSE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={()=> setShowDirectHolding(false)}>Cancel</Button>
+              <Button onClick={handleCreateDirectHolding} disabled={directSaving} className="bg-white text-black hover:bg-zinc-100">{directSaving?"Adding...":"Add stock"}</Button>
             </div>
           </div>
         </DialogContent>

@@ -34,7 +34,10 @@ export const userSettings = pgTable("user_settings", {
 });
 export const holdings = pgTable("holdings", {
   id: text("id").primaryKey(),
-  portfolioId: text("portfolio_id").notNull().references(() => portfolios.id, { onDelete: "cascade" }),
+  portfolioId: text("portfolio_id").references(() => portfolios.id, { onDelete: "cascade" }),
+  providerId: text("provider_id").references(() => providers.id, { onDelete: "cascade" }),
+  accountId: text("account_id").references(() => accounts.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
   symbol: text("symbol").notNull(),
   name: text("name").notNull(),
   shares: real("shares").notNull(),

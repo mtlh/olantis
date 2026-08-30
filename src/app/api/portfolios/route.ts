@@ -22,12 +22,13 @@ export async function GET() {
   if (ps.length === 0) return Response.json([]);
   const pids = ps.map((p) => p.id);
   const { inArray } = await import("drizzle-orm");
-  const hs = await db.select().from(holdings).where(inArray(holdings.portfolioId, pids));
+  const allHoldings = await db.select().from(holdings);
+  const hs = allHoldings.filter((h:any)=> h.portfolioId && pids.includes(h.portfolioId));
   const byPid = new Map<string, typeof hs>();
   for (const h of hs) {
-    const arr = byPid.get(h.portfolioId) ?? [];
+    const arr = byPid.get((h as any).portfolioId) ?? [];
     arr.push(h);
-    byPid.set(h.portfolioId, arr);
+    byPid.set((h as any).portfolioId, arr);
   }
   return Response.json(ps.map((p) => ({ ...p, holdings: byPid.get(p.id) ?? [] })));
 }

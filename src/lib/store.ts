@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-export type Holding = { id: string; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; purchaseDate: string; exchange?: string; portfolioId?: string; lastRefreshedAt?: number | null };
+export type Holding = { id: string; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; purchaseDate: string; exchange?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; userId?: string | null; lastRefreshedAt?: number | null };
 export type Portfolio = { id: string; name: string; type: "live" | "manual"; accountId?: string | null; providerId?: string | null; color?: string | null; holdings: Holding[]; userId?: string; createdAt?: number };
 export type Account = { id: string; name: string; color?: string | null; userId?: string; createdAt?: number };
 export type Provider = { id: string; name: string; color?: string | null; accountId: string; userId?: string; createdAt?: number };
@@ -108,11 +108,22 @@ export function usePortfolios() {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ id, color }) });
     await refresh();
   };
-  const upsertHolding = async (portfolioId: string, h: Omit<Holding, "id"> & { id?: string }) => {
-    await api("/api/holdings", { method: "POST", body: JSON.stringify({ ...h, portfolioId }) });
+  const upsertHolding = async (targetId: string, h: Omit<Holding, "id"> & { id?: string } & { portfolioId?: string | null; providerId?: string | null; accountId?: string | null }, kind: "portfolio" | "provider" | "account" = "portfolio") => {
+    const body: any = { ...h, id: h.id };
+    if (kind === "portfolio") body.portfolioId = targetId;
+    else if (kind === "provider") body.providerId = targetId;
+    else body.accountId = targetId;
+    if (h.portfolioId !== undefined) body.portfolioId = h.portfolioId;
+    if ((h as any).providerId !== undefined) body.providerId = (h as any).providerId;
+    if ((h as any).accountId !== undefined) body.accountId = (h as any).accountId;
+    await api("/api/holdings", { method: "POST", body: JSON.stringify(body) });
     await refresh();
   };
-  const deleteHolding = async (_portfolioId: string, holdingId: string) => {
+  const deleteHolding = async (_targetId: string, holdingId: string) => {
+    await fetch(`/api/holdings?id=${holdingId}`, { method: "DELETE" });
+    await refresh();
+  };
+  const deleteHoldingDirect = async (holdingId: string) => {
     await fetch(`/api/holdings?id=${holdingId}`, { method: "DELETE" });
     await refresh();
   };
@@ -120,7 +131,7 @@ export function usePortfolios() {
     await api("/api/holdings", { method: "PATCH", body: JSON.stringify({ symbols: prices }) });
     await refresh();
   };
-  return { portfolios, ready, create, remove, move, setColor, upsertHolding, deleteHolding, updatePrices, refresh, setPortfolios };
+  return { portfolios, ready, create, remove, move, setColor, upsertHolding, deleteHolding, deleteHoldingDirect, updatePrices, refresh, setPortfolios };
 }
 
 export function useSnapshots(portfolios: Portfolio[]) {
@@ -143,6 +154,20 @@ export function useSnapshots(portfolios: Portfolio[]) {
     fetch("/api/snapshots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: totalValue }) }).then(() => refresh()).catch(() => {});
   }, [totalValue]);
   return { snapshots: data.total, byPortfolio: data.byPortfolio, refresh };
+}
+
+export function useHoldings() {
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [ready, setReady] = useState(false);
+  const refresh = useCallback(async () => {
+    try {
+      const data = await api("/api/holdings");
+      setHoldings(Array.isArray(data) ? data : []);
+    } catch { setHoldings([]); }
+    setReady(true);
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  return { holdings, ready, refresh };
 }
 
 export function useTransactions(portfolioId?: string | null, symbol?: string | null) {

@@ -18,7 +18,6 @@ export async function fetchQuotes(symbols: Array<{ symbol: string; exchange?: st
       let price = q.regularMarketPrice;
       let currency = q.currency || "USD";
       if (!price) continue;
-      if (currency === "GBX" || currency === "GBp") { price /= 100; currency = "GBP"; }
       out[symbol] = { price, currency };
     } catch {}
   }

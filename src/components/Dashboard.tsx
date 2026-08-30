@@ -1,5 +1,5 @@
 "use client";
-import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders } from "@/lib/store";
+import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, ReferenceDot } from "recharts";
@@ -21,6 +21,15 @@ import { PALETTE, tintColor, portfolioTint } from "@/lib/colors";
 const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
 const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d399", GIA: "#f472b6" };
 function fmtGBP(n: number) { return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(n); }
+function fmtPrice(n: number, currency?: string | null) {
+  if (currency === "GBX" || currency === "GBp") return `${Math.round(n).toLocaleString("en-GB")}p`;
+  if (currency === "GBP") return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 2 }).format(n);
+  if (currency === "USD") return `$${Number(n).toFixed(2)}`;
+  if (currency === "EUR") return `€${Number(n).toFixed(2)}`;
+  return `${Number(n).toFixed(2)}${currency ? ` ${currency}` : ""}`;
+}
+function holdingValueGBP(h: any) { const raw = h.shares * h.currentPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
+function holdingCostGBP(h: any) { const raw = h.shares * h.avgPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
 function fmtPct(n: number) { return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`; }
 function fmtRelative(ts?: number | null) {
   if (!ts) return "never";
@@ -36,6 +45,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, refresh: refreshAccounts, ready: accountsReady } = useAccounts();
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders, ready: providersReady } = useProviders();
   const { portfolios, create, remove, upsertHolding, deleteHolding, refresh: refreshPortfolios, ready: portfoliosReady, move } = usePortfolios();
+  const { holdings: allHoldingsList, refresh: refreshAllHoldings } = useHoldings();
+  const directHoldings = useMemo(()=> allHoldingsList.filter((h:any)=> !h.portfolioId), [allHoldingsList]);
   const { snapshots, byPortfolio } = useSnapshots(portfolios);
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -54,6 +65,10 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
   useEffect(()=>{ if(activeId && !portfolios.find(p=>p.id===activeId)) setActiveId(null); },[portfolios,activeId]);
   const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===(active as any).providerId); const acc = accounts.find(a=> a.id===active.accountId); return (active as any).color || (prov as any)?.color || (acc as any)?.color || "#60a5fa"; }, [active, providers, accounts]);
+  const createDirectHolding = async (target: { accountId?: string | null; providerId?: string | null }, data: { symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; exchange?: string; purchaseDate?: string }) => {
+    await fetch("/api/holdings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...data, accountId: target.accountId ?? null, providerId: target.providerId ?? null }) }).then(async r=>{ if(!r.ok) throw new Error(await r.text()); });
+    await refreshAllHoldings(); await refreshPortfolios();
+  };
   const { transactions, refresh: refreshTx, create: createTx } = useTransactions(activeId);
   const overviewTx = useTransactions(null);
   const displayTx = activeId ? transactions : overviewTx.transactions;
@@ -71,10 +86,14 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   };
 
   const { totalValue, totalCost, totalGain, totalGainPct } = useMemo(() => {
-    const v = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h) => a + h.shares * h.currentPrice, 0), 0);
-    const c = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h) => a + h.shares * h.avgPrice, 0), 0);
+    const vPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0), 0);
+    const cPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + holdingCostGBP(h), 0), 0);
+    const vDirect = directHoldings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
+    const cDirect = directHoldings.reduce((s, h:any) => s + holdingCostGBP(h), 0);
+    const v = vPort + vDirect;
+    const c = cPort + cDirect;
     return { totalValue: v, totalCost: c, totalGain: v - c, totalGainPct: c ? ((v - c) / c) * 100 : 0 };
-  }, [portfolios]);
+  }, [portfolios, directHoldings]);
 
   const rangeCount: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
   const filteredSnapshots = useMemo(() => {
@@ -115,7 +134,9 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
 
   const allocation = useMemo(() => {
     if (allocMode === "account") {
-      const total = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h) => a + h.shares * h.currentPrice, 0), 0);
+      const portTotal = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h) => a + h.shares * h.currentPrice, 0), 0);
+      const directTotal = (directHoldings as any[]).reduce((s, h) => s + h.shares * h.currentPrice, 0);
+      const total = portTotal + directTotal;
       if (!total) return [];
       if (accounts.length === 0) {
         return portfolios.map((p, i) => {
@@ -131,6 +152,15 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
         if (p.accountId) byAccount.set(p.accountId, (byAccount.get(p.accountId) ?? 0) + v);
         else unassignedVal += v;
       }
+      for (const h of (directHoldings as any[])) {
+        const v = h.shares * h.currentPrice;
+        if ((h as any).accountId) byAccount.set((h as any).accountId, (byAccount.get((h as any).accountId) ?? 0) + v);
+        else if ((h as any).providerId) {
+          const pr = providers.find(pp=> pp.id===(h as any).providerId);
+          if (pr?.accountId) byAccount.set(pr.accountId, (byAccount.get(pr.accountId) ?? 0) + v);
+          else unassignedVal += v;
+        } else unassignedVal += v;
+      }
       const out: any[] = accounts.map((acc, i) => {
         const fallback = PALETTE[i % PALETTE.length].value;
         const col = (acc as any).color || fallback;
@@ -139,7 +169,9 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       if (unassignedVal > 0) out.push({ name: "Unassigned", value: unassignedVal, color: "#71717a", pct: (unassignedVal / total) * 100 });
       return out;
     }
-    const holdings = active ? active.holdings : portfolios.flatMap((p) => p.holdings);
+    const portHoldings = active ? active.holdings : portfolios.flatMap((p) => p.holdings);
+    const allHoldings = active ? portHoldings : [...portHoldings, ...(directHoldings as any[])];
+    const holdings = allHoldings;
     const total = holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0);
     if (!total) return [];
     if (active) {
@@ -148,12 +180,15 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       const base = (active as any).color || (prov as any)?.color || (acc as any)?.color || CHART_COLORS[0];
       return holdings.map((h, i) => ({ name: h.symbol, value: h.shares * h.currentPrice, color: portfolioTint(base, i, holdings.length), pct: (h.shares * h.currentPrice / total) * 100 }));
     }
-    return holdings.map((h, i) => {
+      return holdings.map((h, i) => {
       const parent = portfolios.find(p=> p.holdings.some(x=> x.id===h.id));
-      const base = (parent as any)?.color || CHART_COLORS[i % CHART_COLORS.length];
+      let base: string | null = (parent as any)?.color || null;
+      if (!base && (h as any).providerId) base = (providers.find(pr=> pr.id===(h as any).providerId) as any)?.color ?? null;
+      if (!base && (h as any).accountId) base = (accounts.find(a=> a.id===(h as any).accountId) as any)?.color ?? null;
+      base = base || CHART_COLORS[i % CHART_COLORS.length];
       return { name: h.symbol, value: h.shares * h.currentPrice, color: portfolioTint(base, i, holdings.length), pct: (h.shares * h.currentPrice / total) * 100 };
     });
-  }, [active, portfolios, allocMode, accounts, providers]);
+  }, [active, portfolios, allocMode, accounts, providers, directHoldings]);
 
   const handleCreate = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
     try { await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"});} catch(e:any){toast({title:"Failed to create portfolio",description:String(e.message||e),variant:"error"}); throw e;}
@@ -176,7 +211,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
 
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"value" | "gain" | "symbol">("value");
-  const [form, setForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "" });
+  const [form, setForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP" });
   const [formErrors, setFormErrors] = useState<Record<string,string>>({});
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteInfo, setQuoteInfo] = useState<string>("");
@@ -186,18 +221,23 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
 
   const validateHolding = useCallback(()=>{
     const e: Record<string,string>={};
-    if(!form.symbol.trim()) e.symbol="Symbol required";
-    else if(!/^[A-Z0-9.\-]{1,12}$/i.test(form.symbol.trim())) e.symbol="Invalid symbol";
+    if (active?.type === "manual") {
+      if(!form.symbol.trim()) e.symbol="Name required";
+      else if(form.symbol.trim().length < 1 || form.symbol.trim().length > 40) e.symbol="1–40 characters";
+    } else {
+      if(!form.symbol.trim()) e.symbol="Symbol required";
+      else if(!/^[A-Z0-9.\-]{1,12}$/i.test(form.symbol.trim())) e.symbol="Invalid symbol";
+    }
     if(!form.shares || Number(form.shares)<=0) e.shares="Shares must be > 0";
     if(!form.avgPrice || Number(form.avgPrice)<=0) e.avgPrice="Price must be > 0";
     if(form.currentPrice && Number(form.currentPrice)<=0) e.currentPrice="Must be > 0";
     if(!form.purchaseDate) e.purchaseDate="Date required";
     return e;
-  },[form]);
+  },[form, active?.type]);
 
   useEffect(()=>{
     const q = form.symbol.trim();
-    if (!showHolding || q.length < 2 || editingId) { setSymbolResults([]); setShowSymbolMenu(false); return; }
+    if (!showHolding || q.length <2 || editingId || active?.type === "manual") { setSymbolResults([]); setShowSymbolMenu(false); return; }
     const t = setTimeout(async ()=>{
       setSymbolSearching(true);
       try {
@@ -210,18 +250,18 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       finally { setSymbolSearching(false); }
     }, 320);
     return ()=> clearTimeout(t);
-  }, [form.symbol, showHolding, editingId]);
+  }, [form.symbol, showHolding, editingId, active?.type]);
 
   const selectSearchResult = (r: any) => {
-    setForm(f=> ({ ...f, symbol: r.symbol?.toUpperCase() ?? f.symbol, name: r.name ?? r.longname ?? f.name, exchange: r.exchange ?? f.exchange, currentPrice: r.price != null ? String(r.price) : f.currentPrice }));
+    setForm(f=> ({ ...f, symbol: r.symbol?.toUpperCase() ?? f.symbol, name: r.name ?? r.longname ?? f.name, exchange: r.exchange ?? f.exchange, currentPrice: r.price != null ? String(r.price) : f.currentPrice, currency: r.currency ?? r.currency ?? f.currency }));
     setShowSymbolMenu(false);
     setSymbolResults([]);
-    if (r.price != null) setQuoteInfo(`Yahoo: £${Number(r.price).toFixed(2)} ${r.currency ?? r.exchange} • ${r.exchDisp ?? r.exchange}`);
+    if (r.price != null) setQuoteInfo(`Yahoo: ${fmtPrice(r.price, r.currency)} • ${r.exchDisp ?? r.exchange}`);
     else if (r.symbol) fetchQuote(r.symbol);
   };
 
-  const openAdd = () => { setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
-  const openEdit = (h: any) => { setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: (h as any).exchange ?? "" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openAdd = () => { setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openEdit = (h: any) => { setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: (h as any).exchange ?? "", currency: (h as any).currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
 
   const fetchQuote = async (sym:string)=>{
     if(!sym.trim() || sym.length<1) return;
@@ -230,7 +270,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       const r = await fetch(`/api/quote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbols: [{ symbol: sym.trim(), exchange: form.exchange || undefined }] }) });
       const j = await r.json();
       const q = j[sym.trim().toUpperCase()];
-      if(q?.price){ setForm(f=>({...f, currentPrice: String(q.price)})); setQuoteInfo(`Live: £${Number(q.price).toFixed(2)} ${q.currency}`); }
+      if(q?.price){ setForm(f=>({...f, currentPrice: String(q.price), currency: q.currency ?? f.currency })); setQuoteInfo(`Live: ${fmtPrice(q.price, q.currency)} • ${q.currency}`); }
       else setQuoteInfo("No live price found — enter manually");
     } catch{ setQuoteInfo("Quote lookup failed"); }
     finally{ setQuoteLoading(false); }
@@ -244,14 +284,14 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     if(dup){ setFormErrors({symbol:"Already in this portfolio"}); return; }
     setSaving(true);
     try {
-      await upsertHolding(activeId, { id: editingId ?? undefined, symbol: form.symbol.toUpperCase().trim(), name: form.name?.trim() || form.symbol.toUpperCase().trim(), shares: Number(form.shares), avgPrice: Number(form.avgPrice), currentPrice: Number(form.currentPrice || form.avgPrice), currency: "GBP", purchaseDate: form.purchaseDate, exchange: form.exchange || undefined } as any);
+      await upsertHolding(activeId, { id: editingId ?? undefined, symbol: form.symbol.toUpperCase().trim(), name: form.name?.trim() || form.symbol.toUpperCase().trim(), shares: Number(form.shares), avgPrice: Number(form.avgPrice), currentPrice: Number(form.currentPrice || form.avgPrice), currency: (form as any).currency || "GBP", purchaseDate: form.purchaseDate, exchange: form.exchange || undefined } as any);
       setShowHolding(false); toast({title: editingId?"Holding updated":"Holding added",description:form.symbol.toUpperCase(),variant:"success"});
     } catch(e:any){ toast({title:"Save failed",description:e.message||String(e),variant:"error"}); setFormErrors({symbol: e.message}); }
     finally{ setSaving(false); }
   };
 
-  const activeValue = active ? active.holdings.reduce((s, h) => s + h.shares * h.currentPrice, 0) : totalValue;
-  const activeCost = active ? active.holdings.reduce((s, h) => s + h.shares * h.avgPrice, 0) : totalCost;
+  const activeValue = active ? active.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0) : totalValue;
+  const activeCost = active ? active.holdings.reduce((s, h:any) => s + holdingCostGBP(h), 0) : totalCost;
   const activeGain = activeValue - activeCost;
   const activeGainPct = activeCost ? (activeGain / activeCost) * 100 : 0;
 
@@ -353,15 +393,15 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} activeId={activeId} onSelect={setActiveId} onCreate={handleCreate} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio} onDeleteAccount={setConfirmAccount as any} onDeleteProvider={setConfirmProvider as any} onDeletePortfolio={setConfirmPortfolio as any} />
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={setActiveId} onCreate={handleCreate} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onCreateDirectHolding={createDirectHolding} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio} onDeleteAccount={setConfirmAccount as any} onDeleteProvider={setConfirmProvider as any} onDeletePortfolio={setConfirmPortfolio as any} />
       <main className="flex-1 min-w-0 pt-12 md:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
           {showWizard ? (
             <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId} onCreate={handleWizardCreate as any} inline />
           ) : active ? (
             <>
-              <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: (activeBaseColor ?? "#60a5fa") + "30", background: `linear-gradient(to bottom right, ${(activeBaseColor ?? "#60a5fa")}1F, ${(activeBaseColor ?? "#60a5fa")}0A)` }}>
-                <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl" style={{ background: (activeBaseColor ?? "#60a5fa") + "18" }} />
+              <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: (activeBaseColor ?? "#60a5fa") + "40", background: `linear-gradient(to bottom right, ${(activeBaseColor ?? "#60a5fa")}2A, ${(activeBaseColor ?? "#60a5fa")}12)` }}>
+                <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl" style={{ background: (activeBaseColor ?? "#60a5fa") + "26" }} />
                 <div className="relative flex flex-wrap items-start justify-between gap-6">
                   <div>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -518,8 +558,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                   <div className="min-w-0"><div className="font-medium text-sm text-white truncate">{h.symbol}</div><div className="text-xs text-zinc-500 truncate max-w-[160px]">{h.name}</div><div className="text-xs text-zinc-600 md:hidden">{h.shares} × {fmtGBP(h.avgPrice)}</div></div>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-sm text-zinc-400 hidden md:table-cell">{h.shares} × {fmtGBP(h.avgPrice)}</TableCell>
-                              <TableCell className="text-right font-semibold text-white tabular-nums">{fmtGBP(val)}</TableCell>
+                              <TableCell className="text-sm text-zinc-400 hidden md:table-cell">{h.shares} × {fmtPrice(h.avgPrice, (h as any).currency)}</TableCell>
+                              <TableCell className="text-right font-semibold text-white tabular-nums">{fmtPrice(val, (h as any).currency)}</TableCell>
                               <TableCell className="text-right"><Badge variant="outline" className="border-white/10" style={{ color: pct >= 0 ? "#34d399" : "#f87171" }}>{fmtPct(pct)}</Badge></TableCell>
                               <TableCell className="text-right text-xs text-zinc-500 tabular-nums hidden sm:table-cell" title={h.lastRefreshedAt ? new Date(h.lastRefreshedAt * 1000).toLocaleString() : "Never refreshed (cron runs daily 06:00 UTC)"}>{fmtRelative(h.lastRefreshedAt)}</TableCell>
                               <TableCell>
@@ -785,6 +825,20 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                           })}
                                         </div>
                                       )}
+                                      {(directHoldings.filter((h:any)=> h.providerId===pr.id).length>0) && (
+                                        <div className="mt-3 pt-3 border-t border-white/5">
+                                          <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks</div>
+                                          <div className="grid md:grid-cols-2 gap-2">
+                                            {directHoldings.filter((h:any)=> h.providerId===pr.id).map((h:any)=>(
+                                              <div key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+                                                <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
+                                                <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
+                                                <span className="text-sm font-semibold text-white">£{(h.shares*h.currentPrice).toFixed(0)}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -811,6 +865,20 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                           </div>
                                         );
                                       })}
+                                    </div>
+                                  </div>
+                                )}
+                                {(directHoldings.filter((h:any)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0) && (
+                                  <div className="mt-3 pt-3 border-t border-white/5">
+                                    <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks — {acc.name}</div>
+                                    <div className="grid md:grid-cols-2 gap-2">
+                                      {directHoldings.filter((h:any)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h:any)=>(
+                                        <div key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+                                          <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
+                                          <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
+                                          <span className="text-sm font-semibold text-white">£{(h.shares*h.currentPrice).toFixed(0)}</span>
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
                                 )}
@@ -856,60 +924,74 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
             <DialogContent className="bg-zinc-900 border-white/10 text-white sm:max-w-lg">
               <DialogHeader><DialogTitle className="flex items-center gap-2">{editingId ? <Pencil className="w-4 h-4"/> : <Plus className="w-4 h-4"/>} {editingId ? "Edit holding" : "Add holding"}</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5 relative">
-                    <Label>Symbol *</Label>
-                    <div className="flex gap-1.5">
-                      <div className="relative flex-1">
-                        <Input placeholder="AAPL or Apple" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} onFocus={()=> symbolResults.length && setShowSymbolMenu(true)} onBlur={()=> setTimeout(()=> setShowSymbolMenu(false), 180)} className={formErrors.symbol?"border-red-500/50":""} autoComplete="off" />
-                        {showSymbolMenu && symbolResults.length>0 && (
-                          <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl overflow-hidden max-h-64 overflow-auto">
-                            {symbolResults.map((r:any)=> (
-                              <button key={r.symbol+r.exchange} type="button" onMouseDown={(e)=>{e.preventDefault(); selectSearchResult(r);}} className="w-full text-left px-3 py-2.5 hover:bg-white/5 flex items-center justify-between gap-2 border-b border-white/[0.04] last:border-0">
-                                <div className="min-w-0">
-                                  <div className="text-sm font-medium text-white flex items-center gap-2"><span>{r.symbol}</span><Badge variant="outline" className="border-white/10 text-[10px] text-zinc-500">{r.exchange || r.exchDisp || "—"}</Badge>{r.price!=null && <span className="text-xs text-emerald-400">£{Number(r.price).toFixed(2)}</span>}</div>
-                                  <div className="text-xs text-zinc-500 truncate">{r.name}</div>
-                                </div>
-                                <Plus className="w-3.5 h-3.5 text-zinc-600 shrink-0"/>
-                              </button>
-                            ))}
-                            {symbolSearching && <div className="px-3 py-2 text-xs text-zinc-500 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin"/> Searching Yahoo…</div>}
-                          </div>
-                        )}
-                      </div>
-                      <Button variant="outline" size="sm" className="shrink-0 bg-white/5 border-white/10" onClick={()=>fetchQuote(form.symbol)} disabled={quoteLoading || !form.symbol.trim()} title="Fetch live price for this exchange">{quoteLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <RefreshCw className="w-3.5 h-3.5"/>}</Button>
+                {active?.type === "manual" ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label>Holding name *</Label>
+                      <Input placeholder="e.g. Cash, Workplace Pension, Property" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} className={formErrors.symbol?"border-red-500/50":""} />
+                      {formErrors.symbol && <p className="text-xs text-red-400">{formErrors.symbol}</p>}
+                      <p className="text-xs text-zinc-600">Manual — free-form, no ticker lookup needed</p>
                     </div>
-                    {formErrors.symbol && <p className="text-xs text-red-400">{formErrors.symbol}</p>}
-                    {quoteInfo && <p className="text-xs text-zinc-500">{quoteInfo}</p>}
-                    {!editingId && <p className="text-xs text-zinc-600">Type symbol or company name — Yahoo search</p>}
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Exchange</Label>
-                    <Select value={form.exchange || "__auto"} onValueChange={(v)=> setForm({...form, exchange: (v as string)==="__auto" ? "" : (v as string) ?? ""})}>
-                      <SelectTrigger className="h-10 bg-white/5 border-white/10"><span className="flex-1 text-left truncate text-sm">{form.exchange || "Auto"}</span></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__auto">Auto — from symbol/search</SelectItem>
-                        <SelectItem value="NASDAQ">NASDAQ</SelectItem>
-                        <SelectItem value="NYSE">NYSE</SelectItem>
-                        <SelectItem value="AMEX">AMEX</SelectItem>
-                        <SelectItem value="LSE">LSE (London)</SelectItem>
-                        <SelectItem value="NYSEARCA">NYSEARCA</SelectItem>
-                        <SelectItem value="OTC">OTC</SelectItem>
-                        <SelectItem value="EPA">EPA (Paris)</SelectItem>
-                        <SelectItem value="XETRA">XETRA</SelectItem>
-                        <SelectItem value="TSE">TSE (Tokyo)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-zinc-600">Mapped to Yahoo: LSE → .L</p>
-                  </div>
-                </div>
-                <div className="space-y-1.5"><Label>Name</Label><Input placeholder="Apple Inc — auto-filled from Yahoo" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                    <div className="space-y-1.5"><Label>Description (optional)</Label><Input placeholder="e.g. Barclays savings, Aviva pension" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5 relative">
+                        <Label>Symbol *</Label>
+                        <div className="flex gap-1.5">
+                          <div className="relative flex-1">
+                            <Input placeholder="AAPL or Apple" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} onFocus={()=> symbolResults.length && setShowSymbolMenu(true)} onBlur={()=> setTimeout(()=> setShowSymbolMenu(false), 180)} className={formErrors.symbol?"border-red-500/50":""} autoComplete="off" />
+                            {showSymbolMenu && symbolResults.length>0 && (
+                              <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl overflow-hidden max-h-64 overflow-auto">
+                                {symbolResults.map((r:any)=> (
+                                  <button key={r.symbol+r.exchange} type="button" onMouseDown={(e)=>{e.preventDefault(); selectSearchResult(r);}} className="w-full text-left px-3 py-2.5 hover:bg-white/5 flex items-center justify-between gap-2 border-b border-white/[0.04] last:border-0">
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-medium text-white flex items-center gap-2"><span>{r.symbol}</span><Badge variant="outline" className="border-white/10 text-[10px] text-zinc-500">{r.exchange || r.exchDisp || "—"}</Badge>{r.price!=null && <span className="text-xs text-emerald-400">£{Number(r.price).toFixed(2)}</span>}</div>
+                                      <div className="text-xs text-zinc-500 truncate">{r.name}</div>
+                                    </div>
+                                    <Plus className="w-3.5 h-3.5 text-zinc-600 shrink-0"/>
+                                  </button>
+                                ))}
+                                {symbolSearching && <div className="px-3 py-2 text-xs text-zinc-500 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin"/> Searching Yahoo…</div>}
+                              </div>
+                            )}
+                          </div>
+                          <Button variant="outline" size="sm" className="shrink-0 bg-white/5 border-white/10" onClick={()=>fetchQuote(form.symbol)} disabled={quoteLoading || !form.symbol.trim()} title="Fetch live price for this exchange">{quoteLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <RefreshCw className="w-3.5 h-3.5"/>}</Button>
+                        </div>
+                        {formErrors.symbol && <p className="text-xs text-red-400">{formErrors.symbol}</p>}
+                        {quoteInfo && <p className="text-xs text-zinc-500">{quoteInfo}</p>}
+                        {!editingId && <p className="text-xs text-zinc-600">Type symbol or company name — Yahoo search</p>}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Exchange</Label>
+                        <Select value={form.exchange || "__auto"} onValueChange={(v)=> setForm({...form, exchange: (v as string)==="__auto" ? "" : (v as string) ?? ""})}>
+                          <SelectTrigger className="h-10 bg-white/5 border-white/10"><span className="flex-1 text-left truncate text-sm">{form.exchange || "Auto"}</span></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__auto">Auto — from symbol/search</SelectItem>
+                            <SelectItem value="NASDAQ">NASDAQ</SelectItem>
+                            <SelectItem value="NYSE">NYSE</SelectItem>
+                            <SelectItem value="AMEX">AMEX</SelectItem>
+                            <SelectItem value="LSE">LSE (London)</SelectItem>
+                            <SelectItem value="NYSEARCA">NYSEARCA</SelectItem>
+                            <SelectItem value="OTC">OTC</SelectItem>
+                            <SelectItem value="EPA">EPA (Paris)</SelectItem>
+                            <SelectItem value="XETRA">XETRA</SelectItem>
+                            <SelectItem value="TSE">TSE (Tokyo)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-zinc-600">Mapped to Yahoo: LSE → .L</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5"><Label>Name</Label><Input placeholder="Apple Inc — auto-filled from Yahoo" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                  </>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5"><Label>Shares *</Label><Input type="number" placeholder="10" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} className={formErrors.shares?"border-red-500/50":""} />{formErrors.shares && <p className="text-xs text-red-400">{formErrors.shares}</p>}</div>
                   <div className="space-y-1.5"><Label>Avg price (cost) *</Label><Input type="number" placeholder="150.00" value={form.avgPrice} onChange={(e) => setForm({ ...form, avgPrice: e.target.value })} className={formErrors.avgPrice?"border-red-500/50":""} />{formErrors.avgPrice && <p className="text-xs text-red-400">{formErrors.avgPrice}</p>}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Current price</Label><Input type="number" placeholder="Same as avg if empty" value={form.currentPrice} onChange={(e) => setForm({ ...form, currentPrice: e.target.value })} className={formErrors.currentPrice?"border-red-500/50":""} />{formErrors.currentPrice && <p className="text-xs text-red-400">{formErrors.currentPrice}</p>}<p className="text-xs text-zinc-600">Leave blank to use avg price</p></div>
+                  <div className="space-y-1.5"><Label>Current price <span className="text-zinc-500 font-normal">(live)</span></Label><div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">{form.currentPrice ? `£${Number(form.currentPrice).toFixed(2)}` : "—"}<span className="ml-auto text-xs text-zinc-600">read-only</span></div><p className="text-xs text-zinc-600">Auto-filled from Yahoo; avg cost is what you paid</p></div>
                   <div className="space-y-1.5"><Label>Purchase date</Label><Input type="date" value={form.purchaseDate} max={new Date().toISOString().split("T")[0]} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} className={formErrors.purchaseDate?"border-red-500/50":""} />{formErrors.purchaseDate && <p className="text-xs text-red-400">{formErrors.purchaseDate}</p>}</div>
                 </div>
                 {active && <div className="flex gap-2 p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-zinc-400"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5"/> Live prices refresh daily at 06:00 UTC. Use “Refresh prices” on dashboard for manual update (24h limit).</div>}
