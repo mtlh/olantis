@@ -47,7 +47,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const { portfolios, create, remove, upsertHolding, deleteHolding, refresh: refreshPortfolios, ready: portfoliosReady, move } = usePortfolios();
   const { holdings: allHoldingsList, refresh: refreshAllHoldings } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h:any)=> !h.portfolioId), [allHoldingsList]);
-  const { snapshots, byPortfolio } = useSnapshots(portfolios);
+  const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings as any);
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tradeHolding, setTradeHolding] = useState<any | null>(null);

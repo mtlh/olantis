@@ -134,7 +134,7 @@ export function usePortfolios() {
   return { portfolios, ready, create, remove, move, setColor, upsertHolding, deleteHolding, deleteHoldingDirect, updatePrices, refresh, setPortfolios };
 }
 
-export function useSnapshots(portfolios: Portfolio[]) {
+export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] = []) {
   const [data, setData] = useState<SnapResponse>({ total: [], byPortfolio: {} });
   const refresh = useCallback(async () => {
     try {
@@ -146,12 +146,13 @@ export function useSnapshots(portfolios: Portfolio[]) {
     } catch {}
   }, []);
   useEffect(() => { refresh(); }, [refresh, portfolios.length]);
-  const totalValue = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => { const v=h.shares*h.currentPrice; return a+ (h.currency==="GBX"||h.currency==="GBp" ? v/100 : v); }, 0), 0);
+  const valGBP = (h:any)=> { const v=h.shares*h.currentPrice; return h.currency==="GBX"||h.currency==="GBp" ? v/100 : v; };
+  const totalValue = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + valGBP(h), 0), 0) + directHoldings.reduce((s, h:any) => s + valGBP(h), 0);
   useEffect(() => {
-    if (!portfolios.length || totalValue === 0) return;
+    if ((!portfolios.length && !directHoldings.length) || totalValue === 0) return;
     const isDemo = typeof document !== "undefined" && document.cookie.includes("olantis_demo=1");
     if (isDemo) return;
-    const pfVals = portfolios.map((p) => ({ id: p.id, value: p.holdings.reduce((a, h:any) => { const v=h.shares*h.currentPrice; return a+ (h.currency==="GBX"||h.currency==="GBp" ? v/100 : v); }, 0) }));
+    const pfVals = portfolios.map((p) => ({ id: p.id, value: p.holdings.reduce((a, h:any) => a + valGBP(h), 0) }));
     fetch("/api/snapshots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: totalValue, portfolios: pfVals }) }).then(() => refresh()).catch(() => {});
   }, [totalValue]);
   return { snapshots: data.total, byPortfolio: data.byPortfolio, refresh };
