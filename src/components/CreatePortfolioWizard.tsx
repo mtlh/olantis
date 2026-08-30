@@ -9,9 +9,9 @@ import { ArrowLeft, ArrowRight, Check, Wallet, TrendingUp, Layers } from "lucide
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Account } from "@/lib/store";
 
-type Props = { open: boolean; onOpenChange: (v: boolean) => void; accounts: Account[]; defaultAccountId?: string | null; onCreate: (name: string, type: "live" | "manual", accountId: string | null, extra?: any) => void };
+type Props = { open: boolean; onOpenChange: (v: boolean) => void; accounts: Account[]; defaultAccountId?: string | null; onCreate: (name: string, type: "live" | "manual", accountId: string | null, extra?: any) => void; inline?: boolean };
 
-export function CreatePortfolioWizard({ open, onOpenChange, accounts, defaultAccountId, onCreate }: Props) {
+export function CreatePortfolioWizard({ open, onOpenChange, accounts, defaultAccountId, onCreate, inline }: Props) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [type, setType] = useState<"live" | "manual">("live");
@@ -30,8 +30,11 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, defaultAcc
   };
   const close = () => { setStep(1); onOpenChange(false); };
 
+  const shell = inline
+    ? "flex flex-col rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden w-full"
+    : "fixed inset-0 z-50 flex flex-col bg-black";
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+    <div className={shell}>
       <div className="flex items-center justify-between px-6 md:px-10 py-5 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-white text-black grid place-items-center font-bold text-sm">O</div>

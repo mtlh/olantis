@@ -8,8 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/Logo";
-import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
-
 function fmtRelative(ts?: number | null) {
   if (!ts) return "never";
   const diff = Math.floor(Date.now() / 1000) - ts;
@@ -19,14 +17,13 @@ function fmtRelative(ts?: number | null) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function Sidebar({ accounts, portfolios, activeId, onSelect, onCreate, onCreateAccount, isDemo }: {
+export function Sidebar({ accounts, portfolios, activeId, onSelect, onCreate, onCreateAccount, onOpenWizard, isDemo }: {
   accounts: Account[]; portfolios: Portfolio[]; activeId: string | null; onSelect: (id: string | null) => void;
   onCreate: (name: string, type: "live" | "manual", accountId?: string | null) => void;
   onCreateAccount: (name: string) => void;
+  onOpenWizard: (accountId: string | null) => void;
   isDemo?: boolean;
 }) {
-  const [showWizard, setShowWizard] = useState(false);
-  const [wizardAccountId, setWizardAccountId] = useState<string | null>(null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [accountName, setAccountName] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -48,8 +45,7 @@ export function Sidebar({ accounts, portfolios, activeId, onSelect, onCreate, on
   const toggle = (id: string) => setExpanded((e) => ({ ...e, [id]: !(e[id] ?? true) }));
 
   const openWizard = (accountId: string | null = null) => {
-    setWizardAccountId(accountId);
-    setShowWizard(true);
+    onOpenWizard(accountId);
   };
 
   const handleCreateAccount = async () => {
@@ -163,39 +159,6 @@ export function Sidebar({ accounts, portfolios, activeId, onSelect, onCreate, on
         <a href={isDemo ? "/api/demo?clear=1" : "/logout"} className={buttonVariants({ variant: "ghost", size: "sm", className: "flex-1 justify-start text-zinc-500 hover:text-white" })}><LogOut className="w-4 h-4" /> {isDemo ? "Exit demo" : "Sign out"}</a>
         {isDemo && <span className="ml-auto text-[10px] px-2 py-1 rounded-full bg-amber-400 text-black font-semibold self-center">DEMO</span>}
       </div>
-
-      <CreatePortfolioWizard
-        open={showWizard}
-        onOpenChange={setShowWizard}
-        accounts={accounts}
-        defaultAccountId={wizardAccountId}
-        onCreate={async (name, type, accountId, extra) => {
-          await onCreate(name, type, accountId);
-          if (extra?.symbol) {
-            try {
-              const res = await fetch("/api/portfolios");
-              const list = await res.json();
-              const created = list.find((p: any) => p.name === name);
-              if (created?.id) {
-                await fetch("/api/holdings", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    portfolioId: created.id,
-                    symbol: extra.symbol,
-                    name: extra.symbol,
-                    shares: Number(extra.shares || 1),
-                    avgPrice: 100,
-                    currentPrice: 100,
-                    currency: "GBP",
-                    purchaseDate: new Date().toISOString().split("T")[0],
-                  }),
-                });
-              }
-            } catch {}
-          }
-        }}
-      />
 
       <Dialog open={showAccountDialog} onOpenChange={setShowAccountDialog}>
         <DialogContent className="bg-zinc-900 border-white/10 text-white">

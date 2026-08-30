@@ -3,7 +3,8 @@ import { usePortfolios, useSnapshots, useAccounts } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X } from "lucide-react";
+import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,9 +34,11 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const { portfolios, create, remove, upsertHolding, deleteHolding, refresh: refreshPortfolios } = usePortfolios();
   const { snapshots, byPortfolio } = useSnapshots(portfolios);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardAccountId, setWizardAccountId] = useState<string | null>(null);
   const [showHolding, setShowHolding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [range, setRange] = useState<"1M" | "3M" | "6M" | "1Y" | "3Y" | "MAX">("1Y");
+  const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
   const [allocMode, setAllocMode] = useState<"holding" | "account">("holding");
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
 
@@ -45,7 +48,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     return { totalValue: v, totalCost: c, totalGain: v - c, totalGainPct: c ? ((v - c) / c) * 100 : 0 };
   }, [portfolios]);
 
-  const rangeCount: Record<string, number> = { "1M": 4, "3M": 13, "6M": 26, "1Y": 52, "3Y": 156, MAX: 999 };
+  const rangeCount: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
   const filteredSnapshots = useMemo(() => {
     const n = rangeCount[range];
     if (snapshots.length <= n) return snapshots;
@@ -137,12 +140,47 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const [confirmAccountInput, setConfirmAccountInput] = useState("");
   const [confirmHolding, setConfirmHolding] = useState<null | { id: string; symbol: string }>(null);
 
+  const openWizard = (accountId: string | null = null) => {
+    setWizardAccountId(accountId);
+    setShowWizard(true);
+  };
+
+  const handleWizardCreate = async (name: string, type: "live" | "manual", accountId: string | null, extra?: any) => {
+    await handleCreate(name, type, accountId);
+    if (extra?.symbol) {
+      try {
+        const res = await fetch("/api/portfolios");
+        const list = await res.json();
+        const created = list.find((p: any) => p.name === name);
+        if (created?.id) {
+          await fetch("/api/holdings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              portfolioId: created.id,
+              symbol: extra.symbol,
+              name: extra.symbol,
+              shares: Number(extra.shares || 1),
+              avgPrice: 100,
+              currentPrice: 100,
+              currency: "GBP",
+              purchaseDate: new Date().toISOString().split("T")[0],
+            }),
+          });
+          await refreshPortfolios();
+        }
+      } catch {}
+    }
+  };
+
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} portfolios={portfolios} activeId={activeId} onSelect={setActiveId} onCreate={handleCreate} onCreateAccount={handleCreateAccount} isDemo={isDemo} />
+      <Sidebar accounts={accounts} portfolios={portfolios} activeId={activeId} onSelect={setActiveId} onCreate={handleCreate} onCreateAccount={handleCreateAccount} onOpenWizard={openWizard} isDemo={isDemo} />
       <main className="flex-1 min-w-0">
         <div className="w-full max-w-[1600px] mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
-          {active ? (
+          {showWizard ? (
+            <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} defaultAccountId={wizardAccountId} onCreate={handleWizardCreate} inline />
+          ) : active ? (
             <>
               <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.08] to-white/[0.02] p-6 md:p-8">
                 <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full bg-white/5 blur-3xl" />
@@ -193,7 +231,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                       <CardDescription>{chartData.length} points • {active.name}</CardDescription>
                     </div>
                     <div className="flex gap-1">
-                      {(["1M", "3M", "6M", "1Y", "3Y", "MAX"] as const).map((r) => (
+                      {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
                         <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => setRange(r)}>{r}</Button>
                       ))}
                     </div>
@@ -352,7 +390,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                       <CardDescription>Overall + per-portfolio • {chartData.length} points • {range}</CardDescription>
                     </div>
                     <div className="flex gap-1">
-                      {(["1M", "3M", "6M", "1Y", "3Y", "MAX"] as const).map((r) => (
+                      {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
                         <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => setRange(r)}>{r}</Button>
                       ))}
                     </div>
