@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db";
 import { holdings, portfolios, transactions } from "@/lib/db/schema";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { neon } from "@neondatabase/serverless";
 

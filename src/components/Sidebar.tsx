@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PALETTE, portfolioTint, tintColor } from "@/lib/colors";
+import { PALETTE, portfolioTint } from "@/lib/colors";
 
 function fmtRelative(ts?: number | null) {
   if (!ts) return "never";
@@ -34,7 +34,7 @@ function isLightColor(hex: string) {
   } catch { return false; }
 }
 
-export function Sidebar({ accounts, providers, portfolios, holdings, activeId, onSelect, onCreate: _onCreate, onCreateAccount, onCreateProvider, onOpenWizard, onCreateDirectHolding, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+export function Sidebar({ accounts, providers, portfolios, holdings, activeId, onSelect, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void;
   onCreate: (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => void;
   onCreateAccount: (name: string) => void;

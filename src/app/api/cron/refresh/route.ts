@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     updated++;
   }
 
-  return Response.json({ success: true, symbolsUpdated: updated, skipped, quotes, updatedAt: new Date().toISOString() });
+  return Response.json({ success: true, symbolsUpdated: updated, skipped, updatedAt: new Date().toISOString() });
 }
 
 export async function GET(req: Request) {

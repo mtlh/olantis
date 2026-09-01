@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db";
 import { holdings, portfolios, accounts, providers } from "@/lib/db/schema";
-import { eq, and, inArray, or } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { neon } from "@neondatabase/serverless";
 
@@ -36,21 +36,13 @@ export async function GET(req: Request) {
   const db = getDb();
   let rows: any[] = [];
   try {
-    const all = await db.select().from(holdings);
-    rows = all.filter((h: any) => {
-      if (h.userId && h.userId === userId) return true;
-      if (h.portfolioId) return false;
-      if (h.providerId || h.accountId) {
-        return true;
-      }
-      return false;
-    });
     const p = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
     const pids = new Set(p.map(x=>x.id));
     const a = await db.select().from(accounts).where(eq(accounts.userId, userId));
     const aids = new Set(a.map(x=>x.id));
     const pr = await db.select().from(providers).where(eq(providers.userId, userId));
     const prid = new Set(pr.map(x=>x.id));
+    const all = await db.select().from(holdings);
     rows = all.filter((h: any) => {
       if (h.portfolioId && pids.has(h.portfolioId)) return true;
       if (h.providerId && prid.has(h.providerId)) return true;

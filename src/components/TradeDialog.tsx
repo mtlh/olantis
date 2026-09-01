@@ -17,7 +17,7 @@ type Props = {
   onSubmit: (data: { shares: number; price: number; date: string }) => Promise<void>;
 };
 
-export function TradeDialog({ open, onOpenChange, holding, portfolioId: _portfolioId, type, onSubmit }: Props) {
+export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Props) {
   const [shares, setShares] = useState("");
   const [price, setPrice] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
