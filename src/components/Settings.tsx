@@ -10,6 +10,12 @@ import { useToast } from "@/components/ui/toast";
 import { ArrowLeft, Palette, Building2, Briefcase, Folder, Trash2, Download, Upload, Shield, Clock, Image as ImageIcon, Sparkles } from "lucide-react";
 import Link from "next/link";
 
+interface SettingsState {
+  currency: string | null;
+  defaultRange: string | null;
+  showTradeMarkers: number | null;
+}
+
 export const PALETTE = [
   { id: "blue", label: "Blue", value: "#60a5fa" },
   { id: "emerald", label: "Emerald", value: "#34d399" },
@@ -37,7 +43,7 @@ export function tintColor(hex: string, amount: number) {
   } catch { return hex; }
 }
 
-function portfolioTint(base: string | null | undefined, index: number, total: number) {
+function portfolioTint(base: string | null | undefined, index: number, _total: number) { // eslint-disable-line @typescript-eslint/no-unused-vars
   if (!base) return PALETTE[index % PALETTE.length].value;
   const steps = [0, 0.18, -0.18, 0.32, -0.32];
   return tintColor(base, steps[index % steps.length]);
@@ -54,30 +60,30 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   const { providers, setColor: setProviderColor } = useProviders();
   const { portfolios, setColor: setPortfolioColor } = usePortfolios();
   const { toast } = useToast();
-  const [settings, setSettings] = useState<any>({ currency: "GBP", defaultRange: "1Y", showTradeMarkers: 1 });
+  const [settings, setSettings] = useState<SettingsState>({ currency: "GBP", defaultRange: "1Y", showTradeMarkers: 1 });
   const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/settings").then(r=>r.json()).then(j=> setSettings((s:any)=>({ ...s, ...j }))).catch(()=>{});
+    fetch("/api/settings").then(r=>r.json()).then(j=> setSettings((s)=>({ ...s, ...j }))).catch(()=>{});
   }, []);
 
-  const saveSettings = async (patch: any) => {
+  const saveSettings = async (patch: Partial<SettingsState>) => {
     const next = { ...settings, ...patch };
     setSettings(next);
-    try { await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }); toast({ title: "Settings saved", variant: "success" }); } catch (e:any){ toast({title:"Save failed", description:String(e.message||e), variant:"error"}); }
+    try { await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }); toast({ title: "Settings saved", variant: "success" }); } catch (e: unknown){ toast({title:"Save failed", description: e instanceof Error ? e.message : String(e), variant:"error"}); }
   };
 
   const handleAccountColor = async (id: string, color: string | null) => {
     setSaving(id);
-    try { await setAccountColor(id, color); toast({ title: "Account color updated", variant: "success" }); } catch (e:any){ toast({title:"Failed", description:String(e.message||e), variant:"error"});} finally{ setSaving(null); }
+    try { await setAccountColor(id, color); toast({ title: "Account color updated", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
   };
   const handleProviderColor = async (id: string, color: string | null) => {
     setSaving(id);
-    try { await setProviderColor(id, color); toast({ title: "Provider color updated", variant: "success" }); } catch (e:any){ toast({title:"Failed", description:String(e.message||e), variant:"error"});} finally{ setSaving(null); }
+    try { await setProviderColor(id, color); toast({ title: "Provider color updated", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
   };
   const handlePortfolioColor = async (id: string, color: string | null) => {
     setSaving(id);
-    try { await setPortfolioColor(id, color); toast({ title: "Portfolio color updated", variant: "success" }); } catch (e:any){ toast({title:"Failed", description:String(e.message||e), variant:"error"});} finally{ setSaving(null); }
+    try { await setPortfolioColor(id, color); toast({ title: "Portfolio color updated", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
   };
 
   const exportAll = async () => {
@@ -177,10 +183,10 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               {portfolios.length===0 ? <p className="text-sm text-zinc-500">No portfolios yet.</p> : (
                 <div className="space-y-3">
                   {portfolios.map((p, pi)=>{
-                    const prov = providers.find(pr=> pr.id===(p as any).providerId);
+                    const prov = providers.find(pr=> pr.id===p.providerId);
                     const acc = accounts.find(a=>a.id===p.accountId) ?? (prov ? accounts.find(a=>a.id===prov.accountId) : null);
-                    const base = (p as any).color || prov?.color || acc?.color || PALETTE[pi % PALETTE.length].value;
-                    const inherited = !(p as any).color;
+                    const base = p.color || prov?.color || acc?.color || PALETTE[pi % PALETTE.length].value;
+                    const inherited = !p.color;
                     const tinted = inherited ? portfolioTint(prov?.color || acc?.color || null, pi, portfolios.length) : base;
                     return (
                       <div key={p.id} className="p-4 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col gap-3">
@@ -192,11 +198,11 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                             <span className="text-xs text-zinc-600 hidden md:inline">{acc?.name ?? "Unassigned"} {prov ? `› ${prov.name}` : ""}</span>
                             {inherited && <Badge variant="outline" className="border-amber-500/20 text-amber-300 text-[11px] bg-amber-500/10">Auto tint</Badge>}
                           </div>
-                          {!(p as any).color ? null : <Button variant="ghost" size="xs" onClick={()=>handlePortfolioColor(p.id, null)} disabled={saving===p.id}>Auto</Button>}
+                          {!p.color ? null : <Button variant="ghost" size="xs" onClick={()=>handlePortfolioColor(p.id, null)} disabled={saving===p.id}>Auto</Button>}
                         </div>
                         <div className="flex flex-wrap gap-1.5 items-center">
-                          <button onClick={()=>handlePortfolioColor(p.id, null)} className={`px-3 py-1 rounded-full text-xs border ${!(p as any).color ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-zinc-400"}`}>Auto tint</button>
-                          {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={(p as any).color===c.value} onClick={()=>handlePortfolioColor(p.id, c.value)} />)}
+                          <button onClick={()=>handlePortfolioColor(p.id, null)} className={`px-3 py-1 rounded-full text-xs border ${!p.color ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-zinc-400"}`}>Auto tint</button>
+                          {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={p.color===c.value} onClick={()=>handlePortfolioColor(p.id, c.value)} />)}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-zinc-600">
                           <span className="w-16">Preview:</span>

@@ -19,8 +19,8 @@ async function getUserId() {
   if (jar.get("olantis_demo")?.value === "1") return "demo";
   try {
     const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as any);
-    if (user) return (user as any).id;
+    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
+    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
   } catch {}
   return null;
 }
@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   const providerId = searchParams.get("providerId");
   const accountId = searchParams.get("accountId");
   const db = getDb();
-  let rows: any[] = [];
+  let rows: typeof holdings.$inferSelect[] = [];
   try {
     const p = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
     const pids = new Set(p.map(x=>x.id));
@@ -43,7 +43,7 @@ export async function GET(req: Request) {
     const pr = await db.select().from(providers).where(eq(providers.userId, userId));
     const prid = new Set(pr.map(x=>x.id));
     const all = await db.select().from(holdings);
-    rows = all.filter((h: any) => {
+    rows = all.filter((h) => {
       if (h.portfolioId && pids.has(h.portfolioId)) return true;
       if (h.providerId && prid.has(h.providerId)) return true;
       if (h.accountId && aids.has(h.accountId)) return true;
@@ -51,9 +51,9 @@ export async function GET(req: Request) {
       return false;
     });
   } catch { rows = []; }
-  if (portfolioId) rows = rows.filter((h:any)=> h.portfolioId===portfolioId);
-  if (providerId) rows = rows.filter((h:any)=> h.providerId===providerId);
-  if (accountId) rows = rows.filter((h:any)=> h.accountId===accountId);
+  if (portfolioId) rows = rows.filter((h)=> h.portfolioId===portfolioId);
+  if (providerId) rows = rows.filter((h)=> h.providerId===providerId);
+  if (accountId) rows = rows.filter((h)=> h.accountId===accountId);
   return Response.json(rows);
 }
 
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
   if (id) {
     const existing = await db.select().from(holdings).where(eq(holdings.id, id));
     if (!existing[0]) return Response.json({ error: "holding not found" }, { status: 404 });
-    const h = existing[0] as any;
+    const h = existing[0] as typeof holdings.$inferSelect;
     let allowed = false;
     if (h.portfolioId) {
       const p = await db.select().from(portfolios).where(eq(portfolios.id, h.portfolioId));
@@ -103,7 +103,7 @@ export async function POST(req: Request) {
     if (!a[0] || a[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 404 });
   }
   const nid = crypto.randomUUID();
-  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbol.toUpperCase(), name: name || symbol, shares: Number(shares), avgPrice: Number(avgPrice), currentPrice: Number(currentPrice ?? avgPrice), currency: currency || "GBP", purchaseDate, exchange, lastRefreshedAt: null } as any);
+  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbol.toUpperCase(), name: name || symbol, shares: Number(shares), avgPrice: Number(avgPrice), currentPrice: Number(currentPrice ?? avgPrice), currency: currency || "GBP", purchaseDate, exchange, lastRefreshedAt: null } as typeof holdings.$inferInsert);
   return Response.json({ id: nid });
 }
 
@@ -117,7 +117,7 @@ export async function DELETE(req: Request) {
   const db = getDb();
   const h = await db.select().from(holdings).where(eq(holdings.id, id));
   if (!h[0]) return Response.json({ error: "not found" }, { status: 404 });
-  const row = h[0] as any;
+  const row = h[0] as typeof holdings.$inferSelect;
   let allowed = false;
   if (row.portfolioId) {
     const p = await db.select().from(portfolios).where(eq(portfolios.id, row.portfolioId));
@@ -146,10 +146,10 @@ export async function PATCH(req: Request) {
   const pids = userPortfolios.map((p) => p.id);
   const aids = userAccounts.map(a=>a.id);
   const prids = userProviders.map(p=>p.id);
-  let all: any[] = [];
+  let all: typeof holdings.$inferSelect[] = [];
   try {
     const allHoldings = await db.select().from(holdings);
-    all = allHoldings.filter((h:any)=>{
+    all = allHoldings.filter((h)=>{
       if (h.portfolioId && pids.includes(h.portfolioId)) return true;
       if (h.providerId && prids.includes(h.providerId)) return true;
       if (h.accountId && aids.includes(h.accountId)) return true;
@@ -163,7 +163,7 @@ export async function PATCH(req: Request) {
   let skipped = 0;
   let nextAllowedAt: number | null = null;
   for (const h of all) {
-    const upd = (symbols as any)[h.symbol];
+    const upd = (symbols as Record<string, { price: number; currency: string }>)[h.symbol];
     if (!upd) continue;
     if (!force && h.lastRefreshedAt && now - h.lastRefreshedAt < DAY) {
       skipped++;

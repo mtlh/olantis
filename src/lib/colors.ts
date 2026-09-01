@@ -25,7 +25,7 @@ export function tintColor(hex: string, amount: number) {
   } catch { return hex; }
 }
 
-export function portfolioTint(base: string | null | undefined, index: number, _total: number) {
+export function portfolioTint(base: string | null | undefined, index: number, _total?: number) { // eslint-disable-line @typescript-eslint/no-unused-vars
   if (!base) return PALETTE[index % PALETTE.length].value;
   const steps = [0, 0.18, -0.18, 0.32, -0.32, 0.12, -0.12];
   return tintColor(base, steps[index % steps.length]);

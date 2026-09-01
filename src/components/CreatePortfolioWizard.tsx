@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,7 @@ import { ArrowLeft, ArrowRight, Check, Wallet, TrendingUp, Layers, Briefcase } f
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Account, Provider } from "@/lib/store";
 
-type Props = { open: boolean; onOpenChange: (v: boolean) => void; accounts: Account[]; providers?: Provider[]; defaultAccountId?: string | null; defaultProviderId?: string | null; onCreate: (name: string, type: "live" | "manual", accountId: string | null, providerId?: string | null, extra?: any) => void; inline?: boolean };
+type Props = { open: boolean; onOpenChange: (v: boolean) => void; accounts: Account[]; providers?: Provider[]; defaultAccountId?: string | null; defaultProviderId?: string | null; onCreate: (name: string, type: "live" | "manual", accountId: string | null, providerId?: string | null, extra?: { symbol?: string; shares?: string }) => void; inline?: boolean };
 
 export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers = [], defaultAccountId, defaultProviderId, onCreate, inline }: Props) {
   const [step, setStep] = useState(1);
@@ -21,10 +21,12 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
   const [shares, setShares] = useState("");
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => { if (open) { setAccountId(defaultAccountId ?? null); setProviderId(defaultProviderId ?? null); } }, [open, defaultAccountId, defaultProviderId]);
+  const prevDefaultsRef = useRef<{ accountId: string | null | undefined; providerId: string | null | undefined }>({ accountId: undefined, providerId: undefined });
+  useEffect(() => { if (open && (prevDefaultsRef.current.accountId !== defaultAccountId || prevDefaultsRef.current.providerId !== defaultProviderId)) { setAccountId(defaultAccountId ?? null); setProviderId(defaultProviderId ?? null); } prevDefaultsRef.current = { accountId: defaultAccountId, providerId: defaultProviderId }; }, [open, defaultAccountId, defaultProviderId]);
 
   const filteredProviders = useMemo(()=> accountId ? providers.filter(p=>p.accountId===accountId) : [], [providers, accountId]);
-  useEffect(()=>{ if(providerId && accountId && !filteredProviders.find(p=>p.id===providerId)) setProviderId(null); }, [accountId]);
+  const prevFilteredRef = useRef<Provider[]>([]);
+  useEffect(()=>{ if(providerId && accountId && prevFilteredRef.current.find(p=>p.id===providerId) && !filteredProviders.find(p=>p.id===providerId)) setProviderId(null); prevFilteredRef.current = filteredProviders; }, [accountId, filteredProviders, providerId]);
 
   if (!open) return null;
   const canNext = step === 1 ? name.trim().length >= 2 : true;
@@ -81,7 +83,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
           ].map((o) => (
             <button
               key={o.id}
-              onClick={() => setType(o.id as any)}
+              onClick={() => setType(o.id as "live" | "manual")}
               className={`p-4 rounded-xl border text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 ${type === o.id ? "bg-white text-black border-white" : "bg-white/[0.04] border-white/10 hover:bg-white/[0.06] hover:border-white/15 text-white"}`}
             >
               <o.icon className={`w-5 h-5 mb-2 ${type === o.id ? "text-black" : "text-zinc-400"}`} />

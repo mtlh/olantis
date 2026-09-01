@@ -43,6 +43,7 @@ async function seedDemo(userId: string) {
   const p1 = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA — Global Tracker", type: "live", createdAt: now };
   const p2 = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 — Growth", type: "live", createdAt: now };
   const p3 = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP — Retirement", type: "live", createdAt: now };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await db.insert(portfolios).values([p1, p2, p3] as any);
   const hs = [
     { id: crypto.randomUUID(), portfolioId: p1.id, symbol: "VWRP", name: "Vanguard FTSE All-World", shares: 120, avgPrice: 98, currentPrice: 106.4, currency: "GBP", purchaseDate: "2024-01-15", exchange: "LSE" },
@@ -51,8 +52,10 @@ async function seedDemo(userId: string) {
     { id: crypto.randomUUID(), portfolioId: p2.id, symbol: "VUAG", name: "Vanguard S&P 500", shares: 200, avgPrice: 68, currentPrice: 74.2, currency: "GBP", purchaseDate: "2023-11-01", exchange: "LSE" },
     { id: crypto.randomUUID(), portfolioId: p3.id, symbol: "VWCE", name: "Vanguard FTSE All-World Acc", shares: 85, avgPrice: 95, currentPrice: 102.3, currency: "GBP", purchaseDate: "2024-02-10", exchange: "LSE" },
   ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await db.insert(holdings).values(hs as any);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const yahoo = await import("yahoo-finance2").then((m: any) => new m.default({ suppressNotices: ["yahooSurvey", "ripHistorical"] }));
   const dates = weeklyDates(3);
   const period1 = dates[0];
@@ -61,6 +64,7 @@ async function seedDemo(userId: string) {
   for (const h of hs) {
     const m = new Map<string, number>();
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const chart: any = await yahoo.chart(h.symbol, { period1, period2, interval: "1wk" });
       for (const r of chart.quotes ?? []) {
         const key = new Date(r.date).toISOString().slice(0, 10);

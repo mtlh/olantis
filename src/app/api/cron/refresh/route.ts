@@ -1,6 +1,6 @@
 import { fetchQuotes } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
-import { holdings, portfolios } from "@/lib/db/schema";
+import { holdings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: Request) {
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   let updated = 0;
   let skipped = 0;
   for (const h of targetHoldings) {
-    const q = (quotes as any)[h.symbol];
+    const q = (quotes as Record<string, { price: number; currency: string }>)[h.symbol];
     if (!q) continue;
     if (!body.force && h.lastRefreshedAt && now - h.lastRefreshedAt < 86400) { skipped++; continue; }
     await db.update(holdings).set({ currentPrice: q.price, currency: q.currency, lastRefreshedAt: now }).where(eq(holdings.id, h.id));

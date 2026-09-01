@@ -7,15 +7,15 @@ import { buttonVariants } from "@/components/ui/button";
 export default async function SettingsPage() {
   const jar = await cookies();
   const isDemo = jar.get("olantis_demo")?.value === "1";
-  let user: any = null;
+  let user: { id: string; email?: string; firstName?: string | null } | null = null;
   if (isDemo) user = { id: "demo", email: "demo@olantis.local", firstName: "Demo" };
   else {
     try {
       const { withAuth } = await import("@workos-inc/authkit-nextjs");
-      const auth = await withAuth({ ensureSignedIn: false } as any);
-      user = (auth as any).user ?? null;
-    } catch (e: any) {
-      const msg = String(e?.message ?? "");
+      const auth = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
+      user = (auth as { user?: { id: string; email?: string; firstName?: string | null } | null }).user ?? null;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes("isn't covered by the AuthKit")) throw e;
       const h = await headers();
       const c = await cookies();

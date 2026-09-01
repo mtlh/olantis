@@ -9,8 +9,8 @@ async function getUserId() {
   if (jar.get("olantis_demo")?.value === "1") return "demo";
   try {
     const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as any);
-    if (user) return (user as any).id;
+    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
+    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
   } catch {}
   return null;
 }
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);
   const existing = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
-  const vals: any = { userId, updatedAt: now };
+  const vals: Partial<typeof userSettings.$inferInsert> & { userId: string; updatedAt: number } = { userId, updatedAt: now };
   if (currency !== undefined) vals.currency = currency;
   if (dateFormat !== undefined) vals.dateFormat = dateFormat;
   if (defaultRange !== undefined) vals.defaultRange = defaultRange;

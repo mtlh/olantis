@@ -14,6 +14,8 @@ import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PALETTE, portfolioTint } from "@/lib/colors";
 
+interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
+
 function fmtRelative(ts?: number | null) {
   if (!ts) return "never";
   const diff = Math.floor(Date.now() / 1000) - ts;
@@ -22,7 +24,7 @@ function fmtRelative(ts?: number | null) {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 }
-function holdingValueGBP(h:any){ const raw=h.shares*h.currentPrice; if(h.currency==="GBX"||h.currency==="GBp") return raw/100; return raw; }
+function holdingValueGBP(h:Holding){ const raw=h.shares*h.currentPrice; if(h.currency==="GBX"||h.currency==="GBp") return raw/100; return raw; }
 function fmtPrice(n:number, currency?:string|null){ if(currency==="GBX"||currency==="GBp") return `${Math.round(n).toLocaleString("en-GB")}p`; if(currency==="GBP") return new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP",maximumFractionDigits:2}).format(n); if(currency==="USD") return `$${Number(n).toFixed(2)}`; if(currency==="EUR") return `€${Number(n).toFixed(2)}`; return `${Number(n).toFixed(2)}${currency?` ${currency}`:""}`; }
 function isLightColor(hex: string) {
   try {
@@ -38,7 +40,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void;
   onCreate: (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => void;
   onCreateAccount: (name: string) => void;
-  onCreateProvider?: (name: string, accountId: string) => Promise<any>;
+  onCreateProvider?: (name: string, accountId: string) => Promise<void>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
   onCreateDirectHolding?: (target: { accountId?: string | null; providerId?: string | null }, data: { symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; exchange?: string }) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -71,7 +73,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   const [directForm, setDirectForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", exchange: "", currentPrice: "", currency: "GBP" });
   const [editingDirectId, setEditingDirectId] = useState<string | null>(null);
   const [directSaving, setDirectSaving] = useState(false);
-  const [directSearchResults, setDirectSearchResults] = useState<any[]>([]);
+  const [directSearchResults, setDirectSearchResults] = useState<SearchResult[]>([]);
   const [directShowMenu, setDirectShowMenu] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [expandedProv, setExpandedProv] = useState<Record<string, boolean>>({});
@@ -104,15 +106,15 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   const accountTotals = (aid: string) => {
     const direct = directByAccount.get(aid) ?? [];
     const provs = providersByAccount.get(aid) ?? [];
-    let sum = direct.reduce((s,p)=> s + p.holdings.reduce((a,h:any)=>a+holdingValueGBP(h),0),0);
-    for(const pr of provs){ const ps=portfoliosByProvider.get(pr.id)??[]; sum+= ps.reduce((s,p)=>s+p.holdings.reduce((a,h:any)=>a+holdingValueGBP(h),0),0); }
-    sum += directHoldings.filter((h:any)=> h.accountId===aid && !h.providerId && !h.portfolioId).reduce((s,h:any)=> s+holdingValueGBP(h),0);
-    for(const pr of provs){ sum += directHoldings.filter((h:any)=> h.providerId===pr.id).reduce((s,h:any)=> s+holdingValueGBP(h),0); }
+    let sum = direct.reduce((s,p)=> s + p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h),0),0);
+    for(const pr of provs){ const ps=portfoliosByProvider.get(pr.id)??[]; sum+= ps.reduce((s,p)=>s+p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h),0),0); }
+    sum += directHoldings.filter((h:Holding)=> h.accountId===aid && !h.providerId && !h.portfolioId).reduce((s,h:Holding)=> s+holdingValueGBP(h),0);
+    for(const pr of provs){ sum += directHoldings.filter((h:Holding)=> h.providerId===pr.id).reduce((s,h:Holding)=> s+holdingValueGBP(h),0); }
     return sum;
   };
   const providerTotals = (pid: string) => {
-    let sum = (portfoliosByProvider.get(pid)??[]).reduce((s,p)=>s+p.holdings.reduce((a,h:any)=>a+holdingValueGBP(h),0),0);
-    sum += directHoldings.filter((h:any)=> h.providerId===pid).reduce((s,h:any)=> s+holdingValueGBP(h),0);
+    let sum = (portfoliosByProvider.get(pid)??[]).reduce((s,p)=>s+p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h),0),0);
+    sum += directHoldings.filter((h:Holding)=> h.providerId===pid).reduce((s,h:Holding)=> s+holdingValueGBP(h),0);
     return sum;
   };
 
@@ -125,48 +127,53 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
     const err = validateName(accountName);
     if (err) { setAccountError(err); return; }
     setSaving(true);
-    try { await onCreateAccount(accountName.trim()); setAccountName(""); setShowAccountDialog(false); toast({ title: "Account created", description: accountName.trim(), variant: "success" }); } catch (e:any){ toast({title:"Failed to create account",description:String(e.message||e),variant:"error"});} finally{setSaving(false);}
+    try { await onCreateAccount(accountName.trim()); setAccountName(""); setShowAccountDialog(false); toast({ title: "Account created", description: accountName.trim(), variant: "success" }); } catch (e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Failed to create account",description:msg,variant:"error"});} finally{setSaving(false);}
   };
   const handleRenameAccount = async () => {
     if (!editingAccount) return;
     const err = validateName(editAccountName);
     if (err) return toast({title:err,variant:"error"});
     setSaving(true);
-    try { await onRenameAccount?.(editingAccount.id, editAccountName.trim()); setEditingAccount(null); toast({title:"Account renamed",variant:"success"});} catch(e:any){toast({title:"Rename failed",description:String(e.message||e),variant:"error"});} finally{setSaving(false);}
+    try { await onRenameAccount?.(editingAccount.id, editAccountName.trim()); setEditingAccount(null); toast({title:"Account renamed",variant:"success"});} catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Rename failed",description:msg,variant:"error"});} finally{setSaving(false);}
   };
   const handleCreateProvider = async () => {
     if(!providerAccountId) return toast({title:"Select account",variant:"error"});
     const err = validateName(providerName);
     if(err) return toast({title:err,variant:"error"});
     setSaving(true);
-    try{ await onCreateProvider?.(providerName.trim(), providerAccountId); setShowProviderDialog(false); setProviderName(""); toast({title:"Provider created",variant:"success"});} catch(e:any){toast({title:"Create failed",description:String(e.message||e),variant:"error"});} finally{setSaving(false);}
+    try{ await onCreateProvider?.(providerName.trim(), providerAccountId); setShowProviderDialog(false); setProviderName(""); toast({title:"Provider created",variant:"success"});} catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Create failed",description:msg,variant:"error"});} finally{setSaving(false);}
   };
   const handleRenameProvider = async () => {
     if(!editingProvider) return;
     const err=validateName(editProviderName);
     if(err) return toast({title:err,variant:"error"});
     setSaving(true);
-    try{ await onRenameProvider?.(editingProvider.id, editProviderName.trim()); setEditingProvider(null); toast({title:"Provider renamed",variant:"success"});} catch(e:any){toast({title:"Rename failed",description:String(e.message||e),variant:"error"});} finally{setSaving(false);}
+    try{ await onRenameProvider?.(editingProvider.id, editProviderName.trim()); setEditingProvider(null); toast({title:"Provider renamed",variant:"success"});} catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Rename failed",description:msg,variant:"error"});} finally{setSaving(false);}
   };
   const handleEditPortfolio = async () => {
     if (!editingPortfolio) return;
     const err = validateName(editPName);
     if (err) return toast({title:err,variant:"error"});
     setSaving(true);
-    try { await onRenamePortfolio?.(editingPortfolio.id, { name: editPName.trim(), type: editPType, accountId: editPAccount==="__none"?null:editPAccount, providerId: editPProvider==="__none"?null:editPProvider }); setEditingPortfolio(null); toast({title:"Portfolio updated",variant:"success"});} catch(e:any){toast({title:"Update failed",description:String(e.message||e),variant:"error"});} finally{setSaving(false);}
+    try { await onRenamePortfolio?.(editingPortfolio.id, { name: editPName.trim(), type: editPType, accountId: editPAccount==="__none"?null:editPAccount, providerId: editPProvider==="__none"?null:editPProvider }); setEditingPortfolio(null); toast({title:"Portfolio updated",variant:"success"});} catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Update failed",description:msg,variant:"error"});} finally{setSaving(false);}
   };
   const handleCreateDirectHolding = async () => {
     if(!directTarget && !editingDirectId) return;
     if(!directForm.symbol.trim() || !directForm.shares || !directForm.avgPrice) return toast({title:"Fill symbol, shares & price", variant:"error"});
     const isEdit = !!editingDirectId;
     const target = directTarget ?? { accountId: null, providerId: null };
-    const payload: any = {
+    const payload: {
+      symbol: string; name: string; shares: number; avgPrice: number;
+      currentPrice: number; currency: string; exchange: string | undefined;
+      purchaseDate: string; id?: string | null;
+      accountId?: string | null; providerId?: string | null;
+    } = {
       symbol: directForm.symbol.toUpperCase().trim(),
       name: directForm.name.trim() || directForm.symbol.toUpperCase().trim(),
       shares: Number(directForm.shares),
       avgPrice: Number(directForm.avgPrice),
       currentPrice: Number(directForm.currentPrice || directForm.avgPrice),
-      currency: (directForm as any).currency || "GBP",
+      currency: directForm.currency || "GBP",
       exchange: directForm.exchange || undefined,
       purchaseDate: new Date().toISOString().split("T")[0],
     };
@@ -182,11 +189,11 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
       await onRefresh?.();
       setShowDirectHolding(false); setDirectForm({ symbol:"", name:"", shares:"", avgPrice:"", exchange:"", currentPrice:"", currency:"GBP" }); setDirectSearchResults([]); setEditingDirectId(null);
       toast({title: isEdit ? "Stock updated" : "Stock added", description: directForm.symbol.toUpperCase(), variant:"success"});
-    } catch(e:any){ toast({title:"Failed", description:String(e.message||e), variant:"error"}); } finally{ setDirectSaving(false); }
+    } catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Failed", description:msg, variant:"error"}); } finally{ setDirectSaving(false); }
   };
-  const openDirectEdit = (h:any) => {
-    setDirectTarget({ accountId: (h as any).accountId ?? null, providerId: (h as any).providerId ?? null });
-    setDirectForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), exchange: h.exchange ?? "", currentPrice: String(h.currentPrice ?? h.avgPrice), currency: (h as any).currency ?? "GBP" });
+  const openDirectEdit = (h:Holding) => {
+    setDirectTarget({ accountId: h.accountId ?? null, providerId: h.providerId ?? null });
+    setDirectForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), exchange: h.exchange ?? "", currentPrice: String(h.currentPrice ?? h.avgPrice), currency: h.currency ?? "GBP" });
     setEditingDirectId(h.id);
     setShowDirectHolding(true);
   };
@@ -228,7 +235,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
               const total = accountTotals(acc.id);
               const provs = filteredProviders(providersByAccount.get(acc.id) ?? []);
               const direct = filteredPortfolios(directByAccount.get(acc.id) ?? []);
-              const accColor = (acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value;
+              const accColor = acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value;
               return (
                 <div key={acc.id} className="rounded-2xl border overflow-hidden shadow-sm" style={{ borderColor: accColor + "40", background: accColor + "26" }}>
                   <div className="flex items-center gap-1 p-1.5">
@@ -258,7 +265,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                         const ps = filteredPortfolios(portfoliosByProvider.get(pr.id) ?? []);
                         const isProvOpen = expandedProv[pr.id] ?? true;
                         const provTotal = providerTotals(pr.id);
-                        const provColor = (pr as any).color || portfolioTint((acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, pi, provs.length);
+                        const provColor = pr.color || portfolioTint(acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, pi, provs.length);
                         return (
                           <div key={pr.id} className="rounded-lg border overflow-hidden" style={{ borderColor: provColor + "38", background: provColor + "20" }}>
                             <div className="flex items-center gap-1 p-1">
@@ -282,9 +289,9 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                               <div className="px-1 pb-1 space-y-0.5">
                                 {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
                                 {ps.map((p, pIdx)=>{
-                                  const val=p.holdings.reduce((s,h:any)=>s+holdingValueGBP(h),0);
+                                  const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
                                   const active=activeId===p.id;
-                                  const baseColor = (p as any).color || portfolioTint(provColor, pIdx, ps.length);
+                                  const baseColor = p.color || portfolioTint(provColor, pIdx, ps.length);
                                   const selectedBg = baseColor;
                                   const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                                   const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
@@ -299,17 +306,17 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                       <DropdownMenu>
                                         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5"><MoreVertical className="w-3 h-3"/></Button>} />
                                         <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                                          <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type as any); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
+                                          <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
                                           <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
                                         </DropdownMenuContent>
                                       </DropdownMenu>
                                     </div>
                                   );
                                 })}
-                                {(holdings ?? []).filter((h:any)=> h.providerId===pr.id && !h.portfolioId).length>0 && (
+                                {(holdings ?? []).filter((h:Holding)=> h.providerId===pr.id && !h.portfolioId).length>0 && (
                                   <div className="mt-2 pt-2 border-t border-white/5">
                                     <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1 mb-1">Direct stocks</div>
-                                    {(holdings ?? []).filter((h:any)=> h.providerId===pr.id && !h.portfolioId).map((h:any)=>(
+                                    {(holdings ?? []).filter((h:Holding)=> h.providerId===pr.id && !h.portfolioId).map((h:Holding)=>(
                                       <div key={h.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs">
                                         <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                                         <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
@@ -329,9 +336,9 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                         <div className="space-y-1">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct portfolios</div>
                           {direct.map((p, di)=>{
-                            const val=p.holdings.reduce((s,h:any)=>s+holdingValueGBP(h),0);
+                            const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
                             const active=activeId===p.id;
-                            const baseColor = (p as any).color || portfolioTint((acc as any).color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, direct.length);
+                            const baseColor = p.color || portfolioTint(acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, direct.length);
                             const selectedBg = baseColor;
                             const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                             const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
@@ -347,7 +354,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                 <DropdownMenu>
                                   <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
                                   <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                                    <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type as any); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
                                     <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
@@ -356,10 +363,10 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                           })}
                         </div>
                       )}
-                      {(holdings ?? []).filter((h:any)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0 && (
+                      {(holdings ?? []).filter((h:Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0 && (
                         <div className="space-y-1 mt-2 pt-2 border-t border-white/5">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct stocks — {acc.name}</div>
-                          {(holdings ?? []).filter((h:any)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h:any)=>(
+                          {(holdings ?? []).filter((h:Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h:Holding)=>(
                             <div key={h.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs">
                               <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                               <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
@@ -383,9 +390,9 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                 </div>
                 <div className="px-1.5 pb-1.5 space-y-1">
                     {(filteredPortfolios(unassigned)).map((p, ui) => {
-                    const val = p.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
+                    const val = p.holdings.reduce((s, h:Holding) => s + holdingValueGBP(h), 0);
                     const active = activeId === p.id;
-                    const baseColor = (p as any).color || PALETTE[ui % PALETTE.length].value;
+                    const baseColor = p.color || PALETTE[ui % PALETTE.length].value;
                     const selectedBg = baseColor;
                     const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                     const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
@@ -400,7 +407,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                         <DropdownMenu>
                           <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
                           <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                            <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type as any); setEditPAccount(p.accountId ?? "__none"); setEditPProvider("__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId ?? "__none"); setEditPProvider("__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-white/10"/>
                             <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
                           </DropdownMenuContent>
@@ -507,7 +514,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                 <Input value={directForm.symbol} onChange={e=>{ const v=e.target.value.toUpperCase(); setDirectForm({...directForm, symbol:v}); if(v.trim().length>=2){ fetch(`/api/search?q=${encodeURIComponent(v)}`).then(r=>r.json()).then(j=>{ setDirectSearchResults(Array.isArray(j)?j:[]); setDirectShowMenu(true); }).catch(()=>{});} else { setDirectSearchResults([]); setDirectShowMenu(false);} }} placeholder="AAPL or Apple" autoComplete="off" />
                 {directShowMenu && directSearchResults.length>0 && (
                   <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl max-h-48 overflow-auto">
-                    {directSearchResults.map((r:any)=>(
+                    {directSearchResults.map((r:SearchResult)=>(
                       <button key={r.symbol+r.exchange} type="button" onMouseDown={(e)=>{e.preventDefault(); setDirectForm({...directForm, symbol:r.symbol, name:r.name, exchange:r.exchange, currentPrice: r.price ? String(r.price) : directForm.currentPrice, currency: r.currency ?? directForm.currency}); setDirectShowMenu(false);}} className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between gap-2">
                         <div><div className="text-sm text-white">{r.symbol} <span className="text-xs text-zinc-500">{r.exchange}</span>{r.price!=null && <span className="text-xs text-emerald-400 ml-1">{r.currency==="GBX"||r.currency==="GBp" ? `${Math.round(r.price).toLocaleString("en-GB")}p` : `£${Number(r.price).toFixed(2)}`}</span>}</div><div className="text-xs text-zinc-500 truncate">{r.name}</div></div>
                       </button>
@@ -524,7 +531,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
             <div className="space-y-2">
               <Label>Current price <span className="text-zinc-500 font-normal">(live)</span></Label>
               <div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">
-                {directForm.currentPrice ? fmtPrice(Number(directForm.currentPrice), (directForm as any).currency) : "— auto-filled from Yahoo"}
+                {directForm.currentPrice ? fmtPrice(Number(directForm.currentPrice), directForm.currency) : "— auto-filled from Yahoo"}
                 <span className="ml-auto text-xs text-zinc-600">read-only</span>
               </div>
               <p className="text-xs text-zinc-600">Helps calculate gain; avg cost is what you paid</p>
@@ -555,7 +562,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
           <div className="space-y-4">
             <div className="space-y-2"><Label>Name</Label><Input value={editPName} onChange={e=>setEditPName(e.target.value)} autoFocus/></div>
             <div className="space-y-2"><Label>Type</Label>
-              <Select value={editPType} onValueChange={v=>setEditPType(v as any)}>
+              <Select value={editPType} onValueChange={v=>setEditPType(v as "live"|"manual")}>
                 <SelectTrigger><span className="flex-1 text-left truncate">{editPType==="live"?"Live — auto prices":"Manual — cash/custom"}</span></SelectTrigger>
                 <SelectContent><SelectItem value="live">Live — auto prices</SelectItem><SelectItem value="manual">Manual — pension/cash</SelectItem></SelectContent>
               </Select>

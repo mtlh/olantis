@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { providers, portfolios } from "@/lib/db/schema";
+import { providers } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { neon } from "@neondatabase/serverless";
@@ -9,8 +9,8 @@ async function getUserId() {
   if (jar.get("olantis_demo")?.value === "1") return "demo";
   try {
     const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as any);
-    if (user) return (user as any).id;
+    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
+    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
   } catch {}
   return null;
 }
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
   if (id) {
     const existing = await db.select().from(providers).where(eq(providers.id, id));
     if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
-    const set: any = {};
+    const set: Partial<typeof providers.$inferInsert> = {};
     if (name !== undefined) {
       if (!name.trim() || name.trim().length < 2) return Response.json({ error: "name too short" }, { status: 400 });
       set.name = name.trim();
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   const acc = await db.select().from(accounts).where(eq(accounts.id, accountId));
   if (!acc[0] || acc[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 400 });
   const nid = crypto.randomUUID();
-  await db.insert(providers).values({ id: nid, userId, accountId, name: name.trim(), color: color || null, createdAt: Math.floor(Date.now() / 1000) } as any);
+  await db.insert(providers).values({ id: nid, userId, accountId, name: name.trim(), color: color || null, createdAt: Math.floor(Date.now() / 1000) } as typeof providers.$inferInsert);
   return Response.json({ id: nid });
 }
 

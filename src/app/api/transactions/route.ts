@@ -9,8 +9,8 @@ async function getUserId() {
   if (jar.get("olantis_demo")?.value === "1") return "demo";
   try {
     const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as any);
-    if (user) return (user as any).id;
+    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
+    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
   } catch {}
   return null;
 }
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   const holdingId = searchParams.get("holdingId");
   const symbol = searchParams.get("symbol");
   const db = getDb();
-  let rows: any[] = [];
+  let rows: typeof transactions.$inferSelect[] = [];
   try {
     rows = await db.select().from(transactions).where(eq(transactions.userId, userId));
   } catch { return Response.json([]); }
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
   if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
 
-  let holding: any = null;
+  let holding: typeof holdings.$inferSelect | null = null;
   let targetSymbol = symbol?.toUpperCase()?.trim();
   let targetName = body.name?.trim() || targetSymbol;
 
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
         exchange: null,
         lastRefreshedAt: null,
       });
-      holding = { id: nid, symbol: targetSymbol, name: targetName };
+      holding = { id: nid, symbol: targetSymbol, name: targetName } as typeof holdings.$inferSelect;
     }
   } else {
     if (!holding) return Response.json({ error: "no holding to sell" }, { status: 400 });
@@ -127,8 +127,8 @@ export async function POST(req: Request) {
       note: note || null,
       createdAt: Math.floor(Date.now() / 1000),
     });
-  } catch (e: any) {
-    return Response.json({ error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
   return Response.json({ id, ok: true });
 }

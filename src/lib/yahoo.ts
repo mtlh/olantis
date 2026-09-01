@@ -1,5 +1,23 @@
 import YahooFinance from "yahoo-finance2";
-const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] as any });
+const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] as unknown as never[] });
+
+interface YahooQuoteResult {
+  regularMarketPrice?: number;
+  currency?: string;
+}
+
+interface YahooSearchQuote {
+  symbol?: string;
+  longname?: string;
+  shortname?: string;
+  longName?: string;
+  shortName?: string;
+  exchange?: string;
+  exchDisp?: string;
+  quoteType?: string;
+  quotedType?: string;
+}
+
 export function toYahooSymbol(symbol: string, exchange?: string) {
   if (symbol.includes(".")) {
     const p = symbol.split(".");
@@ -14,9 +32,9 @@ export async function fetchQuotes(symbols: Array<{ symbol: string; exchange?: st
   for (const { symbol, exchange } of symbols) {
     const ys = toYahooSymbol(symbol, exchange);
     try {
-      const q: any = await yf.quote(ys);
-      let price = q.regularMarketPrice;
-      let currency = q.currency || "USD";
+      const q = (await yf.quote(ys)) as unknown as YahooQuoteResult;
+      const price = q.regularMarketPrice;
+      const currency = q.currency || "USD";
       if (!price) continue;
       out[symbol] = { price, currency };
     } catch {}
@@ -27,10 +45,10 @@ export async function fetchQuotes(symbols: Array<{ symbol: string; exchange?: st
 export async function searchSymbols(query: string) {
   if (!query || query.trim().length < 1) return [];
   try {
-    const res: any = await yf.search(query.trim());
-    const quotes = res.quotes ?? res ?? [];
+    const res = (await yf.search(query.trim())) as unknown as { quotes?: YahooSearchQuote[] };
+    const quotes = res.quotes ?? [];
     const arr = Array.isArray(quotes) ? quotes : [];
-    return arr.slice(0, 8).map((q: any) => {
+    return arr.slice(0, 8).map((q: YahooSearchQuote) => {
       const symbol = q.symbol ?? "";
       const name = q.longname ?? q.shortname ?? q.longName ?? q.shortName ?? symbol;
       const exchange = q.exchange ?? q.exchDisp ?? "";
@@ -44,6 +62,6 @@ export async function searchSymbols(query: string) {
       else if (up === "LSE" || up === "LON") normExchange = "LSE";
       else if (up === "PNK" || up === "OTC") normExchange = "OTC";
       return { symbol, name, exchange: normExchange, rawExchange: exchange, exchDisp, type, longname: name };
-    }).filter((r: any) => r.symbol);
+    }).filter((r) => r.symbol);
   } catch { return []; }
 }

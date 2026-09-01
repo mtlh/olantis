@@ -8,8 +8,8 @@ async function getUserId() {
   if (jar.get("olantis_demo")?.value === "1") return "demo";
   try {
     const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as any);
-    if (user) return (user as any).id;
+    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
+    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
   } catch {}
   return null;
 }
@@ -21,14 +21,13 @@ export async function GET() {
   const ps = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
   if (ps.length === 0) return Response.json([]);
   const pids = ps.map((p) => p.id);
-  const { inArray } = await import("drizzle-orm");
   const allHoldings = await db.select().from(holdings);
-  const hs = allHoldings.filter((h:any)=> h.portfolioId && pids.includes(h.portfolioId));
+  const hs = allHoldings.filter((h)=> h.portfolioId && pids.includes(h.portfolioId));
   const byPid = new Map<string, typeof hs>();
   for (const h of hs) {
-    const arr = byPid.get((h as any).portfolioId) ?? [];
+    const arr = byPid.get(h.portfolioId!) ?? [];
     arr.push(h);
-    byPid.set((h as any).portfolioId, arr);
+    byPid.set(h.portfolioId!, arr);
   }
   return Response.json(ps.map((p) => ({ ...p, holdings: byPid.get(p.id) ?? [] })));
 }
@@ -52,7 +51,7 @@ export async function POST(req: Request) {
   if (id) {
     const existing = await db.select().from(portfolios).where(eq(portfolios.id, id));
     if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
-    const set: any = {};
+    const set: Partial<typeof portfolios.$inferInsert> = {};
     if (name !== undefined) {
       if (!name.trim() || name.trim().length < 2) return Response.json({ error: "name too short" }, { status: 400 });
       set.name = name.trim();
@@ -83,7 +82,7 @@ export async function POST(req: Request) {
   }
   if (!name?.trim() || name.trim().length < 2) return Response.json({ error: "name too short" }, { status: 400 });
   let finalAccountId: string | null = accountId || null;
-  let finalProviderId: string | null = providerId || null;
+  const finalProviderId: string | null = providerId || null;
   if (finalProviderId) {
     const { providers } = await import("@/lib/db/schema");
     const prov = await db.select().from(providers).where(eq(providers.id, finalProviderId));
@@ -91,7 +90,7 @@ export async function POST(req: Request) {
     finalAccountId = prov[0].accountId;
   }
   const nid = crypto.randomUUID();
-  await db.insert(portfolios).values({ id: nid, userId, accountId: finalAccountId, providerId: finalProviderId, name, type, color: color || null, createdAt: Math.floor(Date.now() / 1000) } as any);
+  await db.insert(portfolios).values({ id: nid, userId, accountId: finalAccountId, providerId: finalProviderId, name, type, color: color || null, createdAt: Math.floor(Date.now() / 1000) } as typeof portfolios.$inferInsert);
   return Response.json({ id: nid });
 }
 

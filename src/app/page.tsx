@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
@@ -8,15 +9,15 @@ import { ArrowRight, BarChart3, Clock3, Layers, LineChart, Lock, ShieldCheck, Sp
 export default async function Home() {
   const jar = await cookies();
   const isDemo = jar.get("olantis_demo")?.value === "1";
-  let user: any = null;
+  let user: { id: string; email?: string; firstName?: string | null } | null = null;
   if (isDemo) user = { id: "demo", email: "demo@olantis.local", firstName: "Demo" };
   else {
     try {
       const { withAuth } = await import("@workos-inc/authkit-nextjs");
-      const auth = await withAuth({ ensureSignedIn: false } as any);
-      user = (auth as any).user ?? null;
-    } catch (e: any) {
-      const msg = String(e?.message ?? "");
+      const auth = await withAuth({ ensureSignedIn: false });
+      user = auth.user ?? null;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes("isn't covered by the AuthKit")) throw e;
       const h = await headers();
       const c = await cookies();
@@ -29,7 +30,7 @@ export default async function Home() {
               <CardContent>
                 <p className="text-sm text-zinc-400">Proxy not covering /. Restart <code className="text-white">npm run dev</code>.</p>
                 <pre className="text-xs mt-3 p-3 rounded-xl bg-black/50 text-zinc-300">hasMiddleware: {String(!!h.get("x-workos-middleware"))}</pre>
-                <a href="/" className={buttonVariants({ className: "mt-4" })}>Retry</a>
+                <Link href="/" className={buttonVariants({ className: "mt-4" })}>Retry</Link>
               </CardContent>
             </Card>
           </div>
@@ -42,10 +43,10 @@ export default async function Home() {
     <div className="min-h-screen flex flex-col">
       <nav className="sticky top-0 z-40 backdrop-blur-xl bg-black/30 border-b border-white/[0.06]">
         <div className="flex items-center justify-between px-6 md:px-10 py-4 max-w-6xl mx-auto w-full">
-          <a href="/" className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3">
             <Logo size={34} />
             <span className="hidden md:inline text-[10px] tracking-widest uppercase text-zinc-600 border border-white/10 px-2 py-0.5 rounded-full">Personal Finance</span>
-          </a>
+          </Link>
           <div className="flex items-center gap-2">
             {user ? (
               <>

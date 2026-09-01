@@ -18,8 +18,8 @@ export const GET = handleAuth({
     return new Response(
       JSON.stringify({
         error: "WorkOS callback failed",
-        message: (error as any)?.message ?? String(error),
-        cause: (error as any)?.cause ?? null,
+        message: (error as Record<string, unknown>)?.message ?? String(error),
+        cause: (error as Record<string, unknown>)?.cause ?? null,
         debug: { hasCode, hasState, host: url.host, redirectUri: process.env.WORKOS_REDIRECT_URI },
       }, null, 2),
       { status: 500, headers: { "Content-Type": "application/json" } }

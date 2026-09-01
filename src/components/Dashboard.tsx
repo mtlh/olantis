@@ -1,9 +1,10 @@
 "use client";
 import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings } from "@/lib/store";
+import type { Holding, Portfolio, Account, Provider, Snapshot } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, ReferenceDot } from "recharts";
-import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ArrowUpDown, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
 import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 
-import { PALETTE, tintColor, portfolioTint } from "@/lib/colors";
+import { PALETTE, portfolioTint } from "@/lib/colors";
 const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
 const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d399", GIA: "#f472b6" };
 function fmtGBP(n: number) { return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(n); }
@@ -28,8 +29,8 @@ function fmtPrice(n: number, currency?: string | null) {
   if (currency === "EUR") return `€${Number(n).toFixed(2)}`;
   return `${Number(n).toFixed(2)}${currency ? ` ${currency}` : ""}`;
 }
-function holdingValueGBP(h: any) { const raw = h.shares * h.currentPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
-function holdingCostGBP(h: any) { const raw = h.shares * h.avgPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
+function holdingValueGBP(h: Holding) { const raw = h.shares * h.currentPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
+function holdingCostGBP(h: Holding) { const raw = h.shares * h.avgPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
 function fmtPct(n: number) { return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`; }
 function fmtRelative(ts?: number | null) {
   if (!ts) return "never";
@@ -41,16 +42,22 @@ function fmtRelative(ts?: number | null) {
   return new Date(ts * 1000).toLocaleDateString("en-GB");
 }
 
-export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
-  const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, refresh: refreshAccounts, ready: accountsReady } = useAccounts();
-  const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders, ready: providersReady } = useProviders();
-  const { portfolios, create, remove, upsertHolding, deleteHolding, refresh: refreshPortfolios, ready: portfoliosReady, move } = usePortfolios();
+type SymbolResult = { symbol: string; name: string; exchange: string; exchDisp?: string; price?: number | null; currency?: string | null; longname?: string; rawExchange?: string; type?: string };
+type ChartDot = { x: string; y: number; type: "buy" | "sell"; symbol: string; date: string; shares: number; price: number };
+type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };
+type AllocationItem = { name: string; value: number; color: string; pct: number };
+type ChartRow = { date: string; total: number; [key: string]: string | number };
+
+export function Dashboard({ isDemo }: { isDemo?: boolean }) {
+  const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady } = useAccounts();
+  const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
+  const { portfolios, create, remove, upsertHolding, deleteHolding, refresh: refreshPortfolios, ready: portfoliosReady } = usePortfolios();
   const { holdings: allHoldingsList, refresh: refreshAllHoldings } = useHoldings();
-  const directHoldings = useMemo(()=> allHoldingsList.filter((h:any)=> !h.portfolioId), [allHoldingsList]);
-  const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings as any);
+  const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
+  const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings as Holding[]);
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [tradeHolding, setTradeHolding] = useState<any | null>(null);
+  const [tradeHolding, setTradeHolding] = useState<Holding | null>(null);
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
   const [showTrade, setShowTrade] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
@@ -64,8 +71,9 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
-  useEffect(()=>{ if(activeId && !portfolios.find(p=>p.id===activeId)) setActiveId(null); },[portfolios,activeId]);
-  const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===(active as any).providerId); const acc = accounts.find(a=> a.id===active.accountId); return (active as any).color || (prov as any)?.color || (acc as any)?.color || "#60a5fa"; }, [active, providers, accounts]);
+  const prevPortfoliosRef = useRef<Portfolio[]>([]);
+  useEffect(()=>{ if(prevPortfoliosRef.current !== portfolios && activeId && !portfolios.find(p=>p.id===activeId)) setActiveId(null); prevPortfoliosRef.current = portfolios; },[portfolios,activeId]);
+  const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); return active.color || prov?.color || acc?.color || "#60a5fa"; }, [active, providers, accounts]);
   const createDirectHolding = async (target: { accountId?: string | null; providerId?: string | null }, data: { symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; exchange?: string; purchaseDate?: string }) => {
     await fetch("/api/holdings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...data, accountId: target.accountId ?? null, providerId: target.providerId ?? null }) }).then(async r=>{ if(!r.ok) throw new Error(await r.text()); });
     await refreshAllHoldings(); await refreshPortfolios();
@@ -74,7 +82,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const overviewTx = useTransactions(null);
   const displayTx = activeId ? transactions : overviewTx.transactions;
 
-  const openTrade = (h: any, type: "buy" | "sell") => { setTradeHolding(h); setTradeType(type); setShowTrade(true); };
+  const openTrade = (h: Holding, type: "buy" | "sell") => { setTradeHolding(h); setTradeType(type); setShowTrade(true); };
   const handleTrade = async (data: { shares: number; price: number; date: string }) => {
     if (!activeId || !tradeHolding) return;
     try {
@@ -83,21 +91,21 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       await refreshTx();
       await overviewTx.refresh();
       toast({ title: tradeType === "buy" ? "Buy recorded" : "Sell recorded", description: `${tradeType === "buy" ? "+" : "-"}${data.shares} ${tradeHolding.symbol} @ £${data.price}`, variant: "success" });
-    } catch (e: any) { toast({ title: "Trade failed", description: e.message || String(e), variant: "error" }); throw e; }
+    } catch (e: unknown) { toast({ title: "Trade failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); throw e; }
   };
 
   const { totalValue, totalCost, totalGain, totalGainPct } = useMemo(() => {
-    const vPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0), 0);
-    const cPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + holdingCostGBP(h), 0), 0);
-    const vDirect = directHoldings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
-    const cDirect = directHoldings.reduce((s, h:any) => s + holdingCostGBP(h), 0);
+    const vPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0), 0);
+    const cPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingCostGBP(h), 0), 0);
+    const vDirect = directHoldings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
+    const cDirect = directHoldings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
     const v = vPort + vDirect;
     const c = cPort + cDirect;
     return { totalValue: v, totalCost: c, totalGain: v - c, totalGainPct: c ? ((v - c) / c) * 100 : 0 };
   }, [portfolios, directHoldings]);
 
-  const rangeCount: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
   const filteredSnapshots = useMemo(() => {
+    const rangeCount: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
     const n = rangeCount[range];
     if (snapshots.length <= n) return snapshots;
     return snapshots.slice(-n);
@@ -106,15 +114,15 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const chartData = useMemo(() => {
     if (filteredSnapshots.length === 0) {
       const today = new Date().toISOString().split("T")[0].slice(5);
-      return [{ date: today, total: totalValue }];
+      return [{ date: today, total: totalValue }] as ChartRow[];
     }
     const byPort = byPortfolio;
     const dates = filteredSnapshots.map((s) => s.date);
     return dates.map((d) => {
-      const row: any = { date: d.slice(5), total: filteredSnapshots.find((s) => s.date === d)?.value ?? 0 };
-      for (const [pid, info] of Object.entries(byPort)) {
-        const v = (info as any).data.find((x: any) => x.date === d)?.value;
-        if (v != null) row[(info as any).name] = v;
+      const row: ChartRow = { date: d.slice(5), total: filteredSnapshots.find((s) => s.date === d)?.value ?? 0 };
+      for (const [, info] of Object.entries(byPort)) {
+        const v = info.data.find((x: Snapshot) => x.date === d)?.value;
+        if (v != null) row[info.name] = v;
       }
       return row;
     });
@@ -130,86 +138,86 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
         if (y == null) return null;
         return { x: mmdd, y, type: t.type, symbol: t.symbol, date: t.date, shares: t.shares, price: t.price };
       })
-      .filter(Boolean) as any[];
+      .filter((x): x is ChartDot => x !== null);
   }, [displayTx, chartData]);
 
   const allocation = useMemo(() => {
     if (allocMode === "account") {
-      const portTotal = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0), 0);
-      const directTotal = (directHoldings as any[]).reduce((s, h:any) => s + holdingValueGBP(h), 0);
+      const portTotal = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0), 0);
+      const directTotal = directHoldings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
       const total = portTotal + directTotal;
       if (!total) return [];
       if (accounts.length === 0) {
         return portfolios.map((p, i) => {
-          const v = p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0);
-          const c = (p as any).color || CHART_COLORS[i % CHART_COLORS.length];
+          const v = p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0);
+          const c = p.color || CHART_COLORS[i % CHART_COLORS.length];
           return { name: p.name, value: v, color: c, pct: (v / total) * 100 };
         }).sort((a,b)=> b.value - a.value);
       }
       const byAccount = new Map<string, number>();
       let unassignedVal = 0;
       for (const p of portfolios) {
-        const v = p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0);
+        const v = p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0);
         if (p.accountId) byAccount.set(p.accountId, (byAccount.get(p.accountId) ?? 0) + v);
         else unassignedVal += v;
       }
-      for (const h of (directHoldings as any[])) {
+      for (const h of directHoldings) {
         const v = holdingValueGBP(h);
-        if ((h as any).accountId) byAccount.set((h as any).accountId, (byAccount.get((h as any).accountId) ?? 0) + v);
-        else if ((h as any).providerId) {
-          const pr = providers.find(pp=> pp.id===(h as any).providerId);
+        if (h.accountId) byAccount.set(h.accountId, (byAccount.get(h.accountId) ?? 0) + v);
+        else if (h.providerId) {
+          const pr = providers.find(pp=> pp.id===h.providerId);
           if (pr?.accountId) byAccount.set(pr.accountId, (byAccount.get(pr.accountId) ?? 0) + v);
           else unassignedVal += v;
         } else unassignedVal += v;
       }
-      const out: any[] = accounts.map((acc, i) => {
+      const out: AllocationItem[] = accounts.map((acc, i) => {
         const fallback = PALETTE[i % PALETTE.length].value;
-        const col = (acc as any).color || fallback;
+        const col = acc.color || fallback;
         return { name: acc.name, value: byAccount.get(acc.id) ?? 0, color: col, pct: ((byAccount.get(acc.id) ?? 0) / total) * 100 };
       }).filter((x) => x.value > 0);
       if (unassignedVal > 0) out.push({ name: "Unassigned", value: unassignedVal, color: "#71717a", pct: (unassignedVal / total) * 100 });
       return out.sort((a,b)=> b.value - a.value);
     }
     const portHoldings = active ? active.holdings : portfolios.flatMap((p) => p.holdings);
-    const allHoldings = active ? portHoldings : [...portHoldings, ...(directHoldings as any[])];
+    const allHoldings = active ? portHoldings : [...portHoldings, ...directHoldings];
     const holdings = allHoldings;
-    const total = holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
+    const total = holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
     if (!total) return [];
     if (active) {
-      const prov = providers.find(pr=> pr.id===(active as any).providerId);
+      const prov = providers.find(pr=> pr.id===active.providerId);
       const acc = accounts.find(a=> a.id===active.accountId);
-      const base = (active as any).color || (prov as any)?.color || (acc as any)?.color || CHART_COLORS[0];
-      const sorted = [...holdings].sort((a:any,b:any)=> holdingValueGBP(b) - holdingValueGBP(a));
-      return sorted.map((h:any, i) => ({ name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, sorted.length), pct: (holdingValueGBP(h) / total) * 100 }));
+      const base = active.color || prov?.color || acc?.color || CHART_COLORS[0];
+      const sorted = [...holdings].sort((a: Holding, b: Holding)=> holdingValueGBP(b) - holdingValueGBP(a));
+      return sorted.map((h: Holding, i) => ({ name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, sorted.length), pct: (holdingValueGBP(h) / total) * 100 }));
     }
-      const sortedHoldings = [...holdings].sort((a:any,b:any)=> holdingValueGBP(b) - holdingValueGBP(a));
-      return sortedHoldings.map((h:any, i) => {
+      const sortedHoldings = [...holdings].sort((a: Holding, b: Holding)=> holdingValueGBP(b) - holdingValueGBP(a));
+      return sortedHoldings.map((h: Holding, i) => {
       const parent = portfolios.find(p=> p.holdings.some(x=> x.id===h.id));
-      let base: string | null = (parent as any)?.color || null;
-      if (!base && (h as any).providerId) base = (providers.find(pr=> pr.id===(h as any).providerId) as any)?.color ?? null;
-      if (!base && (h as any).accountId) base = (accounts.find(a=> a.id===(h as any).accountId) as any)?.color ?? null;
+      let base: string | null = parent?.color || null;
+      if (!base && h.providerId) base = (providers.find(pr=> pr.id===h.providerId) as Provider | undefined)?.color ?? null;
+      if (!base && h.accountId) base = (accounts.find(a=> a.id===h.accountId) as Account | undefined)?.color ?? null;
       base = base || CHART_COLORS[i % CHART_COLORS.length];
       return { name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, sortedHoldings.length), pct: (holdingValueGBP(h) / total) * 100 };
     });
   }, [active, portfolios, allocMode, accounts, providers, directHoldings]);
 
   const handleCreate = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
-    try { await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"});} catch(e:any){toast({title:"Failed to create portfolio",description:String(e.message||e),variant:"error"}); throw e;}
+    try { await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"});} catch(e: unknown){toast({title:"Failed to create portfolio",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   };
   const handleCreateAccount = async (name: string) => {
-    try { await createAccount(name); await refreshProviders(); } catch(e:any){ toast({title:"Failed",description:String(e.message||e),variant:"error"}); throw e;}
+    try { await createAccount(name); await refreshProviders(); } catch(e: unknown){ toast({title:"Failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   };
   const handleCreateProvider = async (name: string, accountId: string) => {
-    try { await createProvider(name, accountId); toast({title:"Provider created",description:name,variant:"success"});} catch(e:any){toast({title:"Failed to create provider",description:String(e.message||e),variant:"error"}); throw e;}
+    try { await createProvider(name, accountId); toast({title:"Provider created",description:name,variant:"success"});} catch(e: unknown){toast({title:"Failed to create provider",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   };
   const handleRenameAccount = async (id:string,name:string)=>{ await renameAccount(id,name); await refreshPortfolios(); };
   const handleRenameProvider = async (id:string,name:string)=>{ await renameProvider(id,name); await refreshPortfolios(); };
-  const handleRenamePortfolio = async (id:string,patch:any)=>{ if(patch.accountId!==undefined || patch.providerId!==undefined || patch.name!==undefined || patch.type!==undefined){ const body:any={id}; if(patch.name!==undefined) body.name=patch.name; if(patch.type!==undefined) body.type=patch.type; if(patch.accountId!==undefined) body.accountId=patch.accountId; if(patch.providerId!==undefined) body.providerId=patch.providerId; await fetch("/api/portfolios",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(async r=>{ if(!r.ok) throw new Error(await r.text()); }); await refreshPortfolios(); } };
+  const handleRenamePortfolio = async (id:string,patch: { name?: string; type?: string; accountId?: string | null; providerId?: string | null })=>{ if(patch.accountId!==undefined || patch.providerId!==undefined || patch.name!==undefined || patch.type!==undefined){ const body: PortfolioUpdateBody={id}; if(patch.name!==undefined) body.name=patch.name; if(patch.type!==undefined) body.type=patch.type; if(patch.accountId!==undefined) body.accountId=patch.accountId; if(patch.providerId!==undefined) body.providerId=patch.providerId; await fetch("/api/portfolios",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(async r=>{ if(!r.ok) throw new Error(await r.text()); }); await refreshPortfolios(); } };
   const handleRemoveAccount = async (id: string) => {
-    try { await removeAccount(id); await refreshProviders(); await refreshPortfolios(); toast({title:"Account deleted",variant:"success"});} catch(e:any){toast({title:"Delete failed",description:String(e.message||e),variant:"error"});}
+    try { await removeAccount(id); await refreshProviders(); await refreshPortfolios(); toast({title:"Account deleted",variant:"success"});} catch(e: unknown){toast({title:"Delete failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
   };
   const handleRemoveProvider = async (id: string) => {
-    try { await removeProvider(id); await refreshPortfolios(); toast({title:"Provider deleted",variant:"success"});} catch(e:any){toast({title:"Delete failed",description:String(e.message||e),variant:"error"});}
+    try { await removeProvider(id); await refreshPortfolios(); toast({title:"Provider deleted",variant:"success"});} catch(e: unknown){toast({title:"Delete failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
   };
 
   const [q, setQ] = useState("");
@@ -218,7 +226,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const [formErrors, setFormErrors] = useState<Record<string,string>>({});
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteInfo, setQuoteInfo] = useState<string>("");
-  const [symbolResults, setSymbolResults] = useState<any[]>([]);
+  const [symbolResults, setSymbolResults] = useState<SymbolResult[]>([]);
   const [symbolSearching, setSymbolSearching] = useState(false);
   const [showSymbolMenu, setShowSymbolMenu] = useState(false);
 
@@ -239,9 +247,10 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     return e;
   },[form, effectiveIsManual]);
 
+  const prevSymbolRef = useRef<{ showHolding: boolean; editingId: string | null; effectiveIsManual: boolean }>({ showHolding: false, editingId: null, effectiveIsManual: false });
   useEffect(()=>{
     const q = form.symbol.trim();
-    if (!showHolding || q.length <2 || editingId || effectiveIsManual) { setSymbolResults([]); setShowSymbolMenu(false); return; }
+    if (!showHolding || q.length <2 || editingId || effectiveIsManual) { if (prevSymbolRef.current.showHolding && !showHolding) { setSymbolResults([]); setShowSymbolMenu(false); } prevSymbolRef.current = { showHolding, editingId, effectiveIsManual }; return; }
     const t = setTimeout(async ()=>{
       setSymbolSearching(true);
       try {
@@ -256,7 +265,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     return ()=> clearTimeout(t);
   }, [form.symbol, showHolding, editingId, effectiveIsManual]);
 
-  const selectSearchResult = (r: any) => {
+  const selectSearchResult = (r: SymbolResult) => {
     setForm(f=> ({ ...f, symbol: r.symbol?.toUpperCase() ?? f.symbol, name: r.name ?? r.longname ?? f.name, exchange: r.exchange ?? f.exchange, currentPrice: r.price != null ? String(r.price) : f.currentPrice, currency: r.currency ?? r.currency ?? f.currency }));
     setShowSymbolMenu(false);
     setSymbolResults([]);
@@ -265,7 +274,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   };
 
   const openAdd = () => { const manualDefault = active?.type === "manual"; setIsManual(manualDefault); setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
-  const openEdit = (h: any) => { const manualDetected = active?.type === "manual" || !/^[A-Z0-9.\-]{1,12}$/i.test(h.symbol); setIsManual(manualDetected); setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: (h as any).exchange ?? "", currency: (h as any).currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openEdit = (h: Holding) => { const manualDetected = active?.type === "manual" || !/^[A-Z0-9.\-]{1,12}$/i.test(h.symbol); setIsManual(manualDetected); setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: h.exchange ?? "", currency: h.currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
 
   const fetchQuote = async (sym:string)=>{
     if(!sym.trim() || sym.length<1) return;
@@ -288,22 +297,22 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     if(dup){ setFormErrors({symbol:"Already in this portfolio"}); return; }
     setSaving(true);
     try {
-      await upsertHolding(activeId, { id: editingId ?? undefined, symbol: form.symbol.toUpperCase().trim(), name: form.name?.trim() || form.symbol.toUpperCase().trim(), shares: Number(form.shares), avgPrice: Number(form.avgPrice), currentPrice: Number(form.currentPrice || form.avgPrice), currency: (form as any).currency || "GBP", purchaseDate: form.purchaseDate, exchange: form.exchange || undefined } as any);
+      await upsertHolding(activeId, { id: editingId ?? undefined, symbol: form.symbol.toUpperCase().trim(), name: form.name?.trim() || form.symbol.toUpperCase().trim(), shares: Number(form.shares), avgPrice: Number(form.avgPrice), currentPrice: Number(form.currentPrice || form.avgPrice), currency: form.currency || "GBP", purchaseDate: form.purchaseDate, exchange: form.exchange || undefined });
       setShowHolding(false); toast({title: editingId?"Holding updated":"Holding added",description:form.symbol.toUpperCase(),variant:"success"});
-    } catch(e:any){ toast({title:"Save failed",description:e.message||String(e),variant:"error"}); setFormErrors({symbol: e.message}); }
+    } catch(e: unknown){ toast({title:"Save failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); setFormErrors({symbol: e instanceof Error ? e.message : String(e)}); }
     finally{ setSaving(false); }
   };
 
-  const activeValue = active ? active.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0) : totalValue;
-  const activeCost = active ? active.holdings.reduce((s, h:any) => s + holdingCostGBP(h), 0) : totalCost;
+  const activeValue = active ? active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0) : totalValue;
+  const activeCost = active ? active.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0) : totalCost;
   const activeGain = activeValue - activeCost;
   const activeGainPct = activeCost ? (activeGain / activeCost) * 100 : 0;
 
   const filteredHoldings = useMemo(() => {
     if (!active) return [];
     let hs = active.holdings.filter((h) => !q || h.symbol.toLowerCase().includes(q.toLowerCase()) || h.name.toLowerCase().includes(q.toLowerCase()));
-    if (sort === "value") hs = [...hs].sort((a:any, b:any) => holdingValueGBP(b) - holdingValueGBP(a));
-    else if (sort==="gain") hs = [...hs].sort((a:any, b:any) => (holdingValueGBP(b) - holdingCostGBP(b)) - (holdingValueGBP(a) - holdingCostGBP(a)));
+    if (sort === "value") hs = [...hs].sort((a: Holding, b: Holding) => holdingValueGBP(b) - holdingValueGBP(a));
+    else if (sort==="gain") hs = [...hs].sort((a: Holding, b: Holding) => (holdingValueGBP(b) - holdingCostGBP(b)) - (holdingValueGBP(a) - holdingCostGBP(a)));
     else hs = [...hs].sort((a,b)=> a.symbol.localeCompare(b.symbol));
     return hs;
   }, [active, q, sort]);
@@ -318,7 +327,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
   const [editPortfolioDialog, setEditPortfolioDialog] = useState<null | typeof active>(null);
   const [editPF, setEditPF] = useState({ name:"", type:"live" as "live"|"manual", accountId:"__none", providerId:"__none" });
 
-  const openEditPortfolio = (p: any)=>{ setEditPortfolioDialog(p); setEditPF({name:p.name,type:p.type,accountId:p.accountId??"__none", providerId: (p as any).providerId ?? "__none"}); };
+  const openEditPortfolio = (p: Portfolio)=>{ setEditPortfolioDialog(p); setEditPF({name:p.name,type:p.type,accountId:p.accountId??"__none", providerId: p.providerId ?? "__none"}); };
 
   const saveEditPortfolio = async()=>{
     if(!editPortfolioDialog) return;
@@ -327,7 +336,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     try{
       await handleRenamePortfolio(editPortfolioDialog.id,{name:editPF.name.trim(),type:editPF.type,accountId:editPF.accountId==="__none"?null:editPF.accountId, providerId: editPF.providerId==="__none"?null:editPF.providerId});
       setEditPortfolioDialog(null); toast({title:"Portfolio updated",variant:"success"});
-    } catch(e:any){ toast({title:"Update failed",description:String(e.message||e),variant:"error"});}
+    } catch(e: unknown){ toast({title:"Update failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
     finally{setSaving(false);}
   };
 
@@ -341,7 +350,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
     if(portfolios.length===0) return;
     setRefreshing(true);
     try{
-      const symbols = portfolios.flatMap(p=>p.holdings.filter((h:any)=> /^[A-Z0-9.\-]{1,12}$/i.test(h.symbol)).map(h=>({symbol:h.symbol,exchange:h.exchange})));
+      const symbols = portfolios.flatMap(p=>p.holdings.filter((h: Holding)=> /^[A-Z0-9.\-]{1,12}$/i.test(h.symbol)).map(h=>({symbol:h.symbol,exchange:h.exchange})));
       if(!symbols.length) { toast({title:"No holdings to refresh",variant:"info"}); return; }
       const r = await fetch("/api/quote",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols})});
       const quotes = await r.json();
@@ -351,25 +360,25 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
       if(!patch.ok){ toast({title:j.message||j.error||"Refresh limited",description:j.nextAllowedAt?`Next allowed ${new Date(j.nextAllowedAt*1000).toLocaleTimeString()}`:undefined,variant:"error"}); return; }
       await refreshPortfolios();
       toast({title:`Updated ${j.updated} holdings`,description:j.skipped?`${j.skipped} skipped (24h limit)`:undefined,variant:"success"});
-    } catch(e:any){ toast({title:"Refresh failed",description:String(e.message||e),variant:"error"});}
+    } catch(e: unknown){ toast({title:"Refresh failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
     finally{setRefreshing(false);}
   };
 
   const exportCsv = ()=>{
     if(!active) return;
     const rows = [["Symbol","Name","Shares","AvgPrice","CurrentPrice","Value","Gain","PurchaseDate"]];
-    for(const h of active.holdings as any[]){ const v=holdingValueGBP(h), c=holdingCostGBP(h); rows.push([h.symbol,h.name,String(h.shares),String(h.avgPrice),String(h.currentPrice),String(v),String(v-c),h.purchaseDate]); }
+    for(const h of active.holdings){ const v=holdingValueGBP(h), c=holdingCostGBP(h); rows.push([h.symbol,h.name,String(h.shares),String(h.avgPrice),String(h.currentPrice),String(v),String(v-c),h.purchaseDate]); }
     const csv = rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
     const blob = new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=`${active.name}-holdings.csv`; a.click(); URL.revokeObjectURL(url);
   };
 
-  const handleWizardCreate = async (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: any) => {
+  const handleWizardCreate = async (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => {
     await handleCreate(name, type, accountId, providerId);
     if (extra?.symbol) {
       try {
         const res = await fetch("/api/portfolios");
         const list = await res.json();
-        const created = list.find((p: any) => p.name === name);
+        const created = list.find((p: Portfolio) => p.name === name);
         if (created?.id) {
           let price = 100;
           try{ const q = await fetch(`/api/quote?symbol=${encodeURIComponent(extra.symbol)}`).then(r=>r.json()); const hit=q[extra.symbol.toUpperCase()]; if(hit?.price) price=hit.price; } catch{}
@@ -397,11 +406,19 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={setActiveId} onCreate={handleCreate} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onCreateDirectHolding={createDirectHolding} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio} onDeleteAccount={setConfirmAccount as any} onDeleteProvider={setConfirmProvider as any} onDeletePortfolio={setConfirmPortfolio as any} />
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={setActiveId} onCreate={handleCreate} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onCreateDirectHolding={createDirectHolding} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onDeleteAccount={setConfirmAccount as any}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onDeleteProvider={setConfirmProvider as any}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onDeletePortfolio={setConfirmPortfolio as any} />
       <main className="flex-1 min-w-0 pt-12 md:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
           {showWizard ? (
-            <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId} onCreate={handleWizardCreate as any} inline />
+            <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onCreate={handleWizardCreate as any} inline />
           ) : active ? (
             <>
               <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: (activeBaseColor ?? "#60a5fa") + "40", background: `linear-gradient(to bottom right, ${(activeBaseColor ?? "#60a5fa")}2A, ${(activeBaseColor ?? "#60a5fa")}12)` }}>
@@ -412,7 +429,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                       <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">{active.name}</h1>
                       <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-300 capitalize">{active.type}</Badge>
                       {active.accountId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{accounts.find((a) => a.id === active.accountId)?.name ?? ""}</Badge>}
-                      {(active as any).providerId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-500">{providers.find((p) => p.id === (active as any).providerId)?.name ?? ""}</Badge>}
+                      {active.providerId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-500">{providers.find((p) => p.id === active.providerId)?.name ?? ""}</Badge>}
                     </div>
                     <p className="text-sm mt-2 text-zinc-500">{active.holdings.length} holdings • {active.type} • updated {fmtRelative(Math.max(...active.holdings.map((h) => h.lastRefreshedAt ?? 0), 0) || null)}</p>
                   </div>
@@ -420,7 +437,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                     <Button variant="outline" className="bg-white/5 border-white/10" onClick={() => setActiveId(null)}>← Overview</Button>
                     <Button variant="outline" className="bg-white/5 border-white/10" onClick={()=>openEditPortfolio(active)}><Pencil className="w-4 h-4"/> Edit</Button>
                     <Button onClick={openAdd}><Plus className="w-4 h-4" /> Add holding</Button>
-                    <Button variant="ghost" className="text-zinc-400 hover:text-red-400 hover:bg-red-500/10 border border-white/5" onClick={() => { setConfirmPortfolio(active as any); setConfirmPortfolioInput(""); }}><Trash2 className="w-4 h-4" /> Delete</Button>
+                    <Button variant="ghost" className="text-zinc-400 hover:text-red-400 hover:bg-red-500/10 border border-white/5" onClick={() => { setConfirmPortfolio(active); setConfirmPortfolioInput(""); }}><Trash2 className="w-4 h-4" /> Delete</Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
@@ -467,9 +484,9 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                           <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
                           <YAxis tickFormatter={(v) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
-                          <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v: any) => fmtGBP(Number(v))} />
-                          {(() => { const prov = providers.find(pr=> pr.id===(active as any).providerId); const acc = accounts.find(a=> a.id===active.accountId); const col = (active as any).color || (prov as any)?.color || (acc as any)?.color || "#60a5fa"; return <Area type="monotone" dataKey="total" name={active.name} stroke={col} fill={col} fillOpacity={0.14} strokeWidth={2.5} dot={false} />; })()}
-                          {chartDots.map((d: any, i: number) => (
+                          <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
+                          {(() => { const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); const col = active.color || prov?.color || acc?.color || "#60a5fa"; return <Area type="monotone" dataKey="total" name={active.name} stroke={col} fill={col} fillOpacity={0.14} strokeWidth={2.5} dot={false} />; })()}
+                          {chartDots.map((d: ChartDot, i: number) => (
                             <ReferenceDot key={i} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
                           ))}
                         </AreaChart>
@@ -495,7 +512,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                               <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} stroke="none">
                                 {allocation.map((e, i) => <Cell key={i} fill={e.color} />)}
                               </Pie>
-                              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v:any)=>fmtGBP(Number(v))} />
+                              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v)=>fmtGBP(Number(v))} />
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
@@ -522,7 +539,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                       <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search symbol or name" className="w-44 pl-8 h-8 bg-white/5 border-white/10 text-xs" />
                       {q && <button onClick={()=>setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"><X className="w-3 h-3"/></button>}
                     </div>
-                    <Select value={sort} onValueChange={(v) => setSort(v as any)}>
+                    <Select value={sort} onValueChange={(v) => setSort(v as "value" | "gain" | "symbol")}>
                       <SelectTrigger className="w-28 h-8 bg-white/5 border-white/10 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent><SelectItem value="value">Value</SelectItem><SelectItem value="gain">Gain</SelectItem><SelectItem value="symbol">Symbol</SelectItem></SelectContent>
                     </Select>
@@ -552,17 +569,17 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredHoldings.map((h:any) => {
+                        {filteredHoldings.map((h: Holding) => {
                           const val = holdingValueGBP(h); const cost = holdingCostGBP(h); const pct = cost ? ((val - cost) / cost) * 100 : 0;
                           return (
                             <TableRow key={h.id} className="border-white/5 hover:bg-white/[0.04]">
                               <TableCell>
                                 <div className="flex items-center gap-3">
                                   <div className="w-9 h-9 rounded-xl grid place-items-center font-bold text-xs bg-white/10 border border-white/10 text-white shrink-0">{h.symbol.slice(0, 3)}</div>
-                                  <div className="min-w-0"><div className="font-medium text-sm text-white truncate">{h.symbol}</div><div className="text-xs text-zinc-500 truncate max-w-[160px]">{h.name}</div><div className="text-xs text-zinc-600 md:hidden">{h.shares} × {fmtPrice((h as any).avgPrice, (h as any).currency)}</div></div>
+                                  <div className="min-w-0"><div className="font-medium text-sm text-white truncate">{h.symbol}</div><div className="text-xs text-zinc-500 truncate max-w-[160px]">{h.name}</div><div className="text-xs text-zinc-600 md:hidden">{h.shares} × {fmtPrice(h.avgPrice, h.currency)}</div></div>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-sm text-zinc-400 hidden md:table-cell">{h.shares} × {fmtPrice(h.avgPrice, (h as any).currency)}</TableCell>
+                              <TableCell className="text-sm text-zinc-400 hidden md:table-cell">{h.shares} × {fmtPrice(h.avgPrice, h.currency)}</TableCell>
                               <TableCell className="text-right font-semibold text-white tabular-nums">{fmtGBP(val)}</TableCell>
                               <TableCell className="text-right"><Badge variant="outline" className="border-white/10" style={{ color: pct >= 0 ? "#34d399" : "#f87171" }}>{fmtPct(pct)}</Badge></TableCell>
                               <TableCell className="text-right text-xs text-zinc-500 tabular-nums hidden sm:table-cell" title={h.lastRefreshedAt ? new Date(h.lastRefreshedAt * 1000).toLocaleString() : "Never refreshed (cron runs daily 06:00 UTC)"}>{fmtRelative(h.lastRefreshedAt)}</TableCell>
@@ -685,16 +702,16 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                           <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
                           <YAxis tickFormatter={(v) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
-                          <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v: any) => fmtGBP(Number(v))} />
+                          <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
                           <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} />
-                          {Object.entries(byPortfolio).map(([pid, info]: any, i) => {
+                          {Object.entries(byPortfolio).map(([pid, info]: [string, { name: string; data: Snapshot[] }], i) => {
                             const pf = portfolios.find(p=>p.id===pid);
-                            const prov = pf ? providers.find(pr=> pr.id===(pf as any).providerId) : null;
+                            const prov = pf ? providers.find(pr=> pr.id===pf.providerId) : null;
                             const acc = pf ? accounts.find(a=> a.id===pf.accountId) : null;
-                            const col = (pf as any)?.color || (prov as any)?.color || (acc as any)?.color || PORTFOLIO_COLORS[(info as any).name] || CHART_COLORS[i % CHART_COLORS.length];
-                            return <Area key={pid} type="monotone" dataKey={(info as any).name} stroke={col} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />;
+                            const col = pf?.color || prov?.color || acc?.color || PORTFOLIO_COLORS[info.name] || CHART_COLORS[i % CHART_COLORS.length];
+                            return <Area key={pid} type="monotone" dataKey={info.name} stroke={col} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />;
                           })}
-                          {chartDots.map((d: any, i: number) => (
+                          {chartDots.map((d: ChartDot, i: number) => (
                             <ReferenceDot key={i} x={d.x} y={d.y} r={4} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1} />
                           ))}
                         </AreaChart>
@@ -703,11 +720,11 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                     {chartDots.length > 0 && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span></div>}
                     <div className="flex flex-wrap gap-3 mt-3 text-xs">
                       <span className="flex items-center gap-1.5 text-zinc-400"><span className="w-3 h-0.5 bg-white" /> Total</span>
-                      {Object.entries(byPortfolio).map(([pid, info]: any, i) => {
+                      {Object.entries(byPortfolio).map(([pid, info]: [string, { name: string; data: Snapshot[] }], i) => {
                         const pf = portfolios.find(p=>p.id===pid);
-                        const prov = pf ? providers.find(pr=> pr.id===(pf as any).providerId) : null;
+                        const prov = pf ? providers.find(pr=> pr.id===pf.providerId) : null;
                         const acc = pf ? accounts.find(a=> a.id===pf.accountId) : null;
-                        const col = (pf as any)?.color || (prov as any)?.color || (acc as any)?.color || CHART_COLORS[i % CHART_COLORS.length];
+                        const col = pf?.color || prov?.color || acc?.color || CHART_COLORS[i % CHART_COLORS.length];
                         return <span key={info.name} className="flex items-center gap-1.5 text-zinc-500"><span className="w-3 h-0.5" style={{ background: col }} /> {info.name}</span>;
                       })}
                     </div>
@@ -730,7 +747,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                               <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} stroke="none">
                                 {allocation.map((e, i) => <Cell key={i} fill={e.color} />)}
                               </Pie>
-                              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v:any)=>fmtGBP(Number(v))} />
+                              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v)=>fmtGBP(Number(v))} />
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
@@ -773,14 +790,14 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                   <Button variant="ghost" size="sm" className="text-zinc-400" onClick={()=>openWizard(null)}><Plus className="w-4 h-4"/> Portfolio</Button>
                 </CardHeader>
                 <CardContent className="p-0">
-                  {portfolios.length === 0 && accounts.length === 0 ? <div className="p-10 text-center"><div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 grid place-items-center mx-auto mb-3"><Wallet className="w-6 h-6 text-zinc-500"/></div><p className="text-sm text-zinc-400">No accounts or portfolios yet.</p><p className="text-xs text-zinc-600 mt-1">Create an account → provider → portfolio.</p><div className="flex justify-center gap-2 mt-4"><Button onClick={()=> (document.querySelector("[aria-label='New account']") as any)?.click()}><Plus className="w-4 h-4"/> New account</Button><Button variant="outline" className="bg-white/5 border-white/10" onClick={()=>openWizard(null)}>New portfolio</Button></div></div> : (
+                  {portfolios.length === 0 && accounts.length === 0 ? <div className="p-10 text-center"><div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 grid place-items-center mx-auto mb-3"><Wallet className="w-6 h-6 text-zinc-500"/></div><p className="text-sm text-zinc-400">No accounts or portfolios yet.</p><p className="text-xs text-zinc-600 mt-1">Create an account → provider → portfolio.</p><div className="flex justify-center gap-2 mt-4"><Button onClick={()=> (document.querySelector("[aria-label='New account']") as HTMLElement | null)?.click()}><Plus className="w-4 h-4"/> New account</Button><Button variant="outline" className="bg-white/5 border-white/10" onClick={()=>openWizard(null)}>New portfolio</Button></div></div> : (
                     <div className="divide-y divide-white/5">
                       {accounts.map((acc) => {
                         const provs = providers.filter(pr=> pr.accountId===acc.id);
-                        const direct = portfolios.filter(p=> p.accountId===acc.id && !(p as any).providerId);
-                        const viaProv = portfolios.filter(p=> provs.some(pr=> pr.id===(p as any).providerId));
+                        const direct = portfolios.filter(p=> p.accountId===acc.id && !p.providerId);
+                        const viaProv = portfolios.filter(p=> provs.some(pr=> pr.id===p.providerId));
                         const allPs = [...direct, ...viaProv];
-                        const accVal = allPs.reduce((s, p) => s + p.holdings.reduce((a, h:any) => a + holdingValueGBP(h), 0), 0);
+                        const accVal = allPs.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0), 0);
                         return (
                           <div key={acc.id} className="p-5">
                             <div className="flex items-center justify-between mb-3">
@@ -794,8 +811,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                             {provs.length===0 && direct.length===0 ? <div className="p-4 rounded-xl border border-dashed border-white/10 bg-white/[0.02] text-center"><p className="text-xs text-zinc-500">No providers or portfolios. Add a provider first.</p><div className="flex justify-center gap-2 mt-2"><Button variant="ghost" size="sm" className="text-xs" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3 h-3"/> Provider</Button><Button variant="ghost" size="sm" className="text-xs" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3 h-3"/> Portfolio</Button></div></div> : (
                               <div className="space-y-4">
                                 {provs.map(pr=>{
-                                  const ps = portfolios.filter(p=> (p as any).providerId===pr.id);
-                                  const provVal = ps.reduce((s,p)=>s+p.holdings.reduce((a,h:any)=>a+holdingValueGBP(h),0),0);
+                                  const ps = portfolios.filter(p=> p.providerId===pr.id);
+                                  const provVal = ps.reduce((s,p)=>s+p.holdings.reduce((a,h: Holding)=>a+holdingValueGBP(h),0),0);
                                   return (
                                     <div key={pr.id} className="rounded-xl bg-black/20 border border-white/5 p-3">
                                       <div className="flex items-center justify-between mb-2">
@@ -809,8 +826,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                       {ps.length===0 ? <p className="text-xs text-zinc-600 px-1">No portfolios in this provider.</p> : (
                                         <div className="grid md:grid-cols-2 gap-3">
                                           {ps.map((p) => {
-                                            const v = p.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
-                                            const c = p.holdings.reduce((s, h:any) => s + holdingCostGBP(h), 0);
+                                            const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
+                                            const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
                                             const pct = c ? ((v - c) / c) * 100 : 0;
                                             return (
                                               <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
@@ -829,11 +846,11 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                           })}
                                         </div>
                                       )}
-                                      {(directHoldings.filter((h:any)=> h.providerId===pr.id).length>0) && (
+                                      {(directHoldings.filter((h: Holding)=> h.providerId===pr.id).length>0) && (
                                         <div className="mt-3 pt-3 border-t border-white/5">
                                           <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks</div>
                                           <div className="grid md:grid-cols-2 gap-2">
-                                            {directHoldings.filter((h:any)=> h.providerId===pr.id).map((h:any)=>(
+                                            {directHoldings.filter((h: Holding)=> h.providerId===pr.id).map((h: Holding)=>(
                                               <div key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
                                                 <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
                                                 <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
@@ -851,8 +868,8 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                     <div className="text-[10px] tracking-widest uppercase text-zinc-600 mb-2">No provider — direct</div>
                                     <div className="grid md:grid-cols-2 gap-3">
                                       {direct.map((p) => {
-                                        const v = p.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
-                                        const c = p.holdings.reduce((s, h:any) => s + holdingCostGBP(h), 0);
+                                        const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
+                                        const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
                                         const pct = c ? ((v - c) / c) * 100 : 0;
                                         return (
                                           <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
@@ -872,11 +889,11 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                                     </div>
                                   </div>
                                 )}
-                                {(directHoldings.filter((h:any)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0) && (
+                                {(directHoldings.filter((h: Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0) && (
                                   <div className="mt-3 pt-3 border-t border-white/5">
                                     <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks — {acc.name}</div>
                                     <div className="grid md:grid-cols-2 gap-2">
-                                      {directHoldings.filter((h:any)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h:any)=>(
+                                      {directHoldings.filter((h: Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h: Holding)=>(
                                         <div key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
                                           <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
                                           <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
@@ -891,16 +908,16 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                           </div>
                         );
                       })}
-                      {portfolios.filter((p) => !p.accountId && !(p as any).providerId).length > 0 && (
+                      {portfolios.filter((p) => !p.accountId && !p.providerId).length > 0 && (
                         <div className="p-5">
                           <div className="flex items-center justify-between mb-3">
                             <span className="font-semibold text-zinc-400">Unassigned</span>
-                            <span className="text-sm text-zinc-500">{portfolios.filter((p) => !p.accountId && !(p as any).providerId).length} portfolios</span>
+                            <span className="text-sm text-zinc-500">{portfolios.filter((p) => !p.accountId && !p.providerId).length} portfolios</span>
                           </div>
                           <div className="grid md:grid-cols-2 gap-3">
-                            {portfolios.filter((p) => !p.accountId && !(p as any).providerId).map((p) => {
-                              const v = p.holdings.reduce((s, h:any) => s + holdingValueGBP(h), 0);
-                              const c = p.holdings.reduce((s, h:any) => s + holdingCostGBP(h), 0);
+                            {portfolios.filter((p) => !p.accountId && !p.providerId).map((p) => {
+                              const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
+                              const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
                               const pct = c ? ((v - c) / c) * 100 : 0;
                               return (
                                 <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
@@ -960,7 +977,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                             <Input placeholder="AAPL or Apple" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} onFocus={()=> symbolResults.length && setShowSymbolMenu(true)} onBlur={()=> setTimeout(()=> setShowSymbolMenu(false), 180)} className={formErrors.symbol?"border-red-500/50":""} autoComplete="off" />
                             {showSymbolMenu && symbolResults.length>0 && (
                               <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl overflow-hidden max-h-64 overflow-auto">
-                                {symbolResults.map((r:any)=> (
+                                {symbolResults.map((r: SymbolResult)=> (
                                   <button key={r.symbol+r.exchange} type="button" onMouseDown={(e)=>{e.preventDefault(); selectSearchResult(r);}} className="w-full text-left px-3 py-2.5 hover:bg-white/5 flex items-center justify-between gap-2 border-b border-white/[0.04] last:border-0">
                                     <div className="min-w-0">
                                       <div className="text-sm font-medium text-white flex items-center gap-2"><span>{r.symbol}</span><Badge variant="outline" className="border-white/10 text-[10px] text-zinc-500">{r.exchange || r.exchDisp || "—"}</Badge>{r.price!=null && <span className="text-xs text-emerald-400">£{Number(r.price).toFixed(2)}</span>}</div>
@@ -1010,7 +1027,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
                   <div className="space-y-1.5"><Label>Current price {effectiveIsManual ? "" : <span className="text-zinc-500 font-normal">(live)</span>}</Label>{effectiveIsManual ? <Input type="number" placeholder="1.00" value={form.currentPrice} onChange={(e)=> setForm({...form, currentPrice:e.target.value})} /> : <div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">{form.currentPrice ? `£${Number(form.currentPrice).toFixed(2)}` : "—"}<span className="ml-auto text-xs text-zinc-600">read-only</span></div>}<p className="text-xs text-zinc-600">{effectiveIsManual ? "Keep equal to avg for cash" : "Auto-filled from Yahoo; avg cost is what you paid"}</p></div>
                   <div className="space-y-1.5"><Label>Purchase date</Label><Input type="date" value={form.purchaseDate} max={new Date().toISOString().split("T")[0]} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} className={formErrors.purchaseDate?"border-red-500/50":""} />{formErrors.purchaseDate && <p className="text-xs text-red-400">{formErrors.purchaseDate}</p>}</div>
                 </div>
-                {active && <div className="flex gap-2 p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-zinc-400"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5"/> {effectiveIsManual ? "Manual holdings are excluded from price refresh and count toward portfolio value and charts." : "Live prices refresh daily at 06:00 UTC. Use “Refresh prices” on dashboard for manual update (24h limit)."}</div>}
+                {active && <div className="flex gap-2 p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-zinc-400"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5"/> {effectiveIsManual ? "Manual holdings are excluded from price refresh and count toward portfolio value and charts." : "Live prices refresh daily at 06:00 UTC. Use 'Refresh prices' on dashboard for manual update (24h limit)."}</div>}
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <Button variant="ghost" onClick={() => setShowHolding(false)} disabled={saving}>Cancel</Button>
@@ -1025,7 +1042,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
               <div className="space-y-4">
                 <div className="space-y-2"><Label>Name</Label><Input value={editPF.name} onChange={e=>setEditPF({...editPF,name:e.target.value})} /></div>
                 <div className="space-y-2"><Label>Type</Label>
-                  <Select value={editPF.type} onValueChange={v=>setEditPF({...editPF,type:v as any})}>
+                  <Select value={editPF.type} onValueChange={v=>setEditPF({...editPF,type:v as "live"|"manual"})}>
                     <SelectTrigger><SelectValue/></SelectTrigger>
                     <SelectContent><SelectItem value="live">Live</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
                   </Select>
@@ -1086,7 +1103,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
           <Dialog open={!!confirmProvider} onOpenChange={(o) => !o && setConfirmProvider(null)}>
             <DialogContent className="bg-zinc-900 border-white/10 text-white">
               <DialogHeader><DialogTitle>Delete provider</DialogTitle></DialogHeader>
-              <p className="text-sm text-zinc-400">Delete provider <span className="text-white font-medium">{confirmProvider?.name}</span> and its {portfolios.filter(p=> (p as any).providerId===confirmProvider?.id).length} portfolios? Portfolios will not be deleted, they'll move to “No provider”.</p>
+              <p className="text-sm text-zinc-400">Delete provider <span className="text-white font-medium">{confirmProvider?.name}</span> and its {portfolios.filter(p=> p.providerId===confirmProvider?.id).length} portfolios? Portfolios will not be deleted, they&apos;ll move to &quot;No provider&quot;.</p>
               <div className="space-y-2">
                 <Label>Type <span className="text-white">{confirmProvider?.name}</span> to confirm</Label>
                 <Input value={confirmProviderInput} onChange={(e) => setConfirmProviderInput(e.target.value)} placeholder={confirmProvider?.name} autoFocus />
@@ -1109,7 +1126,7 @@ export function Dashboard({ user, isDemo }: { user?: any; isDemo?: boolean }) {
             </DialogContent>
           </Dialog>
 
-          <TradeDialog open={showTrade} onOpenChange={setShowTrade} holding={tradeHolding} portfolioId={activeId} type={tradeType} onSubmit={handleTrade} />
+          <TradeDialog open={showTrade} onOpenChange={setShowTrade} holding={tradeHolding} type={tradeType} onSubmit={handleTrade} />
         </div>
       </main>
     </div>
