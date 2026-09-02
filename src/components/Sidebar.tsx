@@ -1,11 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding } from "@/lib/store";
-import { LayoutDashboard, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, GripVertical } from "lucide-react";
+import { LayoutDashboard, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
 import { useState, useMemo } from "react";
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { usePortfolioOrder } from "@/lib/usePortfolioOrder";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -84,42 +80,30 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   const [q, setQ] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const { reorder, applyOrder } = usePortfolioOrder();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  function SortablePortfolioItem({ id, children }: { id: string; children: React.ReactNode }) {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
-    return (
-      <div ref={setNodeRef} style={style} {...attributes}>
-        <div className="flex items-center">
-          <button className="cursor-grab active:cursor-grabbing touch-none p-0.5 -ml-1 text-zinc-600 hover:text-zinc-400 shrink-0" {...listeners}>
-            <GripVertical className="w-3 h-3" />
-          </button>
-          <div className="flex-1 min-w-0">{children}</div>
-        </div>
-      </div>
-    );
-  }
+  const sortByOrder = <T extends { sortOrder?: number | null }>(list: T[]): T[] => [...list].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
 
-  const unassigned = useMemo(()=> portfolios.filter(p=> !p.accountId && !p.providerId), [portfolios]);
-  const filteredAccounts = useMemo(()=> accounts.filter(a=> !q || a.name.toLowerCase().includes(q.toLowerCase())), [accounts,q]);
-  const filteredPortfolios = (list: Portfolio[]) => list.filter(p=> !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.holdings.some(h=>h.symbol.toLowerCase().includes(q.toLowerCase())));
-  const filteredProviders = (list: Provider[]) => list.filter(pr=> !q || pr.name.toLowerCase().includes(q.toLowerCase()));
+  const unassigned = useMemo(()=> sortByOrder(portfolios.filter(p=> !p.accountId && !p.providerId)), [portfolios]);
+  const filteredAccounts = useMemo(()=> sortByOrder(accounts.filter(a=> !q || a.name.toLowerCase().includes(q.toLowerCase()))), [accounts,q]);
+  const filteredPortfolios = (list: Portfolio[]) => sortByOrder(list.filter(p=> !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.holdings.some(h=>h.symbol.toLowerCase().includes(q.toLowerCase()))));
+  const filteredProviders = (list: Provider[]) => sortByOrder(list.filter(pr=> !q || pr.name.toLowerCase().includes(q.toLowerCase())));
 
   const providersByAccount = useMemo(()=>{
     const m = new Map<string, Provider[]>();
     for(const pr of providers){ const arr=m.get(pr.accountId)??[]; arr.push(pr); m.set(pr.accountId, arr); }
+    for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
     return m;
   },[providers]);
   const portfoliosByProvider = useMemo(()=>{
     const m = new Map<string, Portfolio[]>();
     for(const p of portfolios){ if(p.providerId){ const arr=m.get(p.providerId)??[]; arr.push(p); m.set(p.providerId, arr); } }
+    for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
     return m;
   },[portfolios]);
   const directByAccount = useMemo(()=>{
     const m = new Map<string, Portfolio[]>();
     for(const p of portfolios){ if(p.accountId && !p.providerId){ const arr=m.get(p.accountId)??[]; arr.push(p); m.set(p.accountId, arr); } }
+    for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
     return m;
   },[portfolios]);
 
@@ -284,7 +268,6 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                       {provs.length===0 && direct.length===0 && <div className="p-4 rounded-xl border border-dashed border-white/10 bg-black/20 text-center"><p className="text-sm text-zinc-400">No providers yet</p><p className="text-xs text-zinc-600 mt-1">Add a provider like Vanguard or Trading 212</p><div className="flex gap-2 mt-3"><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>{setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true);}}><Plus className="w-3.5 h-3.5"/> Provider</Button><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3.5 h-3.5"/> Portfolio</Button></div></div>}
                       {provs.map((pr, pi)=>{
                         const ps = filteredPortfolios(portfoliosByProvider.get(pr.id) ?? []);
-                        const sortedPs = applyOrder(`provider:${pr.id}`, ps);
                         const isProvOpen = expandedProv[pr.id] ?? true;
                         const provTotal = providerTotals(pr.id);
                         const provColor = pr.color || portfolioTint(acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, pi, provs.length);
@@ -310,37 +293,31 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                             {isProvOpen && (
                               <div className="px-1 pb-1 space-y-0.5">
                                 {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
-                                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => { if (!over || active.id === over.id) return; const oldIdx = sortedPs.findIndex(x => x.id === active.id); const newIdx = sortedPs.findIndex(x => x.id === over.id); if (oldIdx !== -1 && newIdx !== -1) reorder(`provider:${pr.id}`, oldIdx, newIdx); }}>
-                                  <SortableContext items={sortedPs.map(x => x.id)} strategy={verticalListSortingStrategy}>
-                                    {sortedPs.map((p, pIdx)=>{
-                                      const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
-                                      const active=activeId===p.id;
-                                      const baseColor = p.color || portfolioTint(provColor, pIdx, sortedPs.length);
-                                      const selectedBg = baseColor;
-                                      const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
-                                      const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
-                                      return (
-                                        <SortablePortfolioItem key={p.id} id={p.id}>
-                                          <div className={`group flex items-center gap-1 p-1 rounded-md border ${active?"border-2 shadow-md":"bg-white/[0.04] text-zinc-300 border-white/[0.04] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
-                                            <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-1.5 h-6 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
-                                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
-                                              <Folder className="w-3 h-3 shrink-0" style={{ color: active ? activeMuted : undefined }} />
-                                              <span className="truncate text-[11px] font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
-                                            </Button>
-                                            <span className="text-[11px] tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
-                                            <DropdownMenu>
-                                              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5"><MoreVertical className="w-3 h-3"/></Button>} />
-                                              <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                                                <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
-                                                <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
-                                              </DropdownMenuContent>
-                                            </DropdownMenu>
-                                          </div>
-                                        </SortablePortfolioItem>
-                                      );
-                                    })}
-                                  </SortableContext>
-                                </DndContext>
+                                {ps.map((p, pIdx)=>{
+                                  const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
+                                  const active=activeId===p.id;
+                                  const baseColor = p.color || portfolioTint(provColor, pIdx, ps.length);
+                                  const selectedBg = baseColor;
+                                  const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
+                                  const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
+                                  return (
+                                    <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-md border ${active?"border-2 shadow-md":"bg-white/[0.04] text-zinc-300 border-white/[0.04] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                                      <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-1.5 h-6 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
+                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
+                                        <Folder className="w-3 h-3 shrink-0" style={{ color: active ? activeMuted : undefined }} />
+                                        <span className="truncate text-[11px] font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
+                                      </Button>
+                                      <span className="text-[11px] tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5"><MoreVertical className="w-3 h-3"/></Button>} />
+                                        <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
+                                          <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
+                                          <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  );
+                                })}
                                 {(holdings ?? []).filter((h:Holding)=> h.providerId===pr.id && !h.portfolioId).length>0 && (
                                   <div className="mt-2 pt-2 border-t border-white/5">
                                     <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1 mb-1">Direct stocks</div>
@@ -360,46 +337,37 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                           </div>
                         );
                       })}
-                      {direct.length>0 && (() => {
-                        const sortedDirect = applyOrder(`account:${acc.id}`, direct);
-                        return (
+                      {direct.length>0 && (
                         <div className="space-y-1">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct portfolios</div>
-                          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => { if (!over || active.id === over.id) return; const oldIdx = sortedDirect.findIndex(x => x.id === active.id); const newIdx = sortedDirect.findIndex(x => x.id === over.id); if (oldIdx !== -1 && newIdx !== -1) reorder(`account:${acc.id}`, oldIdx, newIdx); }}>
-                            <SortableContext items={sortedDirect.map(x => x.id)} strategy={verticalListSortingStrategy}>
-                              {sortedDirect.map((p, di)=>{
-                                const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
-                                const active=activeId===p.id;
-                                const baseColor = p.color || portfolioTint(acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, sortedDirect.length);
-                                const selectedBg = baseColor;
-                                const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
-                                const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
-                                return (
-                                  <SortablePortfolioItem key={p.id} id={p.id}>
-                                    <div className={`group flex items-center gap-1 p-1 rounded-lg border ${active?"border-2 shadow-md":"bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
-                                      <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
-                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
-                                        <Folder className={`w-3.5 h-3.5 shrink-0`} style={{ color: active ? activeMuted : undefined }} />
-                                        <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
-                                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full capitalize font-medium" style={active ? { background: isLightColor(selectedBg) ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.18)", color: activeMuted } : {}}>{p.type}</span>
-                                      </Button>
-                                      <span className="text-xs tabular-nums pr-1 hidden md:inline" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
-                                        <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                                          <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
-                                          <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  </SortablePortfolioItem>
-                                );
-                              })}
-                            </SortableContext>
-                          </DndContext>
+                          {direct.map((p, di)=>{
+                            const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
+                            const active=activeId===p.id;
+                            const baseColor = p.color || portfolioTint(acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, direct.length);
+                            const selectedBg = baseColor;
+                            const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
+                            const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
+                            return (
+                              <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border ${active?"border-2 shadow-md":"bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                                <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
+                                  <Folder className={`w-3.5 h-3.5 shrink-0`} style={{ color: active ? activeMuted : undefined }} />
+                                  <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
+                                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full capitalize font-medium" style={active ? { background: isLightColor(selectedBg) ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.18)", color: activeMuted } : {}}>{p.type}</span>
+                                </Button>
+                                <span className="text-xs tabular-nums pr-1 hidden md:inline" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
+                                  <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
+                                    <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
+                                    <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            );
+                          })}
                         </div>
-                        );
-                      })()}
+                      )}
                       {(holdings ?? []).filter((h:Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0 && (
                         <div className="space-y-1 mt-2 pt-2 border-t border-white/5">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct stocks — {acc.name}</div>
@@ -419,18 +387,14 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
               );
             })}
 
-            {unassigned.length > 0 && (() => {
-              const sortedUnassigned = applyOrder("unassigned", filteredPortfolios(unassigned));
-              return (
+            {unassigned.length > 0 && (
               <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] overflow-hidden">
                 <div className="px-3 py-2 flex items-center justify-between">
                   <span className="text-[11px] font-semibold tracking-widest uppercase text-zinc-600">Unassigned</span>
                   <Button variant="ghost" size="icon-xs" onClick={() => openWizard(null)} aria-label="New portfolio"><Plus className="w-3.5 h-3.5" /></Button>
                 </div>
                 <div className="px-1.5 pb-1.5 space-y-1">
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => { if (!over || active.id === over.id) return; const oldIdx = sortedUnassigned.findIndex(x => x.id === active.id); const newIdx = sortedUnassigned.findIndex(x => x.id === over.id); if (oldIdx !== -1 && newIdx !== -1) reorder("unassigned", oldIdx, newIdx); }}>
-                    <SortableContext items={sortedUnassigned.map(x => x.id)} strategy={verticalListSortingStrategy}>
-                    {sortedUnassigned.map((p, ui) => {
+                    {(filteredPortfolios(unassigned)).map((p, ui) => {
                     const val = p.holdings.reduce((s, h:Holding) => s + holdingValueGBP(h), 0);
                     const active = activeId === p.id;
                     const baseColor = p.color || PALETTE[ui % PALETTE.length].value;
@@ -438,32 +402,27 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                     const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                     const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
                     return (
-                      <SortablePortfolioItem key={p.id} id={p.id}>
-                        <div className={`group flex items-center gap-1 p-1 rounded-lg border transition-colors ${active ? "border-2 shadow-md" : "bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
-                          <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-black/10" : "hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
-                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor }} />
-                            <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
-                            <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
-                          </Button>
-                          <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
-                            <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                              <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId ?? "__none"); setEditPProvider("__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-white/10"/>
-                              <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </SortablePortfolioItem>
+                      <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border transition-colors ${active ? "border-2 shadow-md" : "bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                        <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-black/10" : "hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor }} />
+                          <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
+                          <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
+                        </Button>
+                        <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
+                          <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
+                            <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId ?? "__none"); setEditPProvider("__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
+                            <DropdownMenuSeparator className="bg-white/10"/>
+                            <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     );
                   })}
-                    </SortableContext>
-                  </DndContext>
                 </div>
               </div>
-              );
-            })()}
+            )}
           </div>
           )}
           <div className="mt-4">

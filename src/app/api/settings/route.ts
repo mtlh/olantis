@@ -21,6 +21,9 @@ async function ensureTable() {
     await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS color text`;
     await sql`ALTER TABLE providers ADD COLUMN IF NOT EXISTS color text`;
     await sql`ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS color text`;
+    await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS sort_order integer`;
+    await sql`ALTER TABLE providers ADD COLUMN IF NOT EXISTS sort_order integer`;
+    await sql`ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS sort_order integer`;
   } catch {}
 }
 

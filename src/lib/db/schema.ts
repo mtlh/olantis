@@ -4,6 +4,7 @@ export const accounts = pgTable("accounts", {
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
   color: text("color"),
+  sortOrder: integer("sort_order"),
   createdAt: integer("created_at").notNull(),
 });
 export const providers = pgTable("providers", {
@@ -12,6 +13,7 @@ export const providers = pgTable("providers", {
   accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   color: text("color"),
+  sortOrder: integer("sort_order"),
   createdAt: integer("created_at").notNull(),
 });
 export const portfolios = pgTable("portfolios", {
@@ -22,6 +24,7 @@ export const portfolios = pgTable("portfolios", {
   name: text("name").notNull(),
   type: text("type").notNull(),
   color: text("color"),
+  sortOrder: integer("sort_order"),
   createdAt: integer("created_at").notNull(),
 });
 export const userSettings = pgTable("user_settings", {

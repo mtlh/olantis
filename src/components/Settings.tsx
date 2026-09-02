@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { ArrowLeft, Palette, Building2, Briefcase, Folder, Trash2, Download, Upload, Shield, Clock, Image as ImageIcon, Sparkles } from "lucide-react";
+import { ArrowLeft, Palette, Building2, Briefcase, Folder, Trash2, Download, Upload, Shield, Clock, Image as ImageIcon, Sparkles, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
 
 interface SettingsState {
@@ -56,9 +56,9 @@ function Swatch({ color, active, onClick }: { color: string; active?: boolean; o
 }
 
 export function SettingsView({ isDemo }: { isDemo?: boolean }) {
-  const { accounts, setColor: setAccountColor } = useAccounts();
-  const { providers, setColor: setProviderColor } = useProviders();
-  const { portfolios, setColor: setPortfolioColor } = usePortfolios();
+  const { accounts, setColor: setAccountColor, refresh: refreshAccounts } = useAccounts();
+  const { providers, setColor: setProviderColor, refresh: refreshProviders } = useProviders();
+  const { portfolios, setColor: setPortfolioColor, refresh: refreshPortfolios } = usePortfolios();
   const { toast } = useToast();
   const [settings, setSettings] = useState<SettingsState>({ currency: "GBP", defaultRange: "1Y", showTradeMarkers: 1 });
   const [saving, setSaving] = useState<string | null>(null);
@@ -85,6 +85,40 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     setSaving(id);
     try { await setPortfolioColor(id, color); toast({ title: "Portfolio color updated", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
   };
+
+  const handleReorder = async (table: string, ids: string[]) => {
+    try {
+      await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table, ids }) });
+      if (table === "accounts") await refreshAccounts();
+      else if (table === "providers") await refreshProviders();
+      else if (table === "portfolios") await refreshPortfolios();
+      toast({ title: "Order updated", variant: "success" });
+    } catch (e: unknown) { toast({ title: "Reorder failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); }
+  };
+
+  const moveItem = (table: string, list: { id: string }[], index: number, dir: -1 | 1) => {
+    const ids = list.map(x => x.id);
+    const newIdx = index + dir;
+    if (newIdx < 0 || newIdx >= ids.length) return;
+    [ids[index], ids[newIdx]] = [ids[newIdx], ids[index]];
+    handleReorder(table, ids);
+  };
+
+  const sortedAccounts = [...accounts].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+  const providersByAccount = new Map<string, typeof providers>();
+  for (const pr of providers) { const arr = providersByAccount.get(pr.accountId) ?? []; arr.push(pr); providersByAccount.set(pr.accountId, arr); }
+  for (const [, arr] of providersByAccount) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+  const portfoliosByProvider = new Map<string, typeof portfolios>();
+  const portfoliosByAccount = new Map<string, typeof portfolios>();
+  const unassignedPortfolios: typeof portfolios = [];
+  for (const p of portfolios) {
+    if (p.providerId) { const arr = portfoliosByProvider.get(p.providerId) ?? []; arr.push(p); portfoliosByProvider.set(p.providerId, arr); }
+    else if (p.accountId) { const arr = portfoliosByAccount.get(p.accountId) ?? []; arr.push(p); portfoliosByAccount.set(p.accountId, arr); }
+    else { unassignedPortfolios.push(p); }
+  }
+  for (const [, arr] of portfoliosByProvider) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+  for (const [, arr] of portfoliosByAccount) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+  unassignedPortfolios.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
 
   const exportAll = async () => {
     const data = { accounts, providers, portfolios, exportedAt: new Date().toISOString() };
@@ -221,6 +255,144 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             <div className="flex items-center gap-2 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-400">
               <Palette className="w-4 h-4 shrink-0"/> Colors sync instantly — sidebar dots, provider headers, allocation pie & performance lines all use the same mapping. Auto tints generate lighter/darker variants so portfolios stay distinct but on-brand.
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white"><ArrowUpDown className="w-5 h-5"/> Sidebar order</CardTitle>
+            <CardDescription>Choose the display order for accounts, providers and portfolios in the sidebar.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {sortedAccounts.length === 0 && providers.length === 0 && portfolios.length === 0 ? (
+              <p className="text-sm text-zinc-500">Nothing to reorder yet.</p>
+            ) : (
+              <>
+                <div>
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Building2 className="w-4 h-4 text-zinc-500"/> Accounts</h3>
+                  {sortedAccounts.length === 0 ? <p className="text-xs text-zinc-500">No accounts</p> : (
+                    <div className="space-y-1">
+                      {sortedAccounts.map((acc, i) => (
+                        <div key={acc.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: acc.color || PALETTE[i % PALETTE.length].value }} />
+                          <span className="flex-1 text-sm text-white truncate">{acc.name}</span>
+                          <div className="flex gap-0.5">
+                            <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("accounts", sortedAccounts, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                            <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === sortedAccounts.length - 1} onClick={() => moveItem("accounts", sortedAccounts, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="h-px bg-white/5" />
+
+                <div>
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Briefcase className="w-4 h-4 text-zinc-500"/> Providers</h3>
+                  {providers.length === 0 ? <p className="text-xs text-zinc-500">No providers</p> : sortedAccounts.map(acc => {
+                    const provs = providersByAccount.get(acc.id) ?? [];
+                    if (provs.length === 0) return null;
+                    return (
+                      <div key={acc.id} className="mb-3">
+                        <div className="text-[11px] text-zinc-500 mb-1 ml-1">{acc.name}</div>
+                        <div className="space-y-1">
+                          {provs.map((pr, i) => (
+                            <div key={pr.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: pr.color || acc.color || PALETTE[0].value }} />
+                              <span className="flex-1 text-sm text-white truncate">{pr.name}</span>
+                              <div className="flex gap-0.5">
+                                <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("providers", provs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                                <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === provs.length - 1} onClick={() => moveItem("providers", provs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="h-px bg-white/5" />
+
+                <div>
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Folder className="w-4 h-4 text-zinc-500"/> Portfolios</h3>
+                  {portfolios.length === 0 ? <p className="text-xs text-zinc-500">No portfolios</p> : (
+                    <div className="space-y-4">
+                      {sortedAccounts.map(acc => {
+                        const provs = providersByAccount.get(acc.id) ?? [];
+                        const directPfs = portfoliosByAccount.get(acc.id) ?? [];
+                        const hasContent = provs.some(pr => (portfoliosByProvider.get(pr.id) ?? []).length > 0) || directPfs.length > 0;
+                        if (!hasContent) return null;
+                        return (
+                          <div key={acc.id}>
+                            <div className="text-[11px] text-zinc-500 mb-1 ml-1 flex items-center gap-1"><Building2 className="w-3 h-3"/> {acc.name}</div>
+                            {provs.map(pr => {
+                              const pfs = portfoliosByProvider.get(pr.id) ?? [];
+                              if (pfs.length === 0) return null;
+                              return (
+                                <div key={pr.id} className="ml-3 mb-2">
+                                  <div className="text-[11px] text-zinc-600 mb-1 ml-1">{pr.name}</div>
+                                  <div className="space-y-1">
+                                    {pfs.map((p, i) => (
+                                      <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color || pr.color || acc.color || PALETTE[0].value }} />
+                                        <span className="flex-1 text-sm text-white truncate">{p.name}</span>
+                                        <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
+                                        <div className="flex gap-0.5">
+                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("portfolios", pfs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === pfs.length - 1} onClick={() => moveItem("portfolios", pfs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {directPfs.length > 0 && (
+                              <div className="ml-3 mb-2">
+                                <div className="text-[11px] text-zinc-600 mb-1 ml-1">Direct</div>
+                                <div className="space-y-1">
+                                  {directPfs.map((p, i) => (
+                                    <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
+                                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color || acc.color || PALETTE[0].value }} />
+                                      <span className="flex-1 text-sm text-white truncate">{p.name}</span>
+                                      <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
+                                      <div className="flex gap-0.5">
+                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("portfolios", directPfs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === directPfs.length - 1} onClick={() => moveItem("portfolios", directPfs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {unassignedPortfolios.length > 0 && (
+                        <div>
+                          <div className="text-[11px] text-zinc-500 mb-1 ml-1">Unassigned</div>
+                          <div className="space-y-1">
+                            {unassignedPortfolios.map((p, i) => (
+                              <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color || PALETTE[0].value }} />
+                                <span className="flex-1 text-sm text-white truncate">{p.name}</span>
+                                <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
+                                <div className="flex gap-0.5">
+                                  <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("portfolios", unassignedPortfolios, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                                  <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === unassignedPortfolios.length - 1} onClick={() => moveItem("portfolios", unassignedPortfolios, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
