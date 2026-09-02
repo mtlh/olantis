@@ -31,14 +31,14 @@ export async function POST(req: Request) {
   if (symbols.length === 0) return Response.json({ success: true, symbolsUpdated: 0, message: "No holdings" });
 
   const quotes = await fetchQuotes(symbols);
-  const now = Math.floor(Date.now() / 1000);
+  const unixNow = Math.floor(Date.now() / 1000);
   let updated = 0;
   let skipped = 0;
   for (const h of targetHoldings) {
     const q = (quotes as Record<string, { price: number; currency: string }>)[h.symbol];
     if (!q) continue;
-    if (!body.force && h.lastRefreshedAt && now - h.lastRefreshedAt < 86400) { skipped++; continue; }
-    await db.update(holdings).set({ currentPrice: q.price, currency: q.currency, lastRefreshedAt: now }).where(eq(holdings.id, h.id));
+    if (!body.force && h.lastRefreshedAt && unixNow - h.lastRefreshedAt < 86400) { skipped++; continue; }
+    await db.update(holdings).set({ currentPrice: q.price, currency: q.currency, lastRefreshedAt: unixNow }).where(eq(holdings.id, h.id));
     updated++;
   }
 
