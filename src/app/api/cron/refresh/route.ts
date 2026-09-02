@@ -23,7 +23,10 @@ export async function POST(req: Request) {
   if (!symbols.length) {
     const allHoldings = await db.select().from(holdings);
     const map = new Map<string, { symbol: string; exchange?: string }>();
-    for (const h of allHoldings) map.set(`${h.symbol}:${h.exchange ?? ""}`, { symbol: h.symbol, exchange: h.exchange as string | undefined });
+    for (const h of allHoldings) {
+      if (/^CASH$/i.test(h.symbol.trim())) continue;
+      map.set(`${h.symbol}:${h.exchange ?? ""}`, { symbol: h.symbol, exchange: h.exchange as string | undefined });
+    }
     symbols = [...map.values()];
     targetHoldings = allHoldings;
   }
@@ -37,6 +40,7 @@ export async function POST(req: Request) {
   for (const h of targetHoldings) {
     const q = (quotes as Record<string, { price: number; currency: string }>)[h.symbol];
     if (!q) continue;
+    if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
     if (!body.force && h.lastRefreshedAt && unixNow - h.lastRefreshedAt < 86400) { skipped++; continue; }
     await db.update(holdings).set({ currentPrice: q.price, currency: q.currency, lastRefreshedAt: unixNow }).where(eq(holdings.id, h.id));
     updated++;
@@ -44,7 +48,18 @@ export async function POST(req: Request) {
 
   await createSnapshots(db);
 
+  await fixCashHoldings(db);
+
   return Response.json({ success: true, symbolsUpdated: updated, skipped, updatedAt: new Date().toISOString() });
+}
+
+async function fixCashHoldings(db: ReturnType<typeof getDb>) {
+  const allHoldings = await db.select().from(holdings);
+  for (const h of allHoldings) {
+    if (/^CASH$/i.test(h.symbol.trim()) && h.currentPrice !== 1) {
+      await db.update(holdings).set({ currentPrice: 1, currency: h.currency || "USD" }).where(eq(holdings.id, h.id));
+    }
+  }
 }
 
 async function createSnapshots(db: ReturnType<typeof getDb>) {

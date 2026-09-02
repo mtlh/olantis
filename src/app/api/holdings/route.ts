@@ -165,6 +165,7 @@ export async function PATCH(req: Request) {
   for (const h of all) {
     const upd = (symbols as Record<string, { price: number; currency: string }>)[h.symbol];
     if (!upd) continue;
+    if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
     if (!force && h.lastRefreshedAt && now - h.lastRefreshedAt < DAY) {
       skipped++;
       const wait = h.lastRefreshedAt + DAY;
