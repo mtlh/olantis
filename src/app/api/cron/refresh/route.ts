@@ -48,18 +48,7 @@ export async function POST(req: Request) {
 
   await createSnapshots(db);
 
-  await fixCashHoldings(db);
-
   return Response.json({ success: true, symbolsUpdated: updated, skipped, updatedAt: new Date().toISOString() });
-}
-
-async function fixCashHoldings(db: ReturnType<typeof getDb>) {
-  const allHoldings = await db.select().from(holdings);
-  for (const h of allHoldings) {
-    if (/^CASH$/i.test(h.symbol.trim()) && h.currentPrice !== 1) {
-      await db.update(holdings).set({ currentPrice: 1, currency: h.currency || "USD" }).where(eq(holdings.id, h.id));
-    }
-  }
 }
 
 async function createSnapshots(db: ReturnType<typeof getDb>) {
