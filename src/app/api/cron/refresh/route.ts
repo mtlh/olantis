@@ -1,12 +1,17 @@
 import { fetchQuotes } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
-import { holdings } from "@/lib/db/schema";
+import { holdings, snapshots, portfolioSnapshots, portfolios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
+const SIX_HOURS = 6 * 60 * 60 * 1000;
+let lastRunAt = 0;
+
 export async function POST(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  const secret = process.env.CRON_SECRET;
-  if (!secret || auth !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const now = Date.now();
+  if (now - lastRunAt < SIX_HOURS) {
+    return Response.json({ success: true, skipped: "debounced", retryAfter: Math.ceil((SIX_HOURS - (now - lastRunAt)) / 1000) });
+  }
+  lastRunAt = now;
 
   let body: { symbols?: Array<{ symbol: string; exchange?: string }>; force?: boolean } = {};
   try { body = await req.json(); } catch {}
@@ -37,18 +42,56 @@ export async function POST(req: Request) {
     updated++;
   }
 
+  await createSnapshots(db);
+
   return Response.json({ success: true, symbolsUpdated: updated, skipped, updatedAt: new Date().toISOString() });
 }
 
+async function createSnapshots(db: ReturnType<typeof getDb>) {
+  const today = new Date().toISOString().split("T")[0];
+  const allHoldings = await db.select().from(holdings);
+  const userHoldings = new Map<string, typeof allHoldings>();
+  for (const h of allHoldings) {
+    if (!h.userId) continue;
+    const arr = userHoldings.get(h.userId) ?? [];
+    arr.push(h);
+    userHoldings.set(h.userId, arr);
+  }
+
+  const valGBP = (h: typeof allHoldings[number]) => {
+    const v = h.shares * (h.currentPrice ?? 0);
+    return h.currency === "GBX" || h.currency === "GBp" ? v / 100 : v;
+  };
+
+  for (const [userId, hs] of userHoldings) {
+    const totalValue = hs.reduce((sum, h) => sum + valGBP(h), 0);
+    if (totalValue === 0) continue;
+
+    await db.insert(snapshots).values({ userId, date: today, value: totalValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: totalValue } });
+
+    const userPortfolios = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
+    const pidToHoldings = new Map<string, typeof hs>();
+    for (const h of hs) {
+      if (!h.portfolioId) continue;
+      const arr = pidToHoldings.get(h.portfolioId) ?? [];
+      arr.push(h);
+      pidToHoldings.set(h.portfolioId, arr);
+    }
+    for (const p of userPortfolios) {
+      const phs = pidToHoldings.get(p.id) ?? [];
+      const pfValue = phs.reduce((sum, h) => sum + valGBP(h), 0);
+      if (pfValue === 0) continue;
+      await db.insert(portfolioSnapshots).values({ userId, portfolioId: p.id, date: today, value: pfValue }).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: pfValue } });
+    }
+  }
+}
+
 export async function GET(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  const secret = process.env.CRON_SECRET;
-  if (!secret || auth !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized — send Authorization: Bearer $CRON_SECRET" }, { status: 401 });
   const { searchParams } = new URL(req.url);
   const s = searchParams.get("symbol");
   if (s) {
     const quotes = await fetchQuotes([{ symbol: s }]);
     return Response.json({ success: true, quotes });
   }
-  return Response.json({ success: true, message: "Cron endpoint ready. POST with Authorization: Bearer $CRON_SECRET — no body needed for daily auto refresh (respects 24h limit, use {force:true} to bypass)." });
+  return Response.json({ success: true, message: "Cron endpoint ready. POST — no body needed for daily auto refresh (respects 24h limit, use {force:true} to bypass). Debounced to 6h." });
 }
