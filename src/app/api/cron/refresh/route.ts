@@ -7,8 +7,12 @@ const SIX_HOURS = 6 * 60 * 60 * 1000;
 let lastRunAt = 0;
 
 export async function POST(req: Request) {
+  const auth = req.headers.get("authorization") ?? "";
+  const secret = process.env.CRON_SECRET;
+  const isCron = secret && auth === `Bearer ${secret}`;
+
   const now = Date.now();
-  if (now - lastRunAt < SIX_HOURS) {
+  if (!isCron && now - lastRunAt < SIX_HOURS) {
     return Response.json({ success: true, skipped: "debounced", retryAfter: Math.ceil((SIX_HOURS - (now - lastRunAt)) / 1000) });
   }
   lastRunAt = now;
@@ -97,5 +101,5 @@ export async function GET(req: Request) {
     const quotes = await fetchQuotes([{ symbol: s }]);
     return Response.json({ success: true, quotes });
   }
-  return Response.json({ success: true, message: "Cron endpoint ready. POST — no body needed for daily auto refresh (respects 24h limit, use {force:true} to bypass). Debounced to 6h." });
+  return Response.json({ success: true, message: "Cron endpoint ready. POST — no body needed for daily auto refresh. Send Authorization: Bearer $CRON_SECRET to bypass 6h debounce. Use {force:true} to bypass 24h price limit." });
 }
