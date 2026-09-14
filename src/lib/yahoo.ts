@@ -27,18 +27,23 @@ export function toYahooSymbol(symbol: string, exchange?: string) {
   if (exchange?.toUpperCase() === "LSE" || exchange?.toUpperCase() === "LON") return `${symbol}.L`;
   return symbol;
 }
-export async function fetchQuotes(symbols: Array<{ symbol: string; exchange?: string }>) {
+export async function fetchQuotes(symbols: Array<{ symbol: string; exchange?: string }>, opts?: { disambiguate?: boolean }) {
   const out: Record<string, { price: number; currency: string }> = {};
-  for (const { symbol, exchange } of symbols) {
-    const ys = toYahooSymbol(symbol, exchange);
-    try {
-      const q = (await yf.quote(ys)) as unknown as YahooQuoteResult;
-      const price = q.regularMarketPrice;
-      const currency = q.currency || "USD";
-      if (!price) continue;
-      out[symbol] = { price, currency };
-    } catch {}
-  }
+  const key = (symbol: string, exchange?: string) => (opts?.disambiguate ? `${symbol}:${exchange ?? ""}` : symbol);
+  await Promise.allSettled(
+    symbols.map(async ({ symbol, exchange }) => {
+      const ys = toYahooSymbol(symbol, exchange);
+      try {
+        const q = (await yf.quote(ys)) as unknown as YahooQuoteResult;
+        const price = q.regularMarketPrice;
+        const currency = q.currency || "USD";
+        if (!price) return;
+        out[symbol] = { price, currency };
+        if (symbol !== symbol.toUpperCase()) out[symbol.toUpperCase()] = { price, currency };
+        out[key(symbol, exchange)] = { price, currency };
+      } catch {}
+    })
+  );
   return out;
 }
 

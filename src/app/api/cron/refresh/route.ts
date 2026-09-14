@@ -4,61 +4,72 @@ import { holdings, snapshots, portfolioSnapshots, portfolios } from "@/lib/db/sc
 import { eq } from "drizzle-orm";
 
 const SIX_HOURS = 6 * 60 * 60 * 1000;
+const REFRESH_GUARD_SECONDS = 23 * 60 * 60; // 23h, not 24h — avoids the daily-cron flip-flop
 let lastRunAt = 0;
 
-export async function POST(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
+type HoldingRow = typeof holdings.$inferSelect;
+
+function isAuthed(req: Request) {
   const secret = process.env.CRON_SECRET;
-  const isCron = secret && auth === `Bearer ${secret}`;
+  if (!secret) return true; // dev / no secret configured
+  const auth = req.headers.get("authorization") ?? "";
+  return auth === `Bearer ${secret}`;
+}
 
-  const now = Date.now();
-  if (!isCron && now - lastRunAt < SIX_HOURS) {
-    return Response.json({ success: true, skipped: "debounced", retryAfter: Math.ceil((SIX_HOURS - (now - lastRunAt)) / 1000) });
-  }
-  lastRunAt = now;
+const quoteKey = (symbol: string, exchange?: string | null) => `${symbol}:${exchange ?? ""}`;
 
-  let body: { symbols?: Array<{ symbol: string; exchange?: string }>; force?: boolean } = {};
-  try { body = await req.json(); } catch {}
+async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: string }>; force?: boolean }) {
   const db = getDb();
 
   let symbols = body.symbols ?? [];
-  let targetHoldings = await db.select().from(holdings);
+  const targetHoldings: HoldingRow[] = await db.select().from(holdings);
 
   if (!symbols.length) {
-    const allHoldings = await db.select().from(holdings);
     const map = new Map<string, { symbol: string; exchange?: string }>();
-    for (const h of allHoldings) {
+    for (const h of targetHoldings) {
       if (/^CASH$/i.test(h.symbol.trim())) continue;
-      map.set(`${h.symbol}:${h.exchange ?? ""}`, { symbol: h.symbol, exchange: h.exchange as string | undefined });
+      map.set(quoteKey(h.symbol, h.exchange), { symbol: h.symbol, exchange: h.exchange as string | undefined });
     }
     symbols = [...map.values()];
-    targetHoldings = allHoldings;
   }
 
-  if (symbols.length === 0) return Response.json({ success: true, symbolsUpdated: 0, message: "No holdings" });
+  if (symbols.length === 0) return { success: true, symbolsUpdated: 0, skipped: 0, updatedAt: new Date().toISOString(), message: "No holdings" };
 
-  const quotes = await fetchQuotes(symbols);
+  let quotes: Record<string, { price: number; currency: string }> = {};
+  try {
+    quotes = await fetchQuotes(symbols, { disambiguate: true });
+  } catch {}
+
   const unixNow = Math.floor(Date.now() / 1000);
+  const applied = new Map<string, { price: number; currency: string }>();
   let updated = 0;
   let skipped = 0;
+
+  const updates: Promise<unknown>[] = [];
   for (const h of targetHoldings) {
-    const q = (quotes as Record<string, { price: number; currency: string }>)[h.symbol];
-    if (!q) continue;
     if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
-    if (!body.force && h.lastRefreshedAt && unixNow - h.lastRefreshedAt < 86400) { skipped++; continue; }
-    await db.update(holdings).set({ currentPrice: q.price, currency: q.currency, lastRefreshedAt: unixNow }).where(eq(holdings.id, h.id));
+    const q = quotes[quoteKey(h.symbol, h.exchange)];
+    if (!q) continue;
+    if (!body.force && h.lastRefreshedAt && unixNow - h.lastRefreshedAt < REFRESH_GUARD_SECONDS) { skipped++; continue; }
+    updates.push(db.update(holdings).set({ currentPrice: q.price, currency: q.currency, lastRefreshedAt: unixNow }).where(eq(holdings.id, h.id)));
+    applied.set(h.id, { price: q.price, currency: q.currency });
     updated++;
   }
+  await Promise.all(updates);
 
-  await createSnapshots(db);
+  const refreshedHoldings = targetHoldings.map((h) => {
+    const a = applied.get(h.id);
+    return a ? { ...h, currentPrice: a.price, currency: a.currency, lastRefreshedAt: unixNow } : h;
+  });
+  await createSnapshots(refreshedHoldings);
 
-  return Response.json({ success: true, symbolsUpdated: updated, skipped, updatedAt: new Date().toISOString() });
+  return { success: true, symbolsUpdated: updated, skipped, updatedAt: new Date().toISOString() };
 }
 
-async function createSnapshots(db: ReturnType<typeof getDb>) {
+async function createSnapshots(allHoldings: HoldingRow[]) {
+  const db = getDb();
   const today = new Date().toISOString().split("T")[0];
-  const allHoldings = await db.select().from(holdings);
-  const userHoldings = new Map<string, typeof allHoldings>();
+  const userHoldings = new Map<string, HoldingRow[]>();
   for (const h of allHoldings) {
     if (!h.userId) continue;
     const arr = userHoldings.get(h.userId) ?? [];
@@ -66,7 +77,7 @@ async function createSnapshots(db: ReturnType<typeof getDb>) {
     userHoldings.set(h.userId, arr);
   }
 
-  const valGBP = (h: typeof allHoldings[number]) => {
+  const valGBP = (h: HoldingRow) => {
     const v = h.shares * (h.currentPrice ?? 0);
     return h.currency === "GBX" || h.currency === "GBp" ? v / 100 : v;
   };
@@ -78,7 +89,7 @@ async function createSnapshots(db: ReturnType<typeof getDb>) {
     await db.insert(snapshots).values({ userId, date: today, value: totalValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: totalValue } });
 
     const userPortfolios = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
-    const pidToHoldings = new Map<string, typeof hs>();
+    const pidToHoldings = new Map<string, HoldingRow[]>();
     for (const h of hs) {
       if (!h.portfolioId) continue;
       const arr = pidToHoldings.get(h.portfolioId) ?? [];
@@ -94,12 +105,29 @@ async function createSnapshots(db: ReturnType<typeof getDb>) {
   }
 }
 
+export async function POST(req: Request) {
+  if (!isAuthed(req)) return Response.json({ success: false, error: "unauthorized" }, { status: 401 });
+
+  const now = Date.now();
+  if (now - lastRunAt < SIX_HOURS) {
+    return Response.json({ success: true, skipped: "debounced", retryAfter: Math.ceil((SIX_HOURS - (now - lastRunAt)) / 1000) });
+  }
+  lastRunAt = now;
+
+  let body: { symbols?: Array<{ symbol: string; exchange?: string }>; force?: boolean } = {};
+  try { body = await req.json(); } catch {}
+
+  return Response.json(await doRefresh(body));
+}
+
 export async function GET(req: Request) {
+  if (!isAuthed(req)) return Response.json({ success: false, error: "unauthorized" }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const s = searchParams.get("symbol");
   if (s) {
-    const quotes = await fetchQuotes([{ symbol: s }]);
+    const quotes = await fetchQuotes([{ symbol: s }], { disambiguate: true });
     return Response.json({ success: true, quotes });
   }
-  return Response.json({ success: true, message: "Cron endpoint ready. POST — no body needed for daily auto refresh. Send Authorization: Bearer $CRON_SECRET to bypass 6h debounce. Use {force:true} to bypass 24h price limit." });
+  return Response.json(await doRefresh({}));
 }
