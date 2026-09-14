@@ -19,6 +19,14 @@ async function api(path: string, opts?: RequestInit) {
   return r.json();
 }
 
+function useVisibilityRefresh(refresh: () => void) {
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [refresh]);
+}
+
 export function useAccounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [ready, setReady] = useState(false);
@@ -98,6 +106,7 @@ export function usePortfolios() {
     setReady(true);
   }, []);
   useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh]);
+  useVisibilityRefresh(refresh);
 
   const create = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ name, type, accountId: accountId ?? null, providerId: providerId ?? null }) });
@@ -154,6 +163,7 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
     } catch {}
   }, []);
   useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh, portfolios.length]);
+  useVisibilityRefresh(refresh);
   const valGBP = (h: Holding) => { const v = h.shares * h.currentPrice; return h.currency === "GBX" || h.currency === "GBp" ? v / 100 : v; };
   const totalValue = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h) => a + valGBP(h), 0), 0) + directHoldings.reduce((s, h) => s + valGBP(h), 0);
   useEffect(() => {
@@ -178,6 +188,7 @@ export function useHoldings() {
     setReady(true);
   }, []);
   useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh]);
+  useVisibilityRefresh(refresh);
   return { holdings, ready, refresh };
 }
 
