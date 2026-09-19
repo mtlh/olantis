@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceDot } from "recharts";
-import { History, ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, TrendingDown } from "lucide-react";
+import { History, ArrowUpRight, ArrowDownRight, Wallet, Plus, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,25 +21,24 @@ function holdingCostGBP(h: Holding) { const raw = h.shares * h.avgPrice; if (h.c
 
 type PriceRow = { date: string; price: number };
 
-export function StockDetail({ holding, portfolioId, portfolioName, color, onBack }: { holding: Holding; portfolioId?: string | null; portfolioName?: string; color: string; onBack: () => void }) {
+export function StockDetail({ holding, portfolioId, portfolioName, color, onBack, onBuy, onSell }: { holding: Holding; portfolioId?: string | null; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void }) {
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
-  const [prices, setPrices] = useState<PriceRow[]>([]);
-  const [loading, setLoading] = useState(holding.currency !== "GBX" && holding.currency !== "GBp" && /^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol));
+  const isListed = !["GBX", "GBp"].includes(holding.currency ?? "") && /^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol);
+  const [prices, setPrices] = useState<PriceRow[] | null>(null);
   const { transactions } = useTransactions(portfolioId ?? null, holding.symbol);
 
   useEffect(() => {
-    const listed = !["GBX", "GBp"].includes(holding.currency ?? "") && /^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol);
-    if (!listed) { setPrices([]); setLoading(false); return; }
+    if (!isListed) return;
     let cancel = false;
-    setLoading(true);
     fetch(`/api/chart?symbol=${encodeURIComponent(holding.symbol)}&exchange=${encodeURIComponent(holding.exchange ?? "")}&range=${range}`)
-      .then(async (r) => { if (!r.ok) throw new Error(); const j = await r.json(); if (!cancel) setPrices(j.chart as PriceRow[]); })
-      .catch(() => { if (!cancel) setPrices([]); })
-      .finally(() => { if (!cancel) setLoading(false); });
+      .then(async (r) => { const chart = r.ok ? (await r.json()).chart as PriceRow[] : []; if (!cancel) setPrices(chart); })
+      .catch(() => { if (!cancel) setPrices([]); });
     return () => { cancel = true; };
-  }, [holding.currency, holding.symbol, holding.exchange, range]);
+  }, [isListed, holding.currency, holding.symbol, holding.exchange, range]);
 
-  const chartData = useMemo(() => prices.map((p) => ({ date: p.date.slice(5), price: p.price })), [prices]);
+  const chartData = useMemo(() => (prices ?? []).map((p) => ({ date: p.date.slice(5), price: p.price })), [prices]);
+  const loading = isListed && prices === null;
+
   const dots = useMemo(() => {
     if (!chartData.length) return [];
     const map = new Map(chartData.map((d) => [d.date, d.price]));
@@ -57,7 +56,7 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
   const cost = holdingCostGBP(holding);
   const gain = val - cost;
   const pct = cost ? (gain / cost) * 100 : 0;
-  const isManual = ["GBX", "GBp"].includes(holding.currency ?? "") || !/^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol);
+  const isManual = !isListed;
 
   return (
     <>
@@ -74,6 +73,12 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
             <p className="text-sm mt-2 text-zinc-500">{holding.name}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {portfolioId && onBuy && onSell && (
+              <>
+                <Button variant="outline" className="bg-white/5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10" onClick={onBuy}><Plus className="w-4 h-4"/> Buy</Button>
+                <Button variant="outline" className="bg-white/5 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={onSell}><Minus className="w-4 h-4"/> Sell</Button>
+              </>
+            )}
             <Button variant="outline" className="bg-white/5 border-white/10" onClick={onBack}>← Back{portfolioName ? ` to ${portfolioName}` : ""}</Button>
           </div>
         </div>
@@ -169,16 +174,6 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
           </CardContent>
         </Card>
       </div>
-
-      <Card className="glass-card">
-        <CardHeader><CardTitle className="flex items-center gap-2 text-white text-sm">{gain >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />} Position summary</CardTitle></CardHeader>
-        <CardContent className="text-sm text-zinc-400 space-y-1.5">
-          <div className="flex justify-between"><span>Purchase date</span><span className="text-white tabular-nums">{holding.purchaseDate?.slice(0, 10) || "—"}</span></div>
-          <div className="flex justify-between"><span>Shares × avg</span><span className="text-white tabular-nums">{holding.shares} × {fmtPrice(holding.avgPrice, holding.currency)}</span></div>
-          <div className="flex justify-between"><span>Current price</span><span className="text-white tabular-nums">{fmtPrice(holding.currentPrice, holding.currency)}</span></div>
-          <div className="flex justify-between"><span>Gain per share</span><span className="tabular-nums" style={{ color: holding.currentPrice - holding.avgPrice >= 0 ? "#34d399" : "#f87171" }}>{fmtPrice(holding.currentPrice - holding.avgPrice, holding.currency)}</span></div>
-        </CardContent>
-      </Card>
     </>
   );
 }

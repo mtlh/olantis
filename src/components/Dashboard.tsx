@@ -51,6 +51,7 @@ type ChartRow = { date: string; total: number; [key: string]: string | number };
 
 export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady } = useAccounts();
+
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
   const { portfolios, create, remove, upsertHolding, deleteHolding, refresh: refreshPortfolios, ready: portfoliosReady } = usePortfolios();
   const { holdings: allHoldingsList, refresh: refreshAllHoldings } = useHoldings();
@@ -75,9 +76,11 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const [holdingViewId, setHoldingViewId] = useState<string | null>(null);
   const viewHolding = useMemo(() => {
     if (!holdingViewId) return null;
-    return allHoldingsList.find((h: Holding) => h.id === holdingViewId) ?? null;
-  }, [holdingViewId, allHoldingsList]);
-  useEffect(() => { setHoldingViewId(null); }, [activeId]);
+    const h = allHoldingsList.find((x: Holding) => x.id === holdingViewId) ?? null;
+    if (!h) return null;
+    if (h.portfolioId && activeId && h.portfolioId !== activeId) return null;
+    return h;
+  }, [holdingViewId, allHoldingsList, activeId]);
   const viewPortfolio = useMemo(() => (viewHolding ? portfolios.find((p) => p.id === viewHolding.portfolioId) ?? null : null), [viewHolding, portfolios]);
   const viewColor = useMemo(() => {
     if (!viewHolding) return "#60a5fa";
@@ -99,9 +102,10 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
 
   const openTrade = (h: Holding, type: "buy" | "sell") => { setTradeHolding(h); setTradeType(type); setShowTrade(true); };
   const handleTrade = async (data: { shares: number; price: number; date: string }) => {
-    if (!activeId || !tradeHolding) return;
+    const pid = tradeHolding?.portfolioId ?? activeId;
+    if (!pid || !tradeHolding) { toast({ title: "Cannot trade", description: "Direct stocks live outside portfolios — add them to a portfolio to record trades", variant: "error" }); return; }
     try {
-      await createTx({ portfolioId: activeId, holdingId: tradeHolding.id, type: tradeType, shares: data.shares, price: data.price, date: data.date });
+      await createTx({ portfolioId: pid, holdingId: tradeHolding.id, type: tradeType, shares: data.shares, price: data.price, date: data.date });
       await refreshPortfolios();
       await refreshTx();
       await overviewTx.refresh();
@@ -432,7 +436,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={setActiveId} onCreate={handleCreate} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onCreateDirectHolding={createDirectHolding} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={(id) => { setActiveId(id); setHoldingViewId(null); }} onCreate={handleCreate} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onCreateDirectHolding={createDirectHolding} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onDeleteAccount={setConfirmAccount as any}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -450,7 +454,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
             const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
             return (
               <>
-                <StockDetail holding={viewHolding} portfolioId={viewPortfolio?.id ?? null} portfolioName={viewPortfolio?.name ?? prov?.name ?? acc?.name} color={viewColor} onBack={() => setHoldingViewId(null)} />
+                <StockDetail holding={viewHolding} portfolioId={viewPortfolio?.id ?? null} portfolioName={viewPortfolio?.name ?? prov?.name ?? acc?.name} color={viewColor} onBack={() => setHoldingViewId(null)} onBuy={() => openTrade(viewHolding, "buy")} onSell={() => openTrade(viewHolding, "sell")} />
                 <Dialog open={!!confirmHolding} onOpenChange={(o) => !o && setConfirmHolding(null)}>
                   <DialogContent className="bg-zinc-900 border-white/10 text-white">
                     <DialogHeader><DialogTitle>Delete holding</DialogTitle></DialogHeader>
@@ -485,26 +489,16 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                     <Button variant="ghost" className="text-zinc-400 hover:text-red-400 hover:bg-red-500/10 border border-white/5" onClick={() => { setConfirmPortfolio(active); setConfirmPortfolioInput(""); }}><Trash2 className="w-4 h-4" /> Delete</Button>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+                <div className="grid grid-cols-2 gap-4 mt-8">
                   <div className="p-4 rounded-xl bg-white text-black border-l-4" style={{ borderLeftColor: activeBaseColor ?? "#60a5fa" }}>
                     <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Value</div>
                     <div className="text-2xl font-bold mt-1">{fmtGBP(activeValue)}</div>
                     <div className="text-xs text-zinc-600 mt-1">Cost {fmtGBP(activeCost)}</div>
                   </div>
                   <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-                    <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Gain</div>
+                    <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Return</div>
                     <div className="text-2xl font-bold flex items-center gap-2" style={{ color: activeGain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(activeGain)} <span className="text-sm">{fmtPct(activeGainPct)}</span></div>
                     <div className="text-xs text-zinc-500 mt-1">All time</div>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-                    <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Holdings</div>
-                    <div className="text-2xl font-bold text-white">{active.holdings.length}</div>
-                    <div className="text-xs text-zinc-500 mt-1">Positions</div>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-                    <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Avg cost</div>
-                    <div className="text-2xl font-bold text-white">{active.holdings.length ? fmtGBP(activeCost / active.holdings.length) : "—"}</div>
-                    <div className="text-xs text-zinc-500 mt-1">Per holding</div>
                   </div>
                 </div>
               </div>
