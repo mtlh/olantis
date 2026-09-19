@@ -47,6 +47,36 @@ export async function fetchQuotes(symbols: Array<{ symbol: string; exchange?: st
   return out;
 }
 
+export type ChartPoint = { date: string; price: number };
+
+const CHART_RANGES: Record<string, { days: number; interval: "1d" | "1wk" | "1mo" }> = {
+  "1M": { days: 31, interval: "1d" },
+  "3M": { days: 92, interval: "1d" },
+  "1Y": { days: 365, interval: "1wk" },
+  MAX: { days: 365 * 40, interval: "1mo" },
+};
+
+export async function fetchChart(symbol: string, exchange?: string, range = "1Y"): Promise<ChartPoint[]> {
+  const ys = toYahooSymbol(symbol, exchange);
+  const cfg = CHART_RANGES[range] ?? CHART_RANGES["1Y"];
+  const period1 = new Date(Date.now() - cfg.days * 86400000).toISOString().slice(0, 10);
+  const period2 = new Date().toISOString().slice(0, 10);
+  try {
+    const res = await yf.chart(ys, { period1, period2, interval: cfg.interval, return: "array" });
+    type RawChart = { quotes?: Array<{ date?: string | number; close?: number | null }> };
+    const quotes = (res as unknown as RawChart).quotes ?? [];
+    const out: ChartPoint[] = [];
+    for (const q of quotes) {
+      if (q.close == null || q.date == null) continue;
+      const d = typeof q.date === "number" ? new Date(q.date * 1000) : new Date(q.date);
+      out.push({ date: d.toISOString().slice(0, 10), price: q.close });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export async function searchSymbols(query: string) {
   if (!query || query.trim().length < 1) return [];
   try {

@@ -7,6 +7,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianG
 import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
 import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
+import { StockDetail } from "@/components/StockDetail";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -71,6 +72,20 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
+  const [holdingViewId, setHoldingViewId] = useState<string | null>(null);
+  const viewHolding = useMemo(() => {
+    if (!holdingViewId) return null;
+    return allHoldingsList.find((h: Holding) => h.id === holdingViewId) ?? null;
+  }, [holdingViewId, allHoldingsList]);
+  useEffect(() => { setHoldingViewId(null); }, [activeId]);
+  const viewPortfolio = useMemo(() => (viewHolding ? portfolios.find((p) => p.id === viewHolding.portfolioId) ?? null : null), [viewHolding, portfolios]);
+  const viewColor = useMemo(() => {
+    if (!viewHolding) return "#60a5fa";
+    const pf = viewPortfolio;
+    const prov = viewHolding.providerId ? providers.find((pr) => pr.id === viewHolding.providerId) : undefined;
+    const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
+    return pf?.color || prov?.color || acc?.color || "#60a5fa";
+  }, [viewHolding, viewPortfolio, providers, accounts]);
   const prevPortfoliosRef = useRef<Portfolio[]>([]);
   useEffect(()=>{ if(prevPortfoliosRef.current !== portfolios && activeId && !portfolios.find(p=>p.id===activeId)) setActiveId(null); prevPortfoliosRef.current = portfolios; },[portfolios,activeId]);
   const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); return active.color || prov?.color || acc?.color || "#60a5fa"; }, [active, providers, accounts]);
@@ -112,6 +127,17 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   }, [snapshots, range]);
 
   const chartData = useMemo(() => {
+    const rangeCount: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
+    const n = rangeCount[range];
+    const activeSeries = active ? ((byPortfolio[active.id]?.data ?? []) as Snapshot[]) : [];
+    if (active) {
+      const trimmed = activeSeries.length > n ? activeSeries.slice(-n) : activeSeries;
+      if (trimmed.length === 0) {
+        const today = new Date().toISOString().split("T")[0].slice(5);
+        return [{ date: today, total: active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0) }] as ChartRow[];
+      }
+      return trimmed.map((s) => ({ date: s.date.slice(5), total: s.value }));
+    }
     if (filteredSnapshots.length === 0) {
       const today = new Date().toISOString().split("T")[0].slice(5);
       return [{ date: today, total: totalValue }] as ChartRow[];
@@ -126,7 +152,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       }
       return row;
     });
-  }, [filteredSnapshots, byPortfolio, totalValue]);
+  }, [filteredSnapshots, byPortfolio, totalValue, active, range]);
 
   const chartDots = useMemo(() => {
     if (!chartData.length) return [];
@@ -419,7 +445,26 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
             <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onCreate={handleWizardCreate as any} inline />
-          ) : active ? (
+          ) : viewHolding ? (() => {
+            const prov = viewHolding.providerId ? providers.find((pr) => pr.id === viewHolding.providerId) : undefined;
+            const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
+            return (
+              <>
+                <StockDetail holding={viewHolding} portfolioId={viewPortfolio?.id ?? null} portfolioName={viewPortfolio?.name ?? prov?.name ?? acc?.name} color={viewColor} onBack={() => setHoldingViewId(null)} />
+                <Dialog open={!!confirmHolding} onOpenChange={(o) => !o && setConfirmHolding(null)}>
+                  <DialogContent className="bg-zinc-900 border-white/10 text-white">
+                    <DialogHeader><DialogTitle>Delete holding</DialogTitle></DialogHeader>
+                    <p className="text-sm text-zinc-400">Delete <span className="text-white font-medium">{confirmHolding?.symbol}</span>? This cannot be undone.</p>
+                    <div className="flex justify-end gap-2 mt-4">
+                      <Button variant="ghost" onClick={() => setConfirmHolding(null)}>Cancel</Button>
+                      <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20" onClick={async () => { if (!confirmHolding) return; if (viewHolding.portfolioId) { await deleteHolding(viewHolding.portfolioId, confirmHolding.id); } else { await fetch(`/api/holdings?id=${confirmHolding.id}`, { method: "DELETE" }); await refreshAllHoldings(); } setConfirmHolding(null); setHoldingViewId(null); toast({ title: "Holding deleted", variant: "success" }); }}>Delete</Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                <TradeDialog open={showTrade} onOpenChange={setShowTrade} holding={tradeHolding} type={tradeType} onSubmit={handleTrade} />
+              </>
+            );
+          })() : active ? (
             <>
               <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: (activeBaseColor ?? "#60a5fa") + "40", background: `linear-gradient(to bottom right, ${(activeBaseColor ?? "#60a5fa")}2A, ${(activeBaseColor ?? "#60a5fa")}12)` }}>
                 <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl" style={{ background: (activeBaseColor ?? "#60a5fa") + "26" }} />
@@ -572,7 +617,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                         {filteredHoldings.map((h: Holding) => {
                           const val = holdingValueGBP(h); const cost = holdingCostGBP(h); const pct = cost ? ((val - cost) / cost) * 100 : 0;
                           return (
-                            <TableRow key={h.id} className="border-white/5 hover:bg-white/[0.04]">
+                            <TableRow key={h.id} className="border-white/5 hover:bg-white/[0.04] cursor-pointer" onClick={() => setHoldingViewId(h.id)}>
                               <TableCell>
                                 <div className="flex items-center gap-3">
                                   <div className="w-9 h-9 rounded-xl grid place-items-center font-bold text-xs bg-white/10 border border-white/10 text-white shrink-0">{h.symbol.slice(0, 3)}</div>
@@ -585,10 +630,10 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                               <TableCell className="text-right text-xs text-zinc-500 tabular-nums hidden sm:table-cell" title={h.lastRefreshedAt ? new Date(h.lastRefreshedAt * 1000).toLocaleString() : "Never refreshed (cron runs daily 06:00 UTC)"}>{fmtRelative(h.lastRefreshedAt)}</TableCell>
                               <TableCell>
                                 <div className="flex justify-end gap-0.5">
-                                  <Button variant="ghost" size="icon-xs" className="hover:bg-emerald-500/10 hover:text-emerald-400" onClick={() => openTrade(h, "buy")} aria-label="Buy more" title="Buy / DCA"><Plus className="w-3.5 h-3.5" /></Button>
-                                  <Button variant="ghost" size="icon-xs" className="hover:bg-red-500/10 hover:text-red-400" onClick={() => openTrade(h, "sell")} aria-label="Sell" title="Sell"><Minus className="w-3.5 h-3.5" /></Button>
-                                  <Button variant="ghost" size="icon-xs" onClick={() => openEdit(h)} aria-label="Edit"><Pencil className="w-3.5 h-3.5" /></Button>
-                                  <Button variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" onClick={() => setConfirmHolding({ id: h.id, symbol: h.symbol })} aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></Button>
+                                  <Button variant="ghost" size="icon-xs" className="hover:bg-emerald-500/10 hover:text-emerald-400" onClick={(e) => { e.stopPropagation(); openTrade(h, "buy"); }} aria-label="Buy more" title="Buy / DCA"><Plus className="w-3.5 h-3.5" /></Button>
+                                  <Button variant="ghost" size="icon-xs" className="hover:bg-red-500/10 hover:text-red-400" onClick={(e) => { e.stopPropagation(); openTrade(h, "sell"); }} aria-label="Sell" title="Sell"><Minus className="w-3.5 h-3.5" /></Button>
+                                  <Button variant="ghost" size="icon-xs" onClick={(e) => { e.stopPropagation(); openEdit(h); }} aria-label="Edit"><Pencil className="w-3.5 h-3.5" /></Button>
+                                  <Button variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" onClick={(e) => { e.stopPropagation(); setConfirmHolding({ id: h.id, symbol: h.symbol }); }} aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></Button>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -851,7 +896,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                                           <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks</div>
                                           <div className="grid md:grid-cols-2 gap-2">
                                             {directHoldings.filter((h: Holding)=> h.providerId===pr.id).map((h: Holding)=>(
-                                              <div key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+                                              <div key={h.id} onClick={() => setHoldingViewId(h.id)} className="cursor-pointer hover:bg-white/[0.06] flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
                                                 <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
                                                 <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
                                                 <span className="text-sm font-semibold text-white">{fmtGBP(holdingValueGBP(h))}</span>
@@ -894,7 +939,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                                     <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks — {acc.name}</div>
                                     <div className="grid md:grid-cols-2 gap-2">
                                       {directHoldings.filter((h: Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h: Holding)=>(
-                                        <div key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+                                        <div key={h.id} onClick={() => setHoldingViewId(h.id)} className="cursor-pointer hover:bg-white/[0.06] flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
                                           <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
                                           <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
                                           <span className="text-sm font-semibold text-white">{fmtGBP(holdingValueGBP(h))}</span>

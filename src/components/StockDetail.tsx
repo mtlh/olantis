@@ -1,0 +1,184 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceDot } from "recharts";
+import { History, ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, TrendingDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useTransactions, type Holding, type Transaction } from "@/lib/store";
+
+function fmtGBP(n: number) { return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(n); }
+function fmtPrice(n: number, currency?: string | null) {
+  if (currency === "GBX" || currency === "GBp") return `${Math.round(n).toLocaleString("en-GB")}p`;
+  if (currency === "GBP") return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 2 }).format(n);
+  if (currency === "USD") return `$${Number(n).toFixed(2)}`;
+  if (currency === "EUR") return `€${Number(n).toFixed(2)}`;
+  return `${Number(n).toFixed(2)}${currency ? ` ${currency}` : ""}`;
+}
+function fmtPct(n: number) { return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`; }
+function holdingValueGBP(h: Holding) { const raw = h.shares * h.currentPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
+function holdingCostGBP(h: Holding) { const raw = h.shares * h.avgPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
+
+type PriceRow = { date: string; price: number };
+
+export function StockDetail({ holding, portfolioId, portfolioName, color, onBack }: { holding: Holding; portfolioId?: string | null; portfolioName?: string; color: string; onBack: () => void }) {
+  const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
+  const [prices, setPrices] = useState<PriceRow[]>([]);
+  const [loading, setLoading] = useState(holding.currency !== "GBX" && holding.currency !== "GBp" && /^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol));
+  const { transactions } = useTransactions(portfolioId ?? null, holding.symbol);
+
+  useEffect(() => {
+    const listed = !["GBX", "GBp"].includes(holding.currency ?? "") && /^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol);
+    if (!listed) { setPrices([]); setLoading(false); return; }
+    let cancel = false;
+    setLoading(true);
+    fetch(`/api/chart?symbol=${encodeURIComponent(holding.symbol)}&exchange=${encodeURIComponent(holding.exchange ?? "")}&range=${range}`)
+      .then(async (r) => { if (!r.ok) throw new Error(); const j = await r.json(); if (!cancel) setPrices(j.chart as PriceRow[]); })
+      .catch(() => { if (!cancel) setPrices([]); })
+      .finally(() => { if (!cancel) setLoading(false); });
+    return () => { cancel = true; };
+  }, [holding.currency, holding.symbol, holding.exchange, range]);
+
+  const chartData = useMemo(() => prices.map((p) => ({ date: p.date.slice(5), price: p.price })), [prices]);
+  const dots = useMemo(() => {
+    if (!chartData.length) return [];
+    const map = new Map(chartData.map((d) => [d.date, d.price]));
+    return transactions
+      .map((t: Transaction) => {
+        const mmdd = t.date.slice(5);
+        const y = map.get(mmdd);
+        if (y == null) return null;
+        return { x: mmdd, y, type: t.type, date: t.date };
+      })
+      .filter((x): x is { x: string; y: number; type: "buy" | "sell"; date: string } => x !== null);
+  }, [chartData, transactions]);
+
+  const val = holdingValueGBP(holding);
+  const cost = holdingCostGBP(holding);
+  const gain = val - cost;
+  const pct = cost ? (gain / cost) * 100 : 0;
+  const isManual = ["GBX", "GBp"].includes(holding.currency ?? "") || !/^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol);
+
+  return (
+    <>
+      <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: color + "40", background: `linear-gradient(to bottom right, ${color}2A, ${color}12)` }}>
+        <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl" style={{ background: color + "26" }} />
+        <div className="relative flex flex-wrap items-start justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="w-12 h-12 rounded-xl grid place-items-center font-bold text-sm bg-white/10 border border-white/10 text-white">{holding.symbol.slice(0, 3)}</div>
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">{holding.symbol}</h1>
+              {holding.exchange && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-300">{holding.exchange}</Badge>}
+              {portfolioName && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{portfolioName}</Badge>}
+            </div>
+            <p className="text-sm mt-2 text-zinc-500">{holding.name}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="bg-white/5 border-white/10" onClick={onBack}>← Back{portfolioName ? ` to ${portfolioName}` : ""}</Button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+          <div className="p-4 rounded-xl bg-white text-black border-l-4" style={{ borderLeftColor: color }}>
+            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Value</div>
+            <div className="text-2xl font-bold mt-1">{fmtGBP(val)}</div>
+            <div className="text-xs text-zinc-600 mt-1">Cost {fmtGBP(cost)}</div>
+          </div>
+          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
+            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Return</div>
+            <div className="text-2xl font-bold flex items-center gap-2" style={{ color: gain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(gain)} <span className="text-sm">{fmtPct(pct)}</span></div>
+            <div className="text-xs text-zinc-500 mt-1">All time</div>
+          </div>
+          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
+            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Shares</div>
+            <div className="text-2xl font-bold text-white">{holding.shares}</div>
+            <div className="text-xs text-zinc-500 mt-1">Avg {fmtPrice(holding.avgPrice, holding.currency)}</div>
+          </div>
+          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
+            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Price</div>
+            <div className="text-2xl font-bold text-white">{fmtPrice(holding.currentPrice, holding.currency)}</div>
+            <div className="text-xs text-zinc-500 mt-1">{holding.currency}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <Card className="xl:col-span-2 glass-card">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-white">Performance</CardTitle>
+              <CardDescription>{chartData.length} points • {holding.symbol}{dots.length ? ` • ${dots.length} trades` : ""}</CardDescription>
+            </div>
+            <div className="flex gap-1">
+              {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
+                <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => setRange(r)}>{r}</Button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isManual ? (
+              <div className="h-[320px] grid place-items-center text-center">
+                <div>
+                  <Wallet className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
+                  <p className="text-sm text-zinc-400">Manual holding — no market price history</p>
+                  <p className="text-xs text-zinc-600 mt-1">Value tracked on the portfolio chart.</p>
+                </div>
+              </div>
+            ) : loading ? (
+              <div className="h-[320px] grid place-items-center text-sm text-zinc-500">Loading price history…</div>
+            ) : chartData.length === 0 ? (
+              <div className="h-[320px] grid place-items-center text-sm text-zinc-500">No price data available for {holding.symbol}.</div>
+            ) : (
+              <div className="h-[320px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
+                    <YAxis domain={["auto", "auto"]} tickFormatter={(v) => fmtPrice(Number(v), holding.currency).replace(/\.\d+/, "")} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={70} />
+                    <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtPrice(Number(v), holding.currency)} />
+                    <Area type="monotone" dataKey="price" name={holding.symbol} stroke={color} fill={color} fillOpacity={0.14} strokeWidth={2.5} dot={false} />
+                    {dots.map((d, i: number) => (
+                      <ReferenceDot key={i} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
+                    ))}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {dots.length > 0 && !isManual && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span><span className="text-zinc-600">Trades marked on chart</span></div>}
+          </CardContent>
+        </Card>
+        <Card className="glass-card overflow-hidden">
+          <CardHeader className="border-b border-white/5">
+            <CardTitle className="flex items-center gap-2 text-white"><History className="w-4 h-4" /> Trades {transactions.length ? <Badge variant="outline" className="border-white/10 text-zinc-500">{transactions.length}</Badge> : null}</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {transactions.length === 0 ? (
+              <div className="p-8 text-center"><p className="text-sm text-zinc-400">No trades for {holding.symbol}</p></div>
+            ) : (
+              <div className="divide-y divide-white/5 max-h-[400px] overflow-auto">
+                {transactions.slice(0, 50).map((t) => (
+                  <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03]">
+                    <span className={`w-7 h-7 rounded-lg grid place-items-center shrink-0 ${t.type === "buy" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>{t.type === "buy" ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-white font-medium">{t.type === "buy" ? "Buy" : "Sell"} • {t.shares} @ {fmtPrice(t.price, holding.currency)}</div>
+                    </div>
+                    <span className="text-xs text-zinc-600 tabular-nums">{new Date(t.date).toLocaleDateString("en-GB", { month: "short", day: "numeric" })}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="glass-card">
+        <CardHeader><CardTitle className="flex items-center gap-2 text-white text-sm">{gain >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />} Position summary</CardTitle></CardHeader>
+        <CardContent className="text-sm text-zinc-400 space-y-1.5">
+          <div className="flex justify-between"><span>Purchase date</span><span className="text-white tabular-nums">{holding.purchaseDate?.slice(0, 10) || "—"}</span></div>
+          <div className="flex justify-between"><span>Shares × avg</span><span className="text-white tabular-nums">{holding.shares} × {fmtPrice(holding.avgPrice, holding.currency)}</span></div>
+          <div className="flex justify-between"><span>Current price</span><span className="text-white tabular-nums">{fmtPrice(holding.currentPrice, holding.currency)}</span></div>
+          <div className="flex justify-between"><span>Gain per share</span><span className="tabular-nums" style={{ color: holding.currentPrice - holding.avgPrice >= 0 ? "#34d399" : "#f87171" }}>{fmtPrice(holding.currentPrice - holding.avgPrice, holding.currency)}</span></div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
