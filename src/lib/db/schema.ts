@@ -62,6 +62,12 @@ export const portfolioSnapshots = pgTable("portfolio_snapshots", {
   date: text("date").notNull(),
   value: real("value").notNull(),
 }, (t) => ({ pk: primaryKey({ columns: [t.userId, t.portfolioId, t.date] }) }));
+export const holdingSnapshots = pgTable("holding_snapshots", {
+  userId: text("user_id").notNull(),
+  holdingId: text("holding_id").notNull().references(() => holdings.id, { onDelete: "cascade" }),
+  date: text("date").notNull(),
+  value: real("value").notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.userId, t.holdingId, t.date] }) }));
 export const transactions = pgTable("transactions", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),

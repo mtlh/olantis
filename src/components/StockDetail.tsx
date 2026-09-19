@@ -25,7 +25,16 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
   const isListed = !["GBX", "GBp"].includes(holding.currency ?? "") && /^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol);
   const [prices, setPrices] = useState<PriceRow[] | null>(null);
+  const [snapSeriesFull, setSnapSeries] = useState<PriceRow[] | null>(null);
   const { transactions } = useTransactions(portfolioId ?? null, holding.symbol);
+
+  useEffect(() => {
+    let cancel = false;
+    fetch(`/api/snapshots?holdingId=${encodeURIComponent(holding.id)}`)
+      .then(async (r) => { if (!r.ok) throw new Error(); const j = await r.json(); if (!cancel) setSnapSeries(j.byHolding?.[holding.id]?.data as PriceRow[] ?? []); })
+      .catch(() => { if (!cancel) setSnapSeries([]); });
+    return () => { cancel = true; };
+  }, [holding.id]);
 
   useEffect(() => {
     if (!isListed) return;
@@ -36,8 +45,14 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
     return () => { cancel = true; };
   }, [isListed, holding.currency, holding.symbol, holding.exchange, range]);
 
-  const chartData = useMemo(() => (prices ?? []).map((p) => ({ date: p.date.slice(5), price: p.price })), [prices]);
-  const loading = isListed && prices === null;
+  const hasValueSeries = (snapSeriesFull?.length ?? 0) >= 2;
+  const rangeCount: Record<string, number> = { "1M": 40, "3M": 130, "1Y": 366, MAX: 9999 };
+  const snapSeries = hasValueSeries ? snapSeriesFull!.slice(-(rangeCount[range] ?? 366)) : null;
+  const chartData = useMemo(() => {
+    if (hasValueSeries) return (snapSeries ?? []).map((p) => ({ date: p.date.slice(5), price: p.price }));
+    return (prices ?? []).map((p) => ({ date: p.date.slice(5), price: p.price }));
+  }, [hasValueSeries, snapSeries, prices]);
+  const loading = !hasValueSeries && ((isListed && prices === null) || snapSeriesFull === null);
 
   const dots = useMemo(() => {
     if (!chartData.length) return [];
@@ -110,8 +125,8 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
         <Card className="xl:col-span-2 glass-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-white">Performance</CardTitle>
-              <CardDescription>{chartData.length} points • {holding.symbol}{dots.length ? ` • ${dots.length} trades` : ""}</CardDescription>
+              <CardTitle className="text-white">{hasValueSeries ? "Value over time" : "Performance"}</CardTitle>
+              <CardDescription>{hasValueSeries ? "Tracked position value" : "Market price"} • {chartData.length} points • {holding.symbol}{dots.length ? ` • ${dots.length} trades` : ""}</CardDescription>
             </div>
             <div className="flex gap-1">
               {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
@@ -138,8 +153,8 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
                   <AreaChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                    <YAxis domain={["auto", "auto"]} tickFormatter={(v) => fmtPrice(Number(v), holding.currency).replace(/\.\d+/, "")} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={70} />
-                    <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtPrice(Number(v), holding.currency)} />
+                    <YAxis domain={["auto", "auto"]} tickFormatter={(v) => hasValueSeries ? `£${(Number(v) / 1000).toFixed(1)}k` : fmtPrice(Number(v), holding.currency).replace(/\.\d+/, "")} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={70} />
+                    <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => hasValueSeries ? fmtGBP(Number(v)) : fmtPrice(Number(v), holding.currency)} />
                     <Area type="monotone" dataKey="price" name={holding.symbol} stroke={color} fill={color} fillOpacity={0.14} strokeWidth={2.5} dot={false} />
                     {dots.map((d, i: number) => (
                       <ReferenceDot key={i} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />

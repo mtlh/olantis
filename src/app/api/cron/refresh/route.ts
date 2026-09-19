@@ -1,7 +1,15 @@
 import { fetchQuotes } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
-import { holdings, snapshots, portfolioSnapshots, portfolios } from "@/lib/db/schema";
+import { holdings, snapshots, portfolioSnapshots, holdingSnapshots, portfolios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { neon } from "@neondatabase/serverless";
+
+async function ensureSnapshotTables() {
+  try {
+    const sql = neon(process.env.DATABASE_URL!);
+    await sql`CREATE TABLE IF NOT EXISTS holding_snapshots (user_id text NOT NULL, holding_id text NOT NULL REFERENCES holdings(id) ON DELETE CASCADE, date text NOT NULL, value real NOT NULL, PRIMARY KEY (user_id, holding_id, date))`;
+  } catch {}
+}
 
 const SIX_HOURS = 6 * 60 * 60 * 1000;
 const REFRESH_GUARD_SECONDS = 23 * 60 * 60; // 23h, not 24h — avoids the daily-cron flip-flop
@@ -68,6 +76,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
 
 async function createSnapshots(allHoldings: HoldingRow[]) {
   const db = getDb();
+  await ensureSnapshotTables();
   const today = new Date().toISOString().split("T")[0];
   const userHoldings = new Map<string, HoldingRow[]>();
   for (const h of allHoldings) {
@@ -101,6 +110,16 @@ async function createSnapshots(allHoldings: HoldingRow[]) {
       const pfValue = phs.reduce((sum, h) => sum + valGBP(h), 0);
       if (pfValue === 0) continue;
       await db.insert(portfolioSnapshots).values({ userId, portfolioId: p.id, date: today, value: pfValue }).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: pfValue } });
+    }
+
+    const hBatch: { userId: string; holdingId: string; date: string; value: number }[] = [];
+    for (const h of hs) {
+      const v = valGBP(h);
+      if (v === 0) continue;
+      hBatch.push({ userId, holdingId: h.id, date: today, value: v });
+    }
+    for (const row of hBatch) {
+      await db.insert(holdingSnapshots).values(row).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: row.value } });
     }
   }
 }

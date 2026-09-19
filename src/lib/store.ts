@@ -6,7 +6,7 @@ export type Account = { id: string; name: string; color: string | null; sortOrde
 export type Provider = { id: string; name: string; color: string | null; accountId: string; sortOrder?: number | null; userId?: string; createdAt?: number };
 export type UserSettings = { userId: string; currency: string; dateFormat: string; defaultRange: string; showTradeMarkers: number };
 export type Snapshot = { date: string; value: number };
-export type SnapResponse = { total: Snapshot[]; byPortfolio: Record<string, { name: string; data: Snapshot[] }> };
+export type SnapResponse = { total: Snapshot[]; byPortfolio: Record<string, { name: string; data: Snapshot[] }>; byHolding?: Record<string, { symbol: string; name: string; data: Snapshot[] }> };
 export type Transaction = { id: string; userId?: string; portfolioId: string; holdingId?: string | null; symbol: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date: string; note?: string | null; createdAt: number };
 
 type AccountPayload = { id: string; name?: string; color?: string | null };
@@ -171,7 +171,11 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
     const isDemo = typeof document !== "undefined" && document.cookie.includes("olantis_demo=1");
     if (isDemo) return;
     const pfVals = portfolios.map((p) => ({ id: p.id, value: p.holdings.reduce((a, h) => a + valGBP(h), 0) }));
-    fetch("/api/snapshots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: totalValue, portfolios: pfVals }) }).then(() => refresh()).catch(() => {});
+    const hVals: Array<{ id: string; value: number }> = [
+      ...portfolios.flatMap((p) => p.holdings.map((h) => ({ id: h.id, value: valGBP(h) }))),
+      ...directHoldings.map((h) => ({ id: h.id, value: valGBP(h) })),
+    ];
+    fetch("/api/snapshots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: totalValue, portfolios: pfVals, holdings: hVals }) }).then(() => refresh()).catch(() => {});
   }, [totalValue, portfolios, directHoldings, refresh]);
   return { snapshots: data.total, byPortfolio: data.byPortfolio, refresh };
 }
