@@ -36,8 +36,8 @@ function isLightColor(hex: string) {
   } catch { return false; }
 }
 
-export function Sidebar({ accounts, providers, portfolios, holdings, activeId, onSelect, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
-  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void;
+export function Sidebar({ accounts, providers, portfolios, holdings, activeId, onSelect, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void; onSelectHolding?: (h: Holding) => void;
   onCreate: (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => void;
   onCreateAccount: (name: string) => void;
   onCreateProvider?: (name: string, accountId: string) => Promise<void>;
@@ -322,12 +322,12 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                   <div className="mt-2 pt-2 border-t border-white/5">
                                     <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1 mb-1">Direct stocks</div>
                                     {(holdings ?? []).filter((h:Holding)=> h.providerId===pr.id && !h.portfolioId).map((h:Holding)=>(
-                                      <div key={h.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs">
+                                      <div key={h.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs ${onSelectHolding?"cursor-pointer hover:bg-white/[0.07]":""}`} onClick={()=> onSelectHolding?.(h)}>
                                         <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                                         <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
                                         <span className="text-zinc-500">£{holdingValueGBP(h).toFixed(0)}</span>
-                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" onClick={()=> openDirectEdit(h)}><Pencil className="w-3 h-3"/></Button>
-                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-red-400" onClick={async()=>{ await fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}); onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }}><Trash2 className="w-3 h-3"/></Button>
+                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-white" onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
+                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
                                       </div>
                                     ))}
                                   </div>
@@ -372,11 +372,11 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                         <div className="space-y-1 mt-2 pt-2 border-t border-white/5">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct stocks — {acc.name}</div>
                           {(holdings ?? []).filter((h:Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h:Holding)=>(
-                            <div key={h.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs">
+                            <div key={h.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs ${onSelectHolding?"cursor-pointer hover:bg-white/[0.07]":""}`} onClick={()=> onSelectHolding?.(h)}>
                               <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                               <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
                               <span className="text-zinc-500">£{holdingValueGBP(h).toFixed(0)}</span>
-                              <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-red-400" onClick={async()=>{ await fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}); onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }}><Trash2 className="w-3 h-3"/></Button>
+                              <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
                             </div>
                           ))}
                         </div>
