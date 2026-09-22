@@ -441,15 +441,15 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
         </div>
 
       </nav>
-      <div className="mx-3 mb-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300"><Clock className="w-3.5 h-3.5 text-zinc-500" /> Prices update daily</div>
-        <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">Automated at 06:00 UTC via cron. No manual refresh needed.</p>
-        <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
-          <span className="text-[11px] text-zinc-600">Last refresh</span>
-          <span className="text-[11px] font-medium text-zinc-400">{lastRefresh ? fmtRelative(lastRefresh) : "—"}</span>
-        </div>
-      </div>
       <div className="p-3 border-t flex flex-col gap-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+          <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300"><Clock className="w-3.5 h-3.5 text-zinc-500" /> Prices update daily</div>
+          <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">Automated at 06:00 UTC via cron. No manual refresh needed.</p>
+          <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
+            <span className="text-[11px] text-zinc-600">Last refresh</span>
+            <span className="text-[11px] font-medium text-zinc-400">{lastRefresh ? fmtRelative(lastRefresh) : "—"}</span>
+          </div>
+        </div>
         <a href="/settings" className={buttonVariants({ variant: "ghost", size: "sm", className: "w-full justify-start gap-2 text-zinc-400 hover:text-white" })}><Settings className="w-4 h-4"/> Settings</a>
         <div className="flex gap-2">
           <a href={isDemo ? "/api/demo?clear=1" : "/logout"} className={buttonVariants({ variant: "ghost", size: "sm", className: "flex-1 justify-start text-zinc-500 hover:text-white" })}><LogOut className="w-4 h-4" /> {isDemo ? "Exit demo" : "Sign out"}</a>
