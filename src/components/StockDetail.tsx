@@ -93,11 +93,13 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
             <p className="text-sm mt-2 text-zinc-500">{holding.name}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {portfolioId && onBuy && onSell && (
+            {portfolioId && onBuy && onSell ? (
               <>
                 <Button variant="outline" className="bg-white/5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10" onClick={onBuy}><Plus className="w-4 h-4" /> Buy</Button>
                 <Button variant="outline" className="bg-white/5 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={onSell}><Minus className="w-4 h-4" /> Sell</Button>
               </>
+            ) : (
+              <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-500 self-center">Buy/Sell needs a portfolio</Badge>
             )}
             <Button variant="outline" className="bg-white/5 border-white/10" onClick={onBack}>← Back{portfolioName ? ` to ${portfolioName}` : ""}</Button>
           </div>

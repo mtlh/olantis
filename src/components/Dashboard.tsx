@@ -549,6 +549,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
               <Card className="glass-card overflow-hidden">
                 <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b border-white/5">
                   <CardTitle className="flex-1 text-white">Holdings</CardTitle>
+                  <div className="text-[11px] text-zinc-500 hidden lg:block mr-1">Buy / Sell on each row records a trade</div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
@@ -581,7 +582,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                           <TableHead className="text-right text-zinc-500">Value</TableHead>
                           <TableHead className="text-right text-zinc-500">Return</TableHead>
                           <TableHead className="text-right text-zinc-500 hidden sm:table-cell">Updated</TableHead>
-                          <TableHead className="w-20"></TableHead>
+                          <TableHead className="w-36"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -600,9 +601,9 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                               <TableCell className="text-right"><Badge variant="outline" className="border-white/10" style={{ color: pct >= 0 ? "#34d399" : "#f87171" }}>{fmtPct(pct)}</Badge></TableCell>
                               <TableCell className="text-right text-xs text-zinc-500 tabular-nums hidden sm:table-cell" title={h.lastRefreshedAt ? new Date(h.lastRefreshedAt * 1000).toLocaleString() : "Never refreshed (cron runs daily 06:00 UTC)"}>{fmtRelative(h.lastRefreshedAt)}</TableCell>
                               <TableCell>
-                                <div className="flex justify-end gap-0.5">
-                                  <Button variant="ghost" size="icon-xs" className="hover:bg-emerald-500/10 hover:text-emerald-400" onClick={(e) => { e.stopPropagation(); openTrade(h, "buy"); }} aria-label="Buy more" title="Buy / DCA"><Plus className="w-3.5 h-3.5" /></Button>
-                                  <Button variant="ghost" size="icon-xs" className="hover:bg-red-500/10 hover:text-red-400" onClick={(e) => { e.stopPropagation(); openTrade(h, "sell"); }} aria-label="Sell" title="Sell"><Minus className="w-3.5 h-3.5" /></Button>
+                                <div className="flex justify-end gap-1">
+                                  <Button variant="outline" size="xs" className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20" onClick={(e) => { e.stopPropagation(); openTrade(h, "buy"); }} title="Buy / DCA"><Plus className="w-3.5 h-3.5" /> Buy</Button>
+                                  <Button variant="outline" size="xs" className="bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20" onClick={(e) => { e.stopPropagation(); openTrade(h, "sell"); }} title="Sell"><Minus className="w-3.5 h-3.5" /> Sell</Button>
                                   <Button variant="ghost" size="icon-xs" onClick={(e) => { e.stopPropagation(); openEdit(h); }} aria-label="Edit"><Pencil className="w-3.5 h-3.5" /></Button>
                                   <Button variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" onClick={(e) => { e.stopPropagation(); setConfirmHolding({ id: h.id, symbol: h.symbol }); }} aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></Button>
                                 </div>
@@ -620,7 +621,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
               <Card className="glass-card overflow-hidden">
                 <CardHeader className="flex flex-row items-center justify-between border-b border-white/5">
                   <CardTitle className="flex items-center gap-2 text-white"><History className="w-4 h-4" /> Trade history {transactions.length ? <Badge variant="outline" className="border-white/10 text-zinc-500">{transactions.length}</Badge> : null}</CardTitle>
-                  <div className="text-xs text-zinc-500 hidden sm:block">Buy/sell events are marked on the chart</div>
+                  <div className="text-xs text-zinc-500 hidden sm:block">Buy/sell from Holdings • events marked on the chart</div>
                 </CardHeader>
                 <CardContent className="p-0">
                   {transactions.length === 0 ? (
@@ -628,6 +629,20 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 grid place-items-center mx-auto mb-3"><ShoppingCart className="w-5 h-5 text-zinc-500" /></div>
                       <p className="text-sm text-zinc-400">No trades yet</p>
                       <p className="text-xs text-zinc-600 mt-1">Use Buy to dollar-cost average, Sell to trim — avg cost updates automatically.</p>
+                      {active.holdings.length > 0 ? (
+                        <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                          {active.holdings.length === 1 ? (
+                            <>
+                              <Button size="sm" variant="outline" className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20" onClick={() => openTrade(active.holdings[0], "buy")}><Plus className="w-3.5 h-3.5" /> Buy {active.holdings[0].symbol}</Button>
+                              <Button size="sm" variant="outline" className="bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20" onClick={() => openTrade(active.holdings[0], "sell")}><Minus className="w-3.5 h-3.5" /> Sell {active.holdings[0].symbol}</Button>
+                            </>
+                          ) : (
+                            <p className="text-xs text-zinc-500">Use the <span className="text-emerald-400 font-medium">Buy</span> / <span className="text-red-400 font-medium">Sell</span> buttons on any holding above to record a trade.</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-zinc-600 mt-3">Add a holding first, then record buys and sells here.</p>
+                      )}
                     </div>
                   ) : (
                     <div className="divide-y divide-white/5 max-h-[320px] overflow-auto">
