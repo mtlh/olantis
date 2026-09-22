@@ -6,24 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useTransactions, type Holding, type Transaction } from "@/lib/store";
-
-function fmtGBP(n: number) { return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(n); }
-function fmtPrice(n: number, currency?: string | null) {
-  if (currency === "GBX" || currency === "GBp") return `${Math.round(n).toLocaleString("en-GB")}p`;
-  if (currency === "GBP") return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 2 }).format(n);
-  if (currency === "USD") return `$${Number(n).toFixed(2)}`;
-  if (currency === "EUR") return `€${Number(n).toFixed(2)}`;
-  return `${Number(n).toFixed(2)}${currency ? ` ${currency}` : ""}`;
-}
-function fmtPct(n: number) { return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`; }
-function holdingValueGBP(h: Holding) { const raw = h.shares * h.currentPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
-function holdingCostGBP(h: Holding) { const raw = h.shares * h.avgPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
+import { fmtGBP, fmtPrice, fmtPct, holdingValueGBP, holdingCostGBP, isListedSymbol, type MoneyHolding } from "@/lib/format";
 
 type PriceRow = { date: string; price: number };
 
 export function StockDetail({ holding, portfolioId, portfolioName, color, onBack, onBuy, onSell }: { holding: Holding; portfolioId?: string | null; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void }) {
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
-  const isListed = !["GBX", "GBp"].includes(holding.currency ?? "") && /^[A-Z0-9.\-]{1,12}$/i.test(holding.symbol);
+  const isListed = isListedSymbol(holding.symbol);
   const [prices, setPrices] = useState<PriceRow[] | null>(null);
   const [snapSeriesFull, setSnapSeries] = useState<PriceRow[] | null>(null);
   const { transactions } = useTransactions(portfolioId ?? null, holding.symbol);
@@ -31,28 +20,43 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
   useEffect(() => {
     let cancel = false;
     fetch(`/api/snapshots?holdingId=${encodeURIComponent(holding.id)}`)
-      .then(async (r) => { if (!r.ok) throw new Error(); const j = await r.json(); if (!cancel) setSnapSeries(j.byHolding?.[holding.id]?.data as PriceRow[] ?? []); })
-      .catch(() => { if (!cancel) setSnapSeries([]); });
-    return () => { cancel = true; };
+      .then(async (r) => {
+        if (!r.ok) throw new Error();
+        const j = await r.json();
+        if (!cancel) setSnapSeries((j.byHolding?.[holding.id]?.data ?? []) as PriceRow[]);
+      })
+      .catch(() => {
+        if (!cancel) setSnapSeries([]);
+      });
+    return () => {
+      cancel = true;
+    };
   }, [holding.id]);
 
   useEffect(() => {
     if (!isListed) return;
     let cancel = false;
     fetch(`/api/chart?symbol=${encodeURIComponent(holding.symbol)}&exchange=${encodeURIComponent(holding.exchange ?? "")}&range=${range}`)
-      .then(async (r) => { const chart = r.ok ? (await r.json()).chart as PriceRow[] : []; if (!cancel) setPrices(chart); })
-      .catch(() => { if (!cancel) setPrices([]); });
-    return () => { cancel = true; };
-  }, [isListed, holding.currency, holding.symbol, holding.exchange, range]);
+      .then(async (r) => {
+        const chart = r.ok ? ((await r.json()).chart as PriceRow[]) : [];
+        if (!cancel) setPrices(chart);
+      })
+      .catch(() => {
+        if (!cancel) setPrices([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [isListed, holding.symbol, holding.exchange, range]);
 
   const hasValueSeries = (snapSeriesFull?.length ?? 0) >= 2;
   const rangeCount: Record<string, number> = { "1M": 40, "3M": 130, "1Y": 366, MAX: 9999 };
-  const snapSeries = hasValueSeries ? snapSeriesFull!.slice(-(rangeCount[range] ?? 366)) : null;
+  const snapSeries = hasValueSeries ? (snapSeriesFull ?? []).slice(-(rangeCount[range] ?? 366)) : null;
   const chartData = useMemo(() => {
     if (hasValueSeries) return (snapSeries ?? []).map((p) => ({ date: p.date.slice(5), price: p.price }));
     return (prices ?? []).map((p) => ({ date: p.date.slice(5), price: p.price }));
   }, [hasValueSeries, snapSeries, prices]);
-  const loading = !hasValueSeries && ((isListed && prices === null) || snapSeriesFull === null);
+  const loading = !hasValueSeries && isListed && prices === null;
 
   const dots = useMemo(() => {
     if (!chartData.length) return [];
@@ -62,13 +66,13 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
         const mmdd = t.date.slice(5);
         const y = map.get(mmdd);
         if (y == null) return null;
-        return { x: mmdd, y, type: t.type, date: t.date };
+        return { x: mmdd, y, type: t.type, date: t.date, symbol: t.symbol };
       })
-      .filter((x): x is { x: string; y: number; type: "buy" | "sell"; date: string } => x !== null);
+      .filter((x): x is { x: string; y: number; type: "buy" | "sell"; date: string; symbol: string } => x !== null);
   }, [chartData, transactions]);
 
-  const val = holdingValueGBP(holding);
-  const cost = holdingCostGBP(holding);
+  const val = holdingValueGBP(holding as MoneyHolding);
+  const cost = holdingCostGBP(holding as MoneyHolding);
   const gain = val - cost;
   const pct = cost ? (gain / cost) * 100 : 0;
   const isManual = !isListed;
@@ -90,8 +94,8 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
           <div className="flex flex-wrap gap-2">
             {portfolioId && onBuy && onSell && (
               <>
-                <Button variant="outline" className="bg-white/5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10" onClick={onBuy}><Plus className="w-4 h-4"/> Buy</Button>
-                <Button variant="outline" className="bg-white/5 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={onSell}><Minus className="w-4 h-4"/> Sell</Button>
+                <Button variant="outline" className="bg-white/5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10" onClick={onBuy}><Plus className="w-4 h-4" /> Buy</Button>
+                <Button variant="outline" className="bg-white/5 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={onSell}><Minus className="w-4 h-4" /> Sell</Button>
               </>
             )}
             <Button variant="outline" className="bg-white/5 border-white/10" onClick={onBack}>← Back{portfolioName ? ` to ${portfolioName}` : ""}</Button>
@@ -153,11 +157,11 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
                   <AreaChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                    <YAxis domain={["auto", "auto"]} tickFormatter={(v) => hasValueSeries ? `£${(Number(v) / 1000).toFixed(1)}k` : fmtPrice(Number(v), holding.currency).replace(/\.\d+/, "")} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={70} />
-                    <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => hasValueSeries ? fmtGBP(Number(v)) : fmtPrice(Number(v), holding.currency)} />
+                    <YAxis domain={["auto", "auto"]} tickFormatter={(v) => (hasValueSeries ? `£${(Number(v) / 1000).toFixed(1)}k` : fmtPrice(Number(v), holding.currency).replace(/\.\d+/, ""))} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={70} />
+                    <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => (hasValueSeries ? fmtGBP(Number(v)) : fmtPrice(Number(v), holding.currency))} />
                     <Area type="monotone" dataKey="price" name={holding.symbol} stroke={color} fill={color} fillOpacity={0.14} strokeWidth={2.5} dot={false} />
-                    {dots.map((d, i: number) => (
-                      <ReferenceDot key={i} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
+                    {dots.map((d) => (
+                      <ReferenceDot key={`${d.date}-${d.symbol}-${d.x}`} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
                     ))}
                   </AreaChart>
                 </ResponsiveContainer>

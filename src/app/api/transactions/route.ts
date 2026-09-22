@@ -1,31 +1,11 @@
 import { getDb } from "@/lib/db";
 import { holdings, portfolios, transactions } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { cookies } from "next/headers";
-import { neon } from "@neondatabase/serverless";
-
-async function getUserId() {
-  const jar = await cookies();
-  if (jar.get("olantis_demo")?.value === "1") return "demo";
-  try {
-    const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
-    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
-  } catch {}
-  return null;
-}
-
-async function ensureTable() {
-  try {
-    const sql = neon(process.env.DATABASE_URL!);
-    await sql`CREATE TABLE IF NOT EXISTS transactions (id text PRIMARY KEY, user_id text NOT NULL, portfolio_id text NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE, holding_id text REFERENCES holdings(id) ON DELETE SET NULL, symbol text NOT NULL, name text, type text NOT NULL, shares real NOT NULL, price real NOT NULL, date text NOT NULL, note text, created_at integer NOT NULL)`;
-  } catch {}
-}
+import { and, eq } from "drizzle-orm";
+import { getUserId } from "@/lib/auth";
 
 export async function GET(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json([]);
-  await ensureTable();
   const { searchParams } = new URL(req.url);
   const portfolioId = searchParams.get("portfolioId");
   const holdingId = searchParams.get("holdingId");
@@ -33,21 +13,20 @@ export async function GET(req: Request) {
   const db = getDb();
   let rows: typeof transactions.$inferSelect[] = [];
   try {
-    rows = await db.select().from(transactions).where(eq(transactions.userId, userId));
+    const conds = [eq(transactions.userId, userId)];
+    if (portfolioId) conds.push(eq(transactions.portfolioId, portfolioId));
+    if (holdingId) conds.push(eq(transactions.holdingId, holdingId));
+    if (symbol) conds.push(eq(transactions.symbol, symbol.toUpperCase()));
+    rows = await db.select().from(transactions).where(and(...conds));
   } catch { return Response.json([]); }
-  let filtered = rows;
-  if (portfolioId) filtered = filtered.filter((r) => r.portfolioId === portfolioId);
-  if (holdingId) filtered = filtered.filter((r) => r.holdingId === holdingId);
-  if (symbol) filtered = filtered.filter((r) => r.symbol === symbol.toUpperCase());
-  filtered.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
-  return Response.json(filtered);
+  rows.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  return Response.json(rows);
 }
 
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  await ensureTable();
-  const body = await req.json();
+  const body = (await req.json()) as { portfolioId?: string; holdingId?: string; symbol?: string; name?: string; type?: string; shares?: number; price?: number; date?: string; note?: string; currency?: string };
   const { portfolioId, holdingId, symbol, type, shares, price, date, note } = body;
   if (!portfolioId) return Response.json({ error: "portfolioId required" }, { status: 400 });
   if (!type || !["buy", "sell"].includes(type)) return Response.json({ error: "type must be buy or sell" }, { status: 400 });
@@ -78,37 +57,29 @@ export async function POST(req: Request) {
   const pr = Number(price);
   const d = date || new Date().toISOString().split("T")[0];
 
-  if (type === "buy") {
-    if (holding) {
-      const newShares = holding.shares + s;
-      const newAvg = (holding.shares * holding.avgPrice + s * pr) / newShares;
-      await db.update(holdings).set({ shares: newShares, avgPrice: newAvg }).where(eq(holdings.id, holding.id));
-    } else {
-      const nid = crypto.randomUUID();
-      await db.insert(holdings).values({
-        id: nid,
-        portfolioId,
-        symbol: targetSymbol,
-        name: targetName || targetSymbol,
-        shares: s,
-        avgPrice: pr,
-        currentPrice: pr,
-        currency: "GBP",
-        purchaseDate: d,
-        exchange: null,
-        lastRefreshedAt: null,
-      });
-      holding = { id: nid, symbol: targetSymbol, name: targetName } as typeof holdings.$inferSelect;
-    }
-  } else {
+  if (type === "sell") {
     if (!holding) return Response.json({ error: "no holding to sell" }, { status: 400 });
-    if (s > holding.shares + 1e-9) return Response.json({ error: `cannot sell ${s} — only ${holding.shares} shares held` }, { status: 400 });
-    const remaining = holding.shares - s;
-    if (remaining <= 0.000001) {
-      await db.delete(holdings).where(eq(holdings.id, holding.id));
-    } else {
-      await db.update(holdings).set({ shares: remaining }).where(eq(holdings.id, holding.id));
-    }
+    if (s > holding.shares + 1e-6) return Response.json({ error: `cannot sell ${s} — only ${holding.shares} shares held` }, { status: 400 });
+  }
+
+  let createdHoldingId: string | null = null;
+  if (type === "buy" && !holding) {
+    createdHoldingId = crypto.randomUUID();
+    const currency = typeof body.currency === "string" && body.currency ? body.currency : "GBP";
+    await db.insert(holdings).values({
+      id: createdHoldingId,
+      portfolioId,
+      userId,
+      symbol: targetSymbol,
+      name: targetName || targetSymbol,
+      shares: s,
+      avgPrice: pr,
+      currentPrice: pr,
+      currency,
+      purchaseDate: d,
+      exchange: null,
+      lastRefreshedAt: null,
+    });
   }
 
   const id = crypto.randomUUID();
@@ -117,7 +88,7 @@ export async function POST(req: Request) {
       id,
       userId,
       portfolioId,
-      holdingId: holding?.id ?? null,
+      holdingId: holding?.id ?? createdHoldingId,
       symbol: targetSymbol,
       name: targetName,
       type,
@@ -128,15 +99,31 @@ export async function POST(req: Request) {
       createdAt: Math.floor(Date.now() / 1000),
     });
   } catch (e: unknown) {
+    if (createdHoldingId) await db.delete(holdings).where(eq(holdings.id, createdHoldingId));
     return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
+
+  if (type === "buy") {
+    if (holding) {
+      const newShares = holding.shares + s;
+      const newAvg = (holding.shares * holding.avgPrice + s * pr) / newShares;
+      await db.update(holdings).set({ shares: newShares, avgPrice: newAvg }).where(eq(holdings.id, holding.id));
+    }
+  } else {
+    const remaining = holding!.shares - s;
+    if (remaining <= 1e-6) {
+      await db.delete(holdings).where(eq(holdings.id, holding!.id));
+    } else {
+      await db.update(holdings).set({ shares: remaining }).where(eq(holdings.id, holding!.id));
+    }
+  }
+
   return Response.json({ id, ok: true });
 }
 
 export async function DELETE(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  await ensureTable();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return Response.json({ error: "id required" }, { status: 400 });

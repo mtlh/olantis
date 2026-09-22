@@ -1,6 +1,6 @@
 "use client";
 import { useAccounts, useProviders, usePortfolios } from "@/lib/store";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -9,44 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { ArrowLeft, Palette, Building2, Briefcase, Folder, Trash2, Download, Upload, Shield, Clock, Image as ImageIcon, Sparkles, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
+import { PALETTE, tintColor, portfolioTint } from "@/lib/colors";
 
 interface SettingsState {
   currency: string | null;
   defaultRange: string | null;
   showTradeMarkers: number | null;
-}
-
-export const PALETTE = [
-  { id: "blue", label: "Blue", value: "#60a5fa" },
-  { id: "emerald", label: "Emerald", value: "#34d399" },
-  { id: "pink", label: "Pink", value: "#f472b6" },
-  { id: "amber", label: "Amber", value: "#facc15" },
-  { id: "violet", label: "Violet", value: "#a78bfa" },
-  { id: "red", label: "Rose", value: "#fb7185" },
-  { id: "sky", label: "Sky", value: "#38bdf8" },
-  { id: "orange", label: "Orange", value: "#f97316" },
-  { id: "teal", label: "Teal", value: "#2dd4bf" },
-  { id: "indigo", label: "Indigo", value: "#818cf8" },
-  { id: "lime", label: "Lime", value: "#84cc16" },
-  { id: "zinc", label: "Zinc", value: "#71717a" },
-] as const;
-
-export function tintColor(hex: string, amount: number) {
-  try {
-    let r = parseInt(hex.slice(1, 3), 16);
-    let g = parseInt(hex.slice(3, 5), 16);
-    let b = parseInt(hex.slice(5, 7), 16);
-    r = Math.round(Math.min(255, Math.max(0, r + amount * 255)));
-    g = Math.round(Math.min(255, Math.max(0, g + amount * 255)));
-    b = Math.round(Math.min(255, Math.max(0, b + amount * 255)));
-    return `rgb(${r}, ${g}, ${b})`;
-  } catch { return hex; }
-}
-
-function portfolioTint(base: string | null | undefined, index: number, _total: number) { // eslint-disable-line @typescript-eslint/no-unused-vars
-  if (!base) return PALETTE[index % PALETTE.length].value;
-  const steps = [0, 0.18, -0.18, 0.32, -0.32];
-  return tintColor(base, steps[index % steps.length]);
 }
 
 function Swatch({ color, active, onClick }: { color: string; active?: boolean; onClick?: () => void }) {
@@ -64,13 +32,16 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/settings").then(r=>r.json()).then(j=> setSettings((s)=>({ ...s, ...j }))).catch(()=>{});
+    let cancel = false;
+    fetch("/api/settings").then(r=>r.json()).then(j=>{ if(!cancel) setSettings((s)=>({ ...s, ...j })); }).catch(()=>{});
+    return () => { cancel = true; };
   }, []);
 
   const saveSettings = async (patch: Partial<SettingsState>) => {
+    const prev = settings;
     const next = { ...settings, ...patch };
     setSettings(next);
-    try { await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }); toast({ title: "Settings saved", variant: "success" }); } catch (e: unknown){ toast({title:"Save failed", description: e instanceof Error ? e.message : String(e), variant:"error"}); }
+    try { await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }); toast({ title: "Settings saved", variant: "success" }); } catch (e: unknown){ setSettings(prev); toast({title:"Save failed", description: e instanceof Error ? e.message : String(e), variant:"error"}); }
   };
 
   const handleAccountColor = async (id: string, color: string | null) => {
@@ -104,21 +75,27 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     handleReorder(table, ids);
   };
 
-  const sortedAccounts = [...accounts].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-  const providersByAccount = new Map<string, typeof providers>();
-  for (const pr of providers) { const arr = providersByAccount.get(pr.accountId) ?? []; arr.push(pr); providersByAccount.set(pr.accountId, arr); }
-  for (const [, arr] of providersByAccount) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-  const portfoliosByProvider = new Map<string, typeof portfolios>();
-  const portfoliosByAccount = new Map<string, typeof portfolios>();
-  const unassignedPortfolios: typeof portfolios = [];
-  for (const p of portfolios) {
-    if (p.providerId) { const arr = portfoliosByProvider.get(p.providerId) ?? []; arr.push(p); portfoliosByProvider.set(p.providerId, arr); }
-    else if (p.accountId) { const arr = portfoliosByAccount.get(p.accountId) ?? []; arr.push(p); portfoliosByAccount.set(p.accountId, arr); }
-    else { unassignedPortfolios.push(p); }
-  }
-  for (const [, arr] of portfoliosByProvider) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-  for (const [, arr] of portfoliosByAccount) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-  unassignedPortfolios.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+  const sortedAccounts = useMemo(() => [...accounts].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [accounts]);
+  const providersByAccount = useMemo(() => {
+    const m = new Map<string, typeof providers>();
+    for (const pr of providers) { const arr = m.get(pr.accountId) ?? []; arr.push(pr); m.set(pr.accountId, arr); }
+    for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+    return m;
+  }, [providers]);
+  const { portfoliosByProvider, portfoliosByAccount, unassignedPortfolios } = useMemo(() => {
+    const byProvider = new Map<string, typeof portfolios>();
+    const byAccount = new Map<string, typeof portfolios>();
+    const unassigned: typeof portfolios = [];
+    for (const p of portfolios) {
+      if (p.providerId) { const arr = byProvider.get(p.providerId) ?? []; arr.push(p); byProvider.set(p.providerId, arr); }
+      else if (p.accountId) { const arr = byAccount.get(p.accountId) ?? []; arr.push(p); byAccount.set(p.accountId, arr); }
+      else { unassigned.push(p); }
+    }
+    for (const [, arr] of byProvider) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+    for (const [, arr] of byAccount) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+    unassigned.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+    return { portfoliosByProvider: byProvider, portfoliosByAccount: byAccount, unassignedPortfolios: unassigned };
+  }, [portfolios]);
 
   const exportAll = async () => {
     const data = { accounts, providers, portfolios, exportedAt: new Date().toISOString() };
@@ -221,7 +198,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     const acc = accounts.find(a=>a.id===p.accountId) ?? (prov ? accounts.find(a=>a.id===prov.accountId) : null);
                     const base = p.color || prov?.color || acc?.color || PALETTE[pi % PALETTE.length].value;
                     const inherited = !p.color;
-                    const tinted = inherited ? portfolioTint(prov?.color || acc?.color || null, pi, portfolios.length) : base;
+                    const tinted = inherited ? portfolioTint(prov?.color || acc?.color || null, pi) : base;
                     return (
                       <div key={p.id} className="p-4 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col gap-3">
                         <div className="flex items-center justify-between flex-wrap gap-2">

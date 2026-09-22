@@ -1,30 +1,26 @@
-import { fetchQuotes } from "@/lib/yahoo";
+import { timingSafeEqual } from "node:crypto";
+import { fetchQuotes, lookupQuote } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
 import { holdings, snapshots, portfolioSnapshots, holdingSnapshots, portfolios } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { neon } from "@neondatabase/serverless";
+import { eq, sql } from "drizzle-orm";
+import { toGBP, todayISODate } from "@/lib/format";
 
-async function ensureSnapshotTables() {
-  try {
-    const sql = neon(process.env.DATABASE_URL!);
-    await sql`CREATE TABLE IF NOT EXISTS holding_snapshots (user_id text NOT NULL, holding_id text NOT NULL REFERENCES holdings(id) ON DELETE CASCADE, date text NOT NULL, value real NOT NULL, PRIMARY KEY (user_id, holding_id, date))`;
-  } catch {}
-}
-
-const SIX_HOURS = 6 * 60 * 60 * 1000;
-const REFRESH_GUARD_SECONDS = 23 * 60 * 60; // 23h, not 24h — avoids the daily-cron flip-flop
-let lastRunAt = 0;
+const REFRESH_GUARD_SECONDS = 23 * 60 * 60;
 
 type HoldingRow = typeof holdings.$inferSelect;
 
 function isAuthed(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // dev / no secret configured
+  if (!secret) return process.env.NODE_ENV === "development";
   const auth = req.headers.get("authorization") ?? "";
-  return auth === `Bearer ${secret}`;
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const a = Buffer.from(token, "utf8");
+  const b = Buffer.from(secret, "utf8");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
-const quoteKey = (symbol: string, exchange?: string | null) => `${symbol}:${exchange ?? ""}`;
+const quoteKey = (symbol: string, exchange?: string | null) => `${symbol.toUpperCase()}:${(exchange ?? "").toUpperCase()}`;
 
 async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: string }>; force?: boolean }) {
   const db = getDb();
@@ -36,7 +32,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
     const map = new Map<string, { symbol: string; exchange?: string }>();
     for (const h of targetHoldings) {
       if (/^CASH$/i.test(h.symbol.trim())) continue;
-      map.set(quoteKey(h.symbol, h.exchange), { symbol: h.symbol, exchange: h.exchange as string | undefined });
+      map.set(quoteKey(h.symbol, h.exchange), { symbol: h.symbol, exchange: h.exchange ?? undefined });
     }
     symbols = [...map.values()];
   }
@@ -56,7 +52,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   const updates: Promise<unknown>[] = [];
   for (const h of targetHoldings) {
     if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
-    const q = quotes[quoteKey(h.symbol, h.exchange)];
+    const q = lookupQuote(quotes, h.symbol, h.exchange);
     if (!q) continue;
     if (!body.force && h.lastRefreshedAt && unixNow - h.lastRefreshedAt < REFRESH_GUARD_SECONDS) { skipped++; continue; }
     updates.push(db.update(holdings).set({ currentPrice: q.price, currency: q.currency, lastRefreshedAt: unixNow }).where(eq(holdings.id, h.id)));
@@ -76,8 +72,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
 
 async function createSnapshots(allHoldings: HoldingRow[]) {
   const db = getDb();
-  await ensureSnapshotTables();
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayISODate();
   const userHoldings = new Map<string, HoldingRow[]>();
   for (const h of allHoldings) {
     if (!h.userId) continue;
@@ -86,15 +81,10 @@ async function createSnapshots(allHoldings: HoldingRow[]) {
     userHoldings.set(h.userId, arr);
   }
 
-  const valGBP = (h: HoldingRow) => {
-    const v = h.shares * (h.currentPrice ?? 0);
-    return h.currency === "GBX" || h.currency === "GBp" ? v / 100 : v;
-  };
+  const valGBP = (h: HoldingRow) => toGBP(h.shares * (h.currentPrice ?? 0), h.currency);
 
   for (const [userId, hs] of userHoldings) {
     const totalValue = hs.reduce((sum, h) => sum + valGBP(h), 0);
-    if (totalValue === 0) continue;
-
     await db.insert(snapshots).values({ userId, date: today, value: totalValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: totalValue } });
 
     const userPortfolios = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
@@ -105,43 +95,31 @@ async function createSnapshots(allHoldings: HoldingRow[]) {
       arr.push(h);
       pidToHoldings.set(h.portfolioId, arr);
     }
+    const pfRows: { userId: string; portfolioId: string; date: string; value: number }[] = [];
     for (const p of userPortfolios) {
       const phs = pidToHoldings.get(p.id) ?? [];
-      const pfValue = phs.reduce((sum, h) => sum + valGBP(h), 0);
-      if (pfValue === 0) continue;
-      await db.insert(portfolioSnapshots).values({ userId, portfolioId: p.id, date: today, value: pfValue }).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: pfValue } });
+      pfRows.push({ userId, portfolioId: p.id, date: today, value: phs.reduce((sum, h) => sum + valGBP(h), 0) });
+    }
+    if (pfRows.length) {
+      await db.insert(portfolioSnapshots).values(pfRows).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value` } });
     }
 
-    const hBatch: { userId: string; holdingId: string; date: string; value: number }[] = [];
-    for (const h of hs) {
-      const v = valGBP(h);
-      if (v === 0) continue;
-      hBatch.push({ userId, holdingId: h.id, date: today, value: v });
-    }
-    for (const row of hBatch) {
-      await db.insert(holdingSnapshots).values(row).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: row.value } });
+    const hBatch = hs.map((h) => ({ userId, holdingId: h.id, date: today, value: valGBP(h) }));
+    if (hBatch.length) {
+      await db.insert(holdingSnapshots).values(hBatch).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value` } });
     }
   }
 }
 
 export async function POST(req: Request) {
   if (!isAuthed(req)) return Response.json({ success: false, error: "unauthorized" }, { status: 401 });
-
-  const now = Date.now();
-  if (now - lastRunAt < SIX_HOURS) {
-    return Response.json({ success: true, skipped: "debounced", retryAfter: Math.ceil((SIX_HOURS - (now - lastRunAt)) / 1000) });
-  }
-  lastRunAt = now;
-
   let body: { symbols?: Array<{ symbol: string; exchange?: string }>; force?: boolean } = {};
   try { body = await req.json(); } catch {}
-
   return Response.json(await doRefresh(body));
 }
 
 export async function GET(req: Request) {
   if (!isAuthed(req)) return Response.json({ success: false, error: "unauthorized" }, { status: 401 });
-
   const { searchParams } = new URL(req.url);
   const s = searchParams.get("symbol");
   if (s) {

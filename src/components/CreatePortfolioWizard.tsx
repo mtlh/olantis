@@ -9,7 +9,16 @@ import { ArrowLeft, ArrowRight, Check, Wallet, TrendingUp, Layers, Briefcase } f
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Account, Provider } from "@/lib/store";
 
-type Props = { open: boolean; onOpenChange: (v: boolean) => void; accounts: Account[]; providers?: Provider[]; defaultAccountId?: string | null; defaultProviderId?: string | null; onCreate: (name: string, type: "live" | "manual", accountId: string | null, providerId?: string | null, extra?: { symbol?: string; shares?: string }) => void; inline?: boolean };
+type Props = {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  accounts: Account[];
+  providers?: Provider[];
+  defaultAccountId?: string | null;
+  defaultProviderId?: string | null;
+  onCreate: (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => void | Promise<void>;
+  inline?: boolean;
+};
 
 export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers = [], defaultAccountId, defaultProviderId, onCreate, inline }: Props) {
   const [step, setStep] = useState(1);
@@ -20,23 +29,50 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
   const [symbol, setSymbol] = useState("");
   const [shares, setShares] = useState("");
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
 
   const prevDefaultsRef = useRef<{ accountId: string | null | undefined; providerId: string | null | undefined }>({ accountId: undefined, providerId: undefined });
-  useEffect(() => { if (open && (prevDefaultsRef.current.accountId !== defaultAccountId || prevDefaultsRef.current.providerId !== defaultProviderId)) { setAccountId(defaultAccountId ?? null); setProviderId(defaultProviderId ?? null); } prevDefaultsRef.current = { accountId: defaultAccountId, providerId: defaultProviderId }; }, [open, defaultAccountId, defaultProviderId]);
+  useEffect(() => {
+    if (open && (prevDefaultsRef.current.accountId !== defaultAccountId || prevDefaultsRef.current.providerId !== defaultProviderId)) {
+      setAccountId(defaultAccountId ?? null);
+      setProviderId(defaultProviderId ?? null);
+    }
+    prevDefaultsRef.current = { accountId: defaultAccountId, providerId: defaultProviderId };
+  }, [open, defaultAccountId, defaultProviderId]);
 
-  const filteredProviders = useMemo(()=> accountId ? providers.filter(p=>p.accountId===accountId) : [], [providers, accountId]);
+  const filteredProviders = useMemo(() => (accountId ? providers.filter((p) => p.accountId === accountId) : []), [providers, accountId]);
   const prevFilteredRef = useRef<Provider[]>([]);
-  useEffect(()=>{ if(providerId && accountId && prevFilteredRef.current.find(p=>p.id===providerId) && !filteredProviders.find(p=>p.id===providerId)) setProviderId(null); prevFilteredRef.current = filteredProviders; }, [accountId, filteredProviders, providerId]);
+  useEffect(() => {
+    if (providerId && accountId && prevFilteredRef.current.find((p) => p.id === providerId) && !filteredProviders.find((p) => p.id === providerId)) setProviderId(null);
+    prevFilteredRef.current = filteredProviders;
+  }, [accountId, filteredProviders, providerId]);
 
   if (!open) return null;
   const canNext = step === 1 ? name.trim().length >= 2 : true;
+
   const handleCreate = async () => {
     setCreating(true);
-    try { await onCreate(name.trim(), type, accountId, providerId, { symbol: symbol.toUpperCase().trim(), shares }); } finally { setCreating(false); }
-    setName(""); setSymbol(""); setShares(""); setStep(1);
+    setError("");
+    try {
+      await onCreate(name.trim(), type, accountId, providerId, { symbol: symbol.toUpperCase().trim(), shares });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+      setCreating(false);
+      return;
+    }
+    setCreating(false);
+    setName("");
+    setSymbol("");
+    setShares("");
+    setStep(1);
     onOpenChange(false);
   };
-  const close = () => { setStep(1); onOpenChange(false); };
+
+  const close = () => {
+    setStep(1);
+    setError("");
+    onOpenChange(false);
+  };
 
   const detailsCard = (
     <Card className="glass-card">
@@ -64,10 +100,10 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
           <p className="text-xs text-zinc-500">Top-level folder. e.g. Household, Personal, Joint.</p>
         </div>
         <div className="space-y-2">
-          <Label className="flex items-center gap-1.5"><Briefcase className="w-3.5 h-3.5"/> Provider</Label>
+          <Label className="flex items-center gap-1.5"><Briefcase className="w-3.5 h-3.5" /> Provider</Label>
           <Select value={providerId ?? "__none"} onValueChange={(v) => setProviderId(v === "__none" ? null : v)} disabled={!accountId}>
             <SelectTrigger className="h-11">
-              <span className="flex-1 text-left truncate">{providerId ? filteredProviders.find(p=>p.id===providerId)?.name ?? "—" : accountId ? (filteredProviders.length ? "No provider (direct)" : "No providers yet") : "Select account first"}</span>
+              <span className="flex-1 text-left truncate">{providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? "—" : accountId ? (filteredProviders.length ? "No provider (direct)" : "No providers yet") : "Select account first"}</span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none">No provider — direct under account</SelectItem>
@@ -123,7 +159,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
           <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Name</div><div className="font-medium text-white">{name || "—"}</div></div>
           <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Type</div><div className="font-medium text-white capitalize">{type}</div></div>
           <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Account</div><div className="font-medium text-white">{accountId ? accounts.find((a) => a.id === accountId)?.name ?? "Unassigned" : "Unassigned"}</div></div>
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Provider</div><div className="font-medium text-white">{providerId ? filteredProviders.find(p=>p.id===providerId)?.name ?? providers.find(p=>p.id===providerId)?.name ?? "—" : "No provider"}</div></div>
+          <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Provider</div><div className="font-medium text-white">{providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? providers.find((p) => p.id === providerId)?.name ?? "—" : "No provider"}</div></div>
           <div className="p-3 rounded-xl bg-white/5 border border-white/10 col-span-2"><div className="text-xs text-zinc-500">First holding</div><div className="font-medium text-white">{symbol ? `${symbol} — ${shares || 0} shares` : "None (skip)"}</div></div>
         </div>
       </CardContent>
@@ -139,6 +175,27 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
       <span className={`px-2.5 py-1 rounded-full border ${step >= 3 ? "bg-white text-black border-white" : "border-white/10"}`}>3 Review</span>
     </div>
   );
+
+  const footer = (bg: string) => (
+    <div className={`p-4 border-t border-white/10 flex items-center justify-between ${bg}`}>
+      <Button variant="ghost" onClick={() => (step > 1 ? setStep(step - 1) : close())} className="gap-2">
+        <ArrowLeft className="w-4 h-4" /> {step === 1 ? "Cancel" : "Back"}
+      </Button>
+      <div className="flex gap-2">
+        {step < 3 ? (
+          <Button onClick={() => setStep(step + 1)} disabled={!canNext} className="gap-2 min-w-28">
+            Next <ArrowRight className="w-4 h-4" />
+          </Button>
+        ) : (
+          <Button onClick={() => void handleCreate()} disabled={!canNext || creating} className="gap-2 min-w-28">
+            <Check className="w-4 h-4" /> {creating ? "Creating…" : "Create portfolio"}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
+  const errorBanner = error ? <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</p> : null;
 
   if (inline) {
     return (
@@ -156,28 +213,14 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
         </div>
         <div className="p-6 space-y-6">
           {stepper}
+          {errorBanner}
           {step === 1 && detailsCard}
           {step === 2 && holdingsCard}
           {step === 3 && reviewCard}
         </div>
-      <div className="p-4 border-t border-white/10 flex items-center justify-between bg-zinc-950">
-        <Button variant="ghost" onClick={() => (step > 1 ? setStep(step - 1) : close())} className="gap-2">
-          <ArrowLeft className="w-4 h-4" /> {step === 1 ? "Cancel" : "Back"}
-        </Button>
-        <div className="flex gap-2">
-          {step < 3 ? (
-            <Button onClick={() => setStep(step + 1)} disabled={!canNext} className="gap-2 min-w-28">
-              Next <ArrowRight className="w-4 h-4" />
-            </Button>
-          ) : (
-            <Button onClick={handleCreate} disabled={!canNext || creating} className="gap-2 min-w-28">
-              <Check className="w-4 h-4" /> {creating ? "Creating…" : "Create portfolio"}
-            </Button>
-          )}
-        </div>
+        {footer("bg-zinc-950")}
       </div>
-    </div>
-  );
+    );
   }
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
@@ -195,27 +238,13 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
       <div className="flex-1 overflow-auto p-6 md:p-10 flex justify-center">
         <div className="w-full max-w-2xl space-y-6">
           {stepper}
+          {errorBanner}
           {step === 1 && detailsCard}
           {step === 2 && holdingsCard}
           {step === 3 && reviewCard}
         </div>
       </div>
-      <div className="p-6 md:px-10 border-t border-white/10 flex items-center justify-between bg-black">
-        <Button variant="ghost" onClick={() => (step > 1 ? setStep(step - 1) : close())} className="gap-2">
-          <ArrowLeft className="w-4 h-4" /> {step === 1 ? "Cancel" : "Back"}
-        </Button>
-        <div className="flex gap-2">
-          {step < 3 ? (
-            <Button onClick={() => setStep(step + 1)} disabled={!canNext} className="gap-2 min-w-28">
-              Next <ArrowRight className="w-4 h-4" />
-            </Button>
-          ) : (
-            <Button onClick={handleCreate} disabled={!canNext || creating} className="gap-2 min-w-28">
-              <Check className="w-4 h-4" /> {creating ? "Creating…" : "Create portfolio"}
-            </Button>
-          )}
-        </div>
-      </div>
+      {footer("bg-black")}
     </div>
   );
 }

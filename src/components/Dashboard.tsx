@@ -1,6 +1,6 @@
 "use client";
 import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings } from "@/lib/store";
-import type { Holding, Portfolio, Account, Provider, Snapshot } from "@/lib/store";
+import type { Holding, Portfolio, Snapshot } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, ReferenceDot } from "recharts";
@@ -20,28 +20,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 
 import { PALETTE, portfolioTint } from "@/lib/colors";
+import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate } from "@/lib/format";
 const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
 const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d399", GIA: "#f472b6" };
-function fmtGBP(n: number) { return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(n); }
-function fmtPrice(n: number, currency?: string | null) {
-  if (currency === "GBX" || currency === "GBp") return `${Math.round(n).toLocaleString("en-GB")}p`;
-  if (currency === "GBP") return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 2 }).format(n);
-  if (currency === "USD") return `$${Number(n).toFixed(2)}`;
-  if (currency === "EUR") return `€${Number(n).toFixed(2)}`;
-  return `${Number(n).toFixed(2)}${currency ? ` ${currency}` : ""}`;
-}
-function holdingValueGBP(h: Holding) { const raw = h.shares * h.currentPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
-function holdingCostGBP(h: Holding) { const raw = h.shares * h.avgPrice; if (h.currency === "GBX" || h.currency === "GBp") return raw / 100; return raw; }
-function fmtPct(n: number) { return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`; }
-function fmtRelative(ts?: number | null) {
-  if (!ts) return "never";
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return new Date(ts * 1000).toLocaleDateString("en-GB");
-}
+const RANGE_COUNT: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
 
 type SymbolResult = { symbol: string; name: string; exchange: string; exchDisp?: string; price?: number | null; currency?: string | null; longname?: string; rawExchange?: string; type?: string };
 type ChartDot = { x: string; y: number; type: "buy" | "sell"; symbol: string; date: string; shares: number; price: number };
@@ -56,7 +38,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const { portfolios, create, remove, upsertHolding, deleteHolding, refresh: refreshPortfolios, ready: portfoliosReady } = usePortfolios();
   const { holdings: allHoldingsList, refresh: refreshAllHoldings } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
-  const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings as Holding[]);
+  const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings);
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tradeHolding, setTradeHolding] = useState<Holding | null>(null);
@@ -92,13 +74,13 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const prevPortfoliosRef = useRef<Portfolio[]>([]);
   useEffect(()=>{ if(prevPortfoliosRef.current !== portfolios && activeId && !portfolios.find(p=>p.id===activeId)) setActiveId(null); prevPortfoliosRef.current = portfolios; },[portfolios,activeId]);
   const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); return active.color || prov?.color || acc?.color || "#60a5fa"; }, [active, providers, accounts]);
-  const createDirectHolding = async (target: { accountId?: string | null; providerId?: string | null }, data: { symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; exchange?: string; purchaseDate?: string }) => {
-    await fetch("/api/holdings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...data, accountId: target.accountId ?? null, providerId: target.providerId ?? null }) }).then(async r=>{ if(!r.ok) throw new Error(await r.text()); });
-    await refreshAllHoldings(); await refreshPortfolios();
-  };
-  const { transactions, refresh: refreshTx, create: createTx } = useTransactions(activeId);
   const overviewTx = useTransactions(null);
-  const displayTx = activeId ? transactions : overviewTx.transactions;
+  const { create: createTx, refresh: refreshTx } = overviewTx;
+  const displayTx = useMemo(
+    () => (activeId ? overviewTx.transactions.filter((t) => t.portfolioId === activeId) : overviewTx.transactions),
+    [activeId, overviewTx.transactions]
+  );
+  const transactions = displayTx;
 
   const openTrade = (h: Holding, type: "buy" | "sell") => { setTradeHolding(h); setTradeType(type); setShowTrade(true); };
   const handleTrade = async (data: { shares: number; price: number; date: string }) => {
@@ -108,8 +90,8 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       await createTx({ portfolioId: pid, holdingId: tradeHolding.id, type: tradeType, shares: data.shares, price: data.price, date: data.date });
       await refreshPortfolios();
       await refreshTx();
-      await overviewTx.refresh();
-      toast({ title: tradeType === "buy" ? "Buy recorded" : "Sell recorded", description: `${tradeType === "buy" ? "+" : "-"}${data.shares} ${tradeHolding.symbol} @ £${data.price}`, variant: "success" });
+      await refreshAllHoldings();
+      toast({ title: tradeType === "buy" ? "Buy recorded" : "Sell recorded", description: `${tradeType === "buy" ? "+" : "-"}${data.shares} ${tradeHolding.symbol} @ ${fmtPrice(data.price, tradeHolding.currency)}`, variant: "success" });
     } catch (e: unknown) { toast({ title: "Trade failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); throw e; }
   };
 
@@ -124,15 +106,13 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   }, [portfolios, directHoldings]);
 
   const filteredSnapshots = useMemo(() => {
-    const rangeCount: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
-    const n = rangeCount[range];
+    const n = RANGE_COUNT[range];
     if (snapshots.length <= n) return snapshots;
     return snapshots.slice(-n);
   }, [snapshots, range]);
 
   const chartData = useMemo(() => {
-    const rangeCount: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
-    const n = rangeCount[range];
+    const n = RANGE_COUNT[range];
     const activeSeries = active ? ((byPortfolio[active.id]?.data ?? []) as Snapshot[]) : [];
     if (active) {
       const trimmed = activeSeries.length > n ? activeSeries.slice(-n) : activeSeries;
@@ -218,21 +198,23 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       const acc = accounts.find(a=> a.id===active.accountId);
       const base = active.color || prov?.color || acc?.color || CHART_COLORS[0];
       const sorted = [...holdings].sort((a: Holding, b: Holding)=> holdingValueGBP(b) - holdingValueGBP(a));
-      return sorted.map((h: Holding, i) => ({ name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, sorted.length), pct: (holdingValueGBP(h) / total) * 100 }));
+      return sorted.map((h: Holding, i) => ({ name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i), pct: (holdingValueGBP(h) / total) * 100 }));
     }
       const sortedHoldings = [...holdings].sort((a: Holding, b: Holding)=> holdingValueGBP(b) - holdingValueGBP(a));
+      const parentByHolding = new Map<string, Portfolio>();
+      for (const p of portfolios) for (const x of p.holdings) parentByHolding.set(x.id, p);
       return sortedHoldings.map((h: Holding, i) => {
-      const parent = portfolios.find(p=> p.holdings.some(x=> x.id===h.id));
+      const parent = parentByHolding.get(h.id);
       let base: string | null = parent?.color || null;
-      if (!base && h.providerId) base = (providers.find(pr=> pr.id===h.providerId) as Provider | undefined)?.color ?? null;
-      if (!base && h.accountId) base = (accounts.find(a=> a.id===h.accountId) as Account | undefined)?.color ?? null;
+      if (!base && h.providerId) base = providers.find(pr=> pr.id===h.providerId)?.color ?? null;
+      if (!base && h.accountId) base = accounts.find(a=> a.id===h.accountId)?.color ?? null;
       base = base || CHART_COLORS[i % CHART_COLORS.length];
-      return { name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i, sortedHoldings.length), pct: (holdingValueGBP(h) / total) * 100 };
+      return { name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i), pct: (holdingValueGBP(h) / total) * 100 };
     });
   }, [active, portfolios, allocMode, accounts, providers, directHoldings]);
 
   const handleCreate = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
-    try { await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"});} catch(e: unknown){toast({title:"Failed to create portfolio",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
+    try { const r = await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"}); return r; } catch(e: unknown){toast({title:"Failed to create portfolio",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   };
   const handleCreateAccount = async (name: string) => {
     try { await createAccount(name); await refreshProviders(); } catch(e: unknown){ toast({title:"Failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
@@ -268,7 +250,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       else if(form.symbol.trim().length < 1 || form.symbol.trim().length > 40) e.symbol="1–40 characters";
     } else {
       if(!form.symbol.trim()) e.symbol="Symbol required";
-      else if(!/^[A-Z0-9.\-]{1,12}$/i.test(form.symbol.trim())) e.symbol="Invalid symbol";
+      else if(!isListedSymbol(form.symbol.trim())) e.symbol="Invalid symbol";
     }
     if(!form.shares || Number(form.shares)<=0) e.shares="Shares must be > 0";
     if(!form.avgPrice || Number(form.avgPrice)<=0) e.avgPrice="Price must be > 0";
@@ -281,18 +263,20 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   useEffect(()=>{
     const q = form.symbol.trim();
     if (!showHolding || q.length <2 || editingId || effectiveIsManual) { if (prevSymbolRef.current.showHolding && !showHolding) { setSymbolResults([]); setShowSymbolMenu(false); } prevSymbolRef.current = { showHolding, editingId, effectiveIsManual }; return; }
+    let stale = false;
     const t = setTimeout(async ()=>{
       setSymbolSearching(true);
       try {
         const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
         const j = await r.json();
+        if (stale) return;
         const arr = Array.isArray(j) ? j : [];
         setSymbolResults(arr);
         setShowSymbolMenu(arr.length > 0);
-      } catch { setSymbolResults([]); }
-      finally { setSymbolSearching(false); }
+      } catch { if (!stale) setSymbolResults([]); }
+      finally { if (!stale) setSymbolSearching(false); }
     }, 320);
-    return ()=> clearTimeout(t);
+    return ()=>{ stale = true; clearTimeout(t); };
   }, [form.symbol, showHolding, editingId, effectiveIsManual]);
 
   const selectSearchResult = (r: SymbolResult) => {
@@ -304,7 +288,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   };
 
   const openAdd = () => { const manualDefault = active?.type === "manual"; setIsManual(manualDefault); setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
-  const openEdit = (h: Holding) => { const manualDetected = active?.type === "manual" || !/^[A-Z0-9.\-]{1,12}$/i.test(h.symbol); setIsManual(manualDetected); setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: h.exchange ?? "", currency: h.currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openEdit = (h: Holding) => { const manualDetected = active?.type === "manual" || !isListedSymbol(h.symbol); setIsManual(manualDetected); setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: h.exchange ?? "", currency: h.currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
 
   const fetchQuote = async (sym:string)=>{
     if(!sym.trim() || sym.length<1) return;
@@ -377,10 +361,11 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   };
 
   const refreshPrices = async()=>{
-    if(portfolios.length===0) return;
+    const allHs = [...portfolios.flatMap(p=>p.holdings), ...directHoldings];
+    if(allHs.length===0) return;
     setRefreshing(true);
     try{
-      const symbols = portfolios.flatMap(p=>p.holdings.filter((h: Holding)=> /^[A-Z0-9.\-]{1,12}$/i.test(h.symbol)).map(h=>({symbol:h.symbol,exchange:h.exchange})));
+      const symbols = allHs.filter((h: Holding)=> isListedSymbol(h.symbol)).map(h=>({symbol:h.symbol,exchange:h.exchange}));
       if(!symbols.length) { toast({title:"No holdings to refresh",variant:"info"}); return; }
       const r = await fetch("/api/quote",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols})});
       const quotes = await r.json();
@@ -389,6 +374,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       const j = await patch.json();
       if(!patch.ok){ toast({title:j.message||j.error||"Refresh limited",description:j.nextAllowedAt?`Next allowed ${new Date(j.nextAllowedAt*1000).toLocaleTimeString()}`:undefined,variant:"error"}); return; }
       await refreshPortfolios();
+      await refreshAllHoldings();
       toast({title:`Updated ${j.updated} holdings`,description:j.skipped?`${j.skipped} skipped (24h limit)`:undefined,variant:"success"});
     } catch(e: unknown){ toast({title:"Refresh failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
     finally{setRefreshing(false);}
@@ -399,35 +385,30 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     const rows = [["Symbol","Name","Shares","AvgPrice","CurrentPrice","Value","Gain","PurchaseDate"]];
     for(const h of active.holdings){ const v=holdingValueGBP(h), c=holdingCostGBP(h); rows.push([h.symbol,h.name,String(h.shares),String(h.avgPrice),String(h.currentPrice),String(v),String(v-c),h.purchaseDate]); }
     const csv = rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=`${active.name}-holdings.csv`; a.click(); URL.revokeObjectURL(url);
+    const blob = new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=`${active.name}-holdings.csv`; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000);
   };
 
   const handleWizardCreate = async (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => {
-    await handleCreate(name, type, accountId, providerId);
-    if (extra?.symbol) {
+    const created = await handleCreate(name, type, accountId, providerId);
+    if (extra?.symbol && created?.id) {
       try {
-        const res = await fetch("/api/portfolios");
-        const list = await res.json();
-        const created = list.find((p: Portfolio) => p.name === name);
-        if (created?.id) {
-          let price = 100;
-          try{ const q = await fetch(`/api/quote?symbol=${encodeURIComponent(extra.symbol)}`).then(r=>r.json()); const hit=q[extra.symbol.toUpperCase()]; if(hit?.price) price=hit.price; } catch{}
-          await fetch("/api/holdings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              portfolioId: created.id,
-              symbol: extra.symbol.toUpperCase().trim(),
-              name: extra.symbol.toUpperCase().trim(),
-              shares: Number(extra.shares || 1),
-              avgPrice: price,
-              currentPrice: price,
-              currency: "GBP",
-              purchaseDate: new Date().toISOString().split("T")[0],
-            }),
-          });
-          await refreshPortfolios();
-        }
+        let price = 100;
+        try{ const q = await fetch(`/api/quote?symbol=${encodeURIComponent(extra.symbol)}`).then(r=>r.json()); const hit=q[extra.symbol.toUpperCase()] ?? q[`${extra.symbol.toUpperCase()}:`]; if(hit?.price) price=hit.price; } catch{}
+        await fetch("/api/holdings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            portfolioId: created.id,
+            symbol: extra.symbol.toUpperCase().trim(),
+            name: extra.symbol.toUpperCase().trim(),
+            shares: Number(extra.shares || 1),
+            avgPrice: price,
+            currentPrice: price,
+            currency: "GBP",
+            purchaseDate: todayISODate(),
+          }),
+        });
+        await refreshPortfolios();
       } catch {}
     }
   };
@@ -436,19 +417,15 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={(id) => { setActiveId(id); setHoldingViewId(null); }} onSelectHolding={(h) => { setActiveId(null); setHoldingViewId(h.id); }} onCreate={handleCreate} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onCreateDirectHolding={createDirectHolding} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onDeleteAccount={setConfirmAccount as any}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onDeleteProvider={setConfirmProvider as any}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onDeletePortfolio={setConfirmPortfolio as any} />
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={(id) => { setActiveId(id); setHoldingViewId(null); }} onSelectHolding={(h) => { setActiveId(null); setHoldingViewId(h.id); }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+        onDeleteAccount={(a) => setConfirmAccount(a)}
+        onDeleteProvider={(p) => setConfirmProvider(p)}
+        onDeletePortfolio={(p) => setConfirmPortfolio(p)} />
       <main className="flex-1 min-w-0 pt-12 md:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
           {showWizard ? (
             <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onCreate={handleWizardCreate as any} inline />
+              onCreate={handleWizardCreate} inline />
           ) : viewHolding ? (() => {
             const prov = viewHolding.providerId ? providers.find((pr) => pr.id === viewHolding.providerId) : undefined;
             const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
@@ -461,11 +438,11 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                     <p className="text-sm text-zinc-400">Delete <span className="text-white font-medium">{confirmHolding?.symbol}</span>? This cannot be undone.</p>
                     <div className="flex justify-end gap-2 mt-4">
                       <Button variant="ghost" onClick={() => setConfirmHolding(null)}>Cancel</Button>
-                      <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20" onClick={async () => { if (!confirmHolding) return; if (viewHolding.portfolioId) { await deleteHolding(viewHolding.portfolioId, confirmHolding.id); } else { await fetch(`/api/holdings?id=${confirmHolding.id}`, { method: "DELETE" }); await refreshAllHoldings(); } setConfirmHolding(null); setHoldingViewId(null); toast({ title: "Holding deleted", variant: "success" }); }}>Delete</Button>
+                      <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20" onClick={async () => { if (!confirmHolding) return; await deleteHolding(confirmHolding.id); await refreshAllHoldings(); setConfirmHolding(null); setHoldingViewId(null); toast({ title: "Holding deleted", variant: "success" }); }}>Delete</Button>
                     </div>
                   </DialogContent>
                 </Dialog>
-                <TradeDialog open={showTrade} onOpenChange={setShowTrade} holding={tradeHolding} type={tradeType} onSubmit={handleTrade} />
+                <TradeDialog key={`t-${tradeHolding?.id ?? "none"}-${showTrade ? 1 : 0}`} open={showTrade} onOpenChange={setShowTrade} holding={tradeHolding} type={tradeType} onSubmit={handleTrade} />
               </>
             );
           })() : active ? (
@@ -525,8 +502,8 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                           <YAxis tickFormatter={(v) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
                           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
                           {(() => { const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); const col = active.color || prov?.color || acc?.color || "#60a5fa"; return <Area type="monotone" dataKey="total" name={active.name} stroke={col} fill={col} fillOpacity={0.14} strokeWidth={2.5} dot={false} />; })()}
-                          {chartDots.map((d: ChartDot, i: number) => (
-                            <ReferenceDot key={i} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
+                          {chartDots.map((d: ChartDot) => (
+                            <ReferenceDot key={`${d.date}-${d.symbol}-${d.x}`} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
                           ))}
                         </AreaChart>
                       </ResponsiveContainer>
@@ -549,7 +526,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} stroke="none">
-                                {allocation.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                {allocation.map((e) => <Cell key={e.name} fill={e.color} />)}
                               </Pie>
                               <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v)=>fmtGBP(Number(v))} />
                             </PieChart>
@@ -750,8 +727,8 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                             const col = pf?.color || prov?.color || acc?.color || PORTFOLIO_COLORS[info.name] || CHART_COLORS[i % CHART_COLORS.length];
                             return <Area key={pid} type="monotone" dataKey={info.name} stroke={col} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />;
                           })}
-                          {chartDots.map((d: ChartDot, i: number) => (
-                            <ReferenceDot key={i} x={d.x} y={d.y} r={4} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1} />
+                          {chartDots.map((d: ChartDot) => (
+                            <ReferenceDot key={`${d.date}-${d.symbol}-${d.x}`} x={d.x} y={d.y} r={4} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1} />
                           ))}
                         </AreaChart>
                       </ResponsiveContainer>
@@ -784,7 +761,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} stroke="none">
-                                {allocation.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                {allocation.map((e) => <Cell key={e.name} fill={e.color} />)}
                               </Pie>
                               <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v)=>fmtGBP(Number(v))} />
                             </PieChart>
@@ -1160,12 +1137,12 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
               <p className="text-sm text-zinc-400">Delete <span className="text-white font-medium">{confirmHolding?.symbol}</span>? This cannot be undone.</p>
               <div className="flex justify-end gap-2 mt-4">
                 <Button variant="ghost" onClick={() => setConfirmHolding(null)}>Cancel</Button>
-                <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20" onClick={async () => { if (!confirmHolding || !active) return; await deleteHolding(active.id, confirmHolding.id); setConfirmHolding(null); toast({title:"Holding deleted",variant:"success"}); }}>Delete</Button>
+                <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20" onClick={async () => { if (!confirmHolding || !active) return; await deleteHolding(confirmHolding.id); setConfirmHolding(null); toast({title:"Holding deleted",variant:"success"}); }}>Delete</Button>
               </div>
             </DialogContent>
           </Dialog>
 
-          <TradeDialog open={showTrade} onOpenChange={setShowTrade} holding={tradeHolding} type={tradeType} onSubmit={handleTrade} />
+          <TradeDialog key={`t-${tradeHolding?.id ?? "none"}-${showTrade ? 1 : 0}`} open={showTrade} onOpenChange={setShowTrade} holding={tradeHolding} type={tradeType} onSubmit={handleTrade} />
         </div>
       </main>
     </div>

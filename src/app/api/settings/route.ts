@@ -1,48 +1,20 @@
 import { getDb } from "@/lib/db";
 import { userSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { cookies } from "next/headers";
-import { neon } from "@neondatabase/serverless";
-
-async function getUserId() {
-  const jar = await cookies();
-  if (jar.get("olantis_demo")?.value === "1") return "demo";
-  try {
-    const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
-    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
-  } catch {}
-  return null;
-}
-async function ensureTable() {
-  try {
-    const sql = neon(process.env.DATABASE_URL!);
-    await sql`CREATE TABLE IF NOT EXISTS user_settings (user_id text PRIMARY KEY, currency text, date_format text, default_range text, show_trade_markers integer, updated_at integer NOT NULL)`;
-    await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS color text`;
-    await sql`ALTER TABLE providers ADD COLUMN IF NOT EXISTS color text`;
-    await sql`ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS color text`;
-    await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS sort_order integer`;
-    await sql`ALTER TABLE providers ADD COLUMN IF NOT EXISTS sort_order integer`;
-    await sql`ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS sort_order integer`;
-  } catch {}
-}
+import { getUserId } from "@/lib/auth";
 
 export async function GET() {
   const userId = await getUserId();
   if (!userId) return Response.json({});
-  await ensureTable();
   const db = getDb();
-  try {
-    const rows = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
-    return Response.json(rows[0] ?? { userId, currency: "GBP", dateFormat: "en-GB", defaultRange: "1Y", showTradeMarkers: 1 });
-  } catch { return Response.json({}); }
+  const rows = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+  return Response.json(rows[0] ?? { userId, currency: "GBP", dateFormat: "en-GB", defaultRange: "1Y", showTradeMarkers: 1 });
 }
 
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  await ensureTable();
-  const body = await req.json();
+  const body = (await req.json()) as { currency?: string; dateFormat?: string; defaultRange?: string; showTradeMarkers?: boolean | number };
   const { currency, dateFormat, defaultRange, showTradeMarkers } = body;
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);

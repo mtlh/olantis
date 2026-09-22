@@ -1,59 +1,40 @@
 import { getDb } from "@/lib/db";
-import { providers } from "@/lib/db/schema";
+import { providers, accounts } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { cookies } from "next/headers";
-import { neon } from "@neondatabase/serverless";
+import { getUserId } from "@/lib/auth";
 
-async function getUserId() {
-  const jar = await cookies();
-  if (jar.get("olantis_demo")?.value === "1") return "demo";
-  try {
-    const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
-    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
-  } catch {}
-  return null;
-}
-async function ensureTable() {
-  try {
-    const sql = neon(process.env.DATABASE_URL!);
-    await sql`CREATE TABLE IF NOT EXISTS providers (id text PRIMARY KEY, user_id text NOT NULL, account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, name text NOT NULL, created_at integer NOT NULL)`;
-    try { await sql`ALTER TABLE providers ADD COLUMN IF NOT EXISTS color text`; } catch {}
-    try { await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS color text`; } catch {}
-    try { await sql`ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS provider_id text REFERENCES providers(id) ON DELETE SET NULL`; } catch {}
-    try { await sql`ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS color text`; } catch {}
-  } catch {}
+function validName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  const t = name.trim();
+  if (t.length < 2 || t.length > 64) return null;
+  return t;
 }
 
 export async function GET() {
   const userId = await getUserId();
   if (!userId) return Response.json([]);
-  await ensureTable();
   const db = getDb();
-  try {
-    const rows = await db.select().from(providers).where(eq(providers.userId, userId));
-    return Response.json(rows);
-  } catch { return Response.json([]); }
+  const rows = await db.select().from(providers).where(eq(providers.userId, userId));
+  return Response.json(rows);
 }
 
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  await ensureTable();
-  const { name, id, accountId, color } = await req.json();
+  const { name, id, accountId, color } = (await req.json()) as { name?: string; id?: string; accountId?: string | null; color?: string | null };
   const db = getDb();
   if (id) {
     const existing = await db.select().from(providers).where(eq(providers.id, id));
     if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
     const set: Partial<typeof providers.$inferInsert> = {};
     if (name !== undefined) {
-      if (!name.trim() || name.trim().length < 2) return Response.json({ error: "name too short" }, { status: 400 });
-      set.name = name.trim();
+      const n = validName(name);
+      if (!n) return Response.json({ error: "name must be 2-64 characters" }, { status: 400 });
+      set.name = n;
     }
     if (color !== undefined) set.color = color || null;
     if (accountId !== undefined) {
       if (!accountId) return Response.json({ error: "accountId required to move provider" }, { status: 400 });
-      const { accounts } = await import("@/lib/db/schema");
       const acc = await db.select().from(accounts).where(eq(accounts.id, accountId));
       if (!acc[0] || acc[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 400 });
       set.accountId = accountId;
@@ -61,20 +42,19 @@ export async function POST(req: Request) {
     if (Object.keys(set).length) await db.update(providers).set(set).where(eq(providers.id, id));
     return Response.json({ id });
   }
-  if (!name?.trim() || name.trim().length < 2) return Response.json({ error: "name too short" }, { status: 400 });
+  const n = validName(name);
+  if (!n) return Response.json({ error: "name must be 2-64 characters" }, { status: 400 });
   if (!accountId) return Response.json({ error: "accountId required" }, { status: 400 });
-  const { accounts } = await import("@/lib/db/schema");
   const acc = await db.select().from(accounts).where(eq(accounts.id, accountId));
   if (!acc[0] || acc[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 400 });
   const nid = crypto.randomUUID();
-  await db.insert(providers).values({ id: nid, userId, accountId, name: name.trim(), color: color || null, createdAt: Math.floor(Date.now() / 1000) } as typeof providers.$inferInsert);
+  await db.insert(providers).values({ id: nid, userId, accountId, name: n, color: color || null, createdAt: Math.floor(Date.now() / 1000) });
   return Response.json({ id: nid });
 }
 
 export async function DELETE(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  await ensureTable();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return Response.json({ error: "id required" }, { status: 400 });

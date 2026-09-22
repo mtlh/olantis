@@ -1,34 +1,25 @@
 import { getDb } from "@/lib/db";
 import { holdings, portfolios, accounts, providers } from "@/lib/db/schema";
-import { eq, inArray } from "drizzle-orm";
-import { cookies } from "next/headers";
-import { neon } from "@neondatabase/serverless";
+import { eq, inArray, or } from "drizzle-orm";
+import { getUserId } from "@/lib/auth";
 
-async function ensureHoldingsColumns() {
-  try {
-    const sql = neon(process.env.DATABASE_URL!);
-    await sql`ALTER TABLE holdings ALTER COLUMN portfolio_id DROP NOT NULL`;
-    await sql`ALTER TABLE holdings ADD COLUMN IF NOT EXISTS provider_id text REFERENCES providers(id) ON DELETE CASCADE`;
-    await sql`ALTER TABLE holdings ADD COLUMN IF NOT EXISTS account_id text REFERENCES accounts(id) ON DELETE CASCADE`;
-    await sql`ALTER TABLE holdings ADD COLUMN IF NOT EXISTS user_id text`;
-  } catch {}
-}
-
-async function getUserId() {
-  const jar = await cookies();
-  if (jar.get("olantis_demo")?.value === "1") return "demo";
-  try {
-    const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
-    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
-  } catch {}
-  return null;
+async function loadOwnedHoldings(db: ReturnType<typeof getDb>, userId: string): Promise<typeof holdings.$inferSelect[]> {
+  const p = await db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId));
+  const pids = p.map((x) => x.id);
+  const a = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.userId, userId));
+  const aids = a.map((x) => x.id);
+  const pr = await db.select({ id: providers.id }).from(providers).where(eq(providers.userId, userId));
+  const prids = pr.map((x) => x.id);
+  const clauses = [eq(holdings.userId, userId)];
+  if (pids.length) clauses.push(inArray(holdings.portfolioId, pids));
+  if (prids.length) clauses.push(inArray(holdings.providerId, prids));
+  if (aids.length) clauses.push(inArray(holdings.accountId, aids));
+  return db.select().from(holdings).where(or(...clauses));
 }
 
 export async function GET(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json([]);
-  await ensureHoldingsColumns();
   const { searchParams } = new URL(req.url);
   const portfolioId = searchParams.get("portfolioId");
   const providerId = searchParams.get("providerId");
@@ -36,54 +27,52 @@ export async function GET(req: Request) {
   const db = getDb();
   let rows: typeof holdings.$inferSelect[] = [];
   try {
-    const p = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
-    const pids = new Set(p.map(x=>x.id));
-    const a = await db.select().from(accounts).where(eq(accounts.userId, userId));
-    const aids = new Set(a.map(x=>x.id));
-    const pr = await db.select().from(providers).where(eq(providers.userId, userId));
-    const prid = new Set(pr.map(x=>x.id));
-    const all = await db.select().from(holdings);
-    rows = all.filter((h) => {
-      if (h.portfolioId && pids.has(h.portfolioId)) return true;
-      if (h.providerId && prid.has(h.providerId)) return true;
-      if (h.accountId && aids.has(h.accountId)) return true;
-      if (h.userId === userId) return true;
-      return false;
-    });
+    rows = await loadOwnedHoldings(db, userId);
   } catch { rows = []; }
-  if (portfolioId) rows = rows.filter((h)=> h.portfolioId===portfolioId);
-  if (providerId) rows = rows.filter((h)=> h.providerId===providerId);
-  if (accountId) rows = rows.filter((h)=> h.accountId===accountId);
+  if (portfolioId) rows = rows.filter((h) => h.portfolioId === portfolioId);
+  if (providerId) rows = rows.filter((h) => h.providerId === providerId);
+  if (accountId) rows = rows.filter((h) => h.accountId === accountId);
   return Response.json(rows);
+}
+
+function capStr(v: unknown, max: number): string {
+  return typeof v === "string" ? v.slice(0, max) : "";
 }
 
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  await ensureHoldingsColumns();
-  const body = await req.json();
+  const body = (await req.json()) as { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol?: string; name?: string; shares?: number; avgPrice?: number; currentPrice?: number; currency?: string; purchaseDate?: string; exchange?: string };
   const { id, portfolioId, providerId, accountId, symbol, name, shares, avgPrice, currentPrice, currency, purchaseDate, exchange } = body;
-  if (!symbol?.trim()) return Response.json({ error: "symbol required" }, { status: 400 });
-  if (!shares || Number(shares) <= 0) return Response.json({ error: "shares must be > 0" }, { status: 400 });
-  if (avgPrice == null || Number(avgPrice) <= 0) return Response.json({ error: "avgPrice must be > 0" }, { status: 400 });
+  const symbolStr = capStr(symbol, 12).toUpperCase().trim();
+  if (!symbolStr) return Response.json({ error: "symbol required" }, { status: 400 });
+  const sharesNum = Number(shares);
+  const avgPriceNum = Number(avgPrice);
+  const currentPriceNum = currentPrice == null ? avgPriceNum : Number(currentPrice);
+  if (!Number.isFinite(sharesNum) || sharesNum <= 0) return Response.json({ error: "shares must be > 0" }, { status: 400 });
+  if (!Number.isFinite(avgPriceNum) || avgPriceNum <= 0) return Response.json({ error: "avgPrice must be > 0" }, { status: 400 });
+  if (!Number.isFinite(currentPriceNum)) return Response.json({ error: "currentPrice must be a finite number" }, { status: 400 });
+  const nameStr = capStr(name, 80).trim() || symbolStr;
+  const currencyStr = capStr(currency, 8) || "GBP";
+  const exchangeStr = exchange != null ? capStr(exchange, 16) || null : null;
   const db = getDb();
   if (id) {
     const existing = await db.select().from(holdings).where(eq(holdings.id, id));
     if (!existing[0]) return Response.json({ error: "holding not found" }, { status: 404 });
-    const h = existing[0] as typeof holdings.$inferSelect;
+    const h = existing[0];
     let allowed = false;
     if (h.portfolioId) {
       const p = await db.select().from(portfolios).where(eq(portfolios.id, h.portfolioId));
-      if (p[0] && p[0].userId===userId) allowed = true;
+      if (p[0] && p[0].userId === userId) allowed = true;
     } else if (h.providerId) {
       const pr = await db.select().from(providers).where(eq(providers.id, h.providerId));
-      if (pr[0] && pr[0].userId===userId) allowed = true;
+      if (pr[0] && pr[0].userId === userId) allowed = true;
     } else if (h.accountId) {
       const a = await db.select().from(accounts).where(eq(accounts.id, h.accountId));
-      if (a[0] && a[0].userId===userId) allowed = true;
-    } else if (h.userId===userId) allowed = true;
+      if (a[0] && a[0].userId === userId) allowed = true;
+    } else if (h.userId === userId) allowed = true;
     if (!allowed) return Response.json({ error: "forbidden" }, { status: 403 });
-    await db.update(holdings).set({ symbol: symbol.toUpperCase().trim(), name: name?.trim() || symbol.toUpperCase().trim(), shares: Number(shares), avgPrice: Number(avgPrice), currentPrice: Number(currentPrice ?? avgPrice), currency: currency || "GBP", purchaseDate, exchange }).where(eq(holdings.id, id));
+    await db.update(holdings).set({ symbol: symbolStr, name: nameStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, purchaseDate, exchange: exchangeStr }).where(eq(holdings.id, id));
     return Response.json({ id });
   }
   const hasPortfolio = !!portfolioId;
@@ -91,44 +80,43 @@ export async function POST(req: Request) {
   const hasAccount = !!accountId;
   if (!hasPortfolio && !hasProvider && !hasAccount) return Response.json({ error: "portfolioId, providerId or accountId required" }, { status: 400 });
   if (hasPortfolio) {
-    const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
+    const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId!));
     if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
   }
   if (hasProvider) {
-    const pr = await db.select().from(providers).where(eq(providers.id, providerId));
+    const pr = await db.select().from(providers).where(eq(providers.id, providerId!));
     if (!pr[0] || pr[0].userId !== userId) return Response.json({ error: "provider not found" }, { status: 404 });
   }
   if (hasAccount) {
-    const a = await db.select().from(accounts).where(eq(accounts.id, accountId));
+    const a = await db.select().from(accounts).where(eq(accounts.id, accountId!));
     if (!a[0] || a[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 404 });
   }
   const nid = crypto.randomUUID();
-  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbol.toUpperCase(), name: name || symbol, shares: Number(shares), avgPrice: Number(avgPrice), currentPrice: Number(currentPrice ?? avgPrice), currency: currency || "GBP", purchaseDate, exchange, lastRefreshedAt: null } as typeof holdings.$inferInsert);
+  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbolStr, name: nameStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, purchaseDate, exchange: exchangeStr, lastRefreshedAt: null });
   return Response.json({ id: nid });
 }
 
 export async function DELETE(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  await ensureHoldingsColumns();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const db = getDb();
   const h = await db.select().from(holdings).where(eq(holdings.id, id));
   if (!h[0]) return Response.json({ error: "not found" }, { status: 404 });
-  const row = h[0] as typeof holdings.$inferSelect;
+  const row = h[0];
   let allowed = false;
   if (row.portfolioId) {
     const p = await db.select().from(portfolios).where(eq(portfolios.id, row.portfolioId));
-    if (p[0] && p[0].userId===userId) allowed=true;
+    if (p[0] && p[0].userId === userId) allowed = true;
   } else if (row.providerId) {
     const pr = await db.select().from(providers).where(eq(providers.id, row.providerId));
-    if (pr[0] && pr[0].userId===userId) allowed=true;
+    if (pr[0] && pr[0].userId === userId) allowed = true;
   } else if (row.accountId) {
     const a = await db.select().from(accounts).where(eq(accounts.id, row.accountId));
-    if (a[0] && a[0].userId===userId) allowed=true;
-  } else if (row.userId===userId) allowed=true;
+    if (a[0] && a[0].userId === userId) allowed = true;
+  } else if (row.userId === userId) allowed = true;
   if (!allowed) return Response.json({ error: "forbidden" }, { status: 403 });
   await db.delete(holdings).where(eq(holdings.id, id));
   return Response.json({ ok: true });
@@ -137,33 +125,19 @@ export async function DELETE(req: Request) {
 export async function PATCH(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  await ensureHoldingsColumns();
-  const { symbols, force } = await req.json() as { symbols: Record<string, { price: number; currency: string }>; force?: boolean };
+  const { symbols, force } = (await req.json()) as { symbols: Record<string, { price: number; currency: string }>; force?: boolean };
   const db = getDb();
-  const userPortfolios = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
-  const userAccounts = await db.select().from(accounts).where(eq(accounts.userId, userId));
-  const userProviders = await db.select().from(providers).where(eq(providers.userId, userId));
-  const pids = userPortfolios.map((p) => p.id);
-  const aids = userAccounts.map(a=>a.id);
-  const prids = userProviders.map(p=>p.id);
   let all: typeof holdings.$inferSelect[] = [];
   try {
-    const allHoldings = await db.select().from(holdings);
-    all = allHoldings.filter((h)=>{
-      if (h.portfolioId && pids.includes(h.portfolioId)) return true;
-      if (h.providerId && prids.includes(h.providerId)) return true;
-      if (h.accountId && aids.includes(h.accountId)) return true;
-      if (h.userId===userId) return true;
-      return false;
-    });
-  } catch { all = pids.length ? await db.select().from(holdings).where(inArray(holdings.portfolioId, pids)) : []; }
+    all = await loadOwnedHoldings(db, userId);
+  } catch { all = []; }
   const now = Math.floor(Date.now() / 1000);
   const DAY = 86400;
   let updated = 0;
   let skipped = 0;
   let nextAllowedAt: number | null = null;
   for (const h of all) {
-    const upd = (symbols as Record<string, { price: number; currency: string }>)[h.symbol];
+    const upd = symbols[h.symbol];
     if (!upd) continue;
     if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
     if (!force && h.lastRefreshedAt && now - h.lastRefreshedAt < DAY) {

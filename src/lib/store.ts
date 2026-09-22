@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { holdingValueGBP } from "@/lib/format";
+
 export type Holding = { id: string; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; purchaseDate: string; exchange?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; userId?: string | null; lastRefreshedAt?: number | null };
 export type Portfolio = { id: string; name: string; type: "live" | "manual"; accountId: string | null; providerId: string | null; color: string | null; sortOrder?: number | null; holdings: Holding[]; userId?: string; createdAt?: number };
 export type Account = { id: string; name: string; color: string | null; sortOrder?: number | null; userId?: string; createdAt?: number };
@@ -19,32 +21,57 @@ async function api(path: string, opts?: RequestInit) {
   return r.json();
 }
 
+function parseList<T>(data: unknown): T[] {
+  return Array.isArray(data) ? (data as T[]) : [];
+}
+
 function useVisibilityRefresh(refresh: () => void) {
+  const ref = useRef(refresh);
   useEffect(() => {
-    const onVis = () => { if (document.visibilityState === "visible") refresh(); };
+    ref.current = refresh;
+  }, [refresh]);
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") ref.current();
+    };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [refresh]);
+  }, []);
+}
+
+function useAsyncInit(load: () => Promise<void>) {
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!cancelled) await load();
+    };
+    const p = Promise.resolve().then(run);
+    void p;
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
 
 export function useAccounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [ready, setReady] = useState(false);
-  const fetched = useRef(false);
   const refresh = useCallback(async () => {
     try {
-      const data: Account[] = await api("/api/accounts");
-      setAccounts(data);
-    } catch { setAccounts([]); }
+      setAccounts(parseList<Account>(await api("/api/accounts")));
+    } catch {
+      setAccounts([]);
+    }
     setReady(true);
   }, []);
-  useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh]);
+  useAsyncInit(refresh);
   const create = async (name: string) => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) });
     await refresh();
   };
   const remove = async (id: string) => {
-    await fetch(`/api/accounts?id=${id}`, { method: "DELETE" });
+    await api(`/api/accounts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
   };
   const rename = async (id: string, name: string, color?: string | null) => {
@@ -63,22 +90,22 @@ export function useAccounts() {
 export function useProviders() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [ready, setReady] = useState(false);
-  const fetched = useRef(false);
   const refresh = useCallback(async () => {
     try {
-      const data: unknown = await api("/api/providers");
-      setProviders(Array.isArray(data) ? (data as Provider[]) : []);
-    } catch { setProviders([]); }
+      setProviders(parseList<Provider>(await api("/api/providers")));
+    } catch {
+      setProviders([]);
+    }
     setReady(true);
   }, []);
-  useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh]);
+  useAsyncInit(refresh);
   const create = async (name: string, accountId: string, color?: string | null) => {
     const r = await api("/api/providers", { method: "POST", body: JSON.stringify({ name, accountId, color: color ?? null }) });
     await refresh();
-    return r;
+    return r as { id: string };
   };
   const remove = async (id: string) => {
-    await fetch(`/api/providers?id=${id}`, { method: "DELETE" });
+    await api(`/api/providers?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
   };
   const rename = async (id: string, name: string, color?: string | null) => {
@@ -97,23 +124,24 @@ export function useProviders() {
 export function usePortfolios() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [ready, setReady] = useState(false);
-  const fetched = useRef(false);
   const refresh = useCallback(async () => {
     try {
-      const data: Portfolio[] = await api("/api/portfolios");
-      setPortfolios(data);
-    } catch { setPortfolios([]); }
+      setPortfolios(parseList<Portfolio>(await api("/api/portfolios")));
+    } catch {
+      setPortfolios([]);
+    }
     setReady(true);
   }, []);
-  useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh]);
+  useAsyncInit(refresh);
   useVisibilityRefresh(refresh);
 
   const create = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
-    await api("/api/portfolios", { method: "POST", body: JSON.stringify({ name, type, accountId: accountId ?? null, providerId: providerId ?? null }) });
+    const r = await api("/api/portfolios", { method: "POST", body: JSON.stringify({ name, type, accountId: accountId ?? null, providerId: providerId ?? null }) });
     await refresh();
+    return r as { id: string };
   };
   const remove = async (id: string) => {
-    await fetch(`/api/portfolios?id=${id}`, { method: "DELETE" });
+    await api(`/api/portfolios?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
   };
   const move = async (id: string, accountId: string | null, providerId?: string | null) => {
@@ -124,7 +152,7 @@ export function usePortfolios() {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ id, color }) });
     await refresh();
   };
-  const upsertHolding = async (targetId: string, h: Omit<Holding, "id"> & { id?: string } & { portfolioId?: string | null; providerId?: string | null; accountId?: string | null }, kind: "portfolio" | "provider" | "account" = "portfolio") => {
+  const upsertHolding = async (targetId: string, h: Omit<Holding, "id"> & { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null }, kind: "portfolio" | "provider" | "account" = "portfolio") => {
     const body: HoldingsBody = { ...h, id: h.id };
     if (kind === "portfolio") body.portfolioId = targetId;
     else if (kind === "provider") body.providerId = targetId;
@@ -135,24 +163,21 @@ export function usePortfolios() {
     await api("/api/holdings", { method: "POST", body: JSON.stringify(body) });
     await refresh();
   };
-  const deleteHolding = async (_targetId: string, holdingId: string) => {
-    await fetch(`/api/holdings?id=${holdingId}`, { method: "DELETE" });
-    await refresh();
-  };
-  const deleteHoldingDirect = async (holdingId: string) => {
-    await fetch(`/api/holdings?id=${holdingId}`, { method: "DELETE" });
+  const deleteHolding = async (holdingId: string) => {
+    await api(`/api/holdings?id=${encodeURIComponent(holdingId)}`, { method: "DELETE" });
     await refresh();
   };
   const updatePrices = async (prices: Record<string, { price: number; currency: string }>) => {
     await api("/api/holdings", { method: "PATCH", body: JSON.stringify({ symbols: prices }) });
     await refresh();
   };
-  return { portfolios, ready, create, remove, move, setColor, upsertHolding, deleteHolding, deleteHoldingDirect, updatePrices, refresh, setPortfolios };
+  return { portfolios, ready, create, remove, move, setColor, upsertHolding, deleteHolding, updatePrices, refresh, setPortfolios };
 }
+
+const SNAPSHOT_DEBOUNCE_MS = 2000;
 
 export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] = []) {
   const [data, setData] = useState<SnapResponse>({ total: [], byPortfolio: {} });
-  const fetched = useRef(false);
   const refresh = useCallback(async () => {
     try {
       const r = await fetch("/api/snapshots");
@@ -160,38 +185,60 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
       const j: unknown = await r.json();
       if (Array.isArray(j)) setData({ total: j as Snapshot[], byPortfolio: {} });
       else setData(j as SnapResponse);
-    } catch {}
+    } catch {
+      /* keep previous data */
+    }
   }, []);
-  useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh, portfolios.length]);
+  useAsyncInit(refresh);
   useVisibilityRefresh(refresh);
-  const valGBP = (h: Holding) => { const v = h.shares * h.currentPrice; return h.currency === "GBX" || h.currency === "GBp" ? v / 100 : v; };
-  const totalValue = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h) => a + valGBP(h), 0), 0) + directHoldings.reduce((s, h) => s + valGBP(h), 0);
+
+  const pfVals = useMemo(
+    () => portfolios.map((p) => ({ id: p.id, value: p.holdings.reduce((a, h) => a + holdingValueGBP(h), 0) })),
+    [portfolios]
+  );
+  const hVals = useMemo(() => {
+    const out: Array<{ id: string; value: number }> = [];
+    for (const p of portfolios) for (const h of p.holdings) out.push({ id: h.id, value: holdingValueGBP(h) });
+    for (const h of directHoldings) out.push({ id: h.id, value: holdingValueGBP(h) });
+    return out;
+  }, [portfolios, directHoldings]);
+  const totalValue = useMemo(() => pfVals.reduce((s, p) => s + p.value, 0) + directHoldings.reduce((s, h) => s + holdingValueGBP(h), 0), [pfVals, directHoldings]);
+
+  const lastPosted = useRef<{ day: string; value: number } | null>(null);
   useEffect(() => {
-    if ((!portfolios.length && !directHoldings.length) || totalValue === 0) return;
-    const isDemo = typeof document !== "undefined" && document.cookie.includes("olantis_demo=1");
-    if (isDemo) return;
-    const pfVals = portfolios.map((p) => ({ id: p.id, value: p.holdings.reduce((a, h) => a + valGBP(h), 0) }));
-    const hVals: Array<{ id: string; value: number }> = [
-      ...portfolios.flatMap((p) => p.holdings.map((h) => ({ id: h.id, value: valGBP(h) }))),
-      ...directHoldings.map((h) => ({ id: h.id, value: valGBP(h) })),
-    ];
-    fetch("/api/snapshots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: totalValue, portfolios: pfVals, holdings: hVals }) }).then(() => refresh()).catch(() => {});
-  }, [totalValue, portfolios, directHoldings, refresh]);
-  return { snapshots: data.total, byPortfolio: data.byPortfolio, refresh };
+    if (!portfolios.length && !directHoldings.length) return;
+    if (totalValue === 0) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const prev = lastPosted.current;
+    if (prev && prev.day === day && Math.abs(prev.value - totalValue) < 0.01) return;
+    const t = setTimeout(() => {
+      lastPosted.current = { day, value: totalValue };
+      fetch("/api/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: totalValue, portfolios: pfVals, holdings: hVals }),
+      })
+        .then(() => refresh())
+        .catch(() => {});
+    }, SNAPSHOT_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [totalValue, portfolios.length, directHoldings.length, pfVals, hVals, refresh]);
+
+  return { snapshots: data.total, byPortfolio: data.byPortfolio, byHolding: data.byHolding, refresh };
 }
 
 export function useHoldings() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [ready, setReady] = useState(false);
-  const fetched = useRef(false);
   const refresh = useCallback(async () => {
     try {
-      const data: unknown = await api("/api/holdings");
-      setHoldings(Array.isArray(data) ? (data as Holding[]) : []);
-    } catch { setHoldings([]); }
+      setHoldings(parseList<Holding>(await api("/api/holdings")));
+    } catch {
+      setHoldings([]);
+    }
     setReady(true);
   }, []);
-  useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh]);
+  useAsyncInit(refresh);
   useVisibilityRefresh(refresh);
   return { holdings, ready, refresh };
 }
@@ -199,25 +246,37 @@ export function useHoldings() {
 export function useTransactions(portfolioId?: string | null, symbol?: string | null) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [ready, setReady] = useState(false);
-  const fetched = useRef(false);
+  const key = `${portfolioId ?? ""}:${symbol ?? ""}`;
   const refresh = useCallback(async () => {
     try {
       const qs = new URLSearchParams();
       if (portfolioId) qs.set("portfolioId", portfolioId);
       if (symbol) qs.set("symbol", symbol);
       const q = qs.toString() ? `?${qs}` : "";
-      const data: unknown = await api(`/api/transactions${q}`);
-      setTransactions(Array.isArray(data) ? (data as Transaction[]) : []);
-    } catch { setTransactions([]); }
+      setTransactions(parseList<Transaction>(await api(`/api/transactions${q}`)));
+    } catch {
+      setTransactions([]);
+    }
     setReady(true);
-  }, [portfolioId, symbol]);
-  useEffect(() => { if (!fetched.current) { fetched.current = true; refresh(); } }, [refresh]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  useEffect(() => {
+    let cancelled = false;
+    const p = Promise.resolve().then(async () => {
+      if (cancelled) return;
+      await refresh();
+    });
+    void p;
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh]);
   const create = async (payload: { portfolioId: string; holdingId?: string | null; symbol?: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date?: string; note?: string }) => {
     await api("/api/transactions", { method: "POST", body: JSON.stringify(payload) });
     await refresh();
   };
   const remove = async (id: string) => {
-    await fetch(`/api/transactions?id=${id}`, { method: "DELETE" });
+    await api(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
   };
   return { transactions, ready, refresh, create, remove };

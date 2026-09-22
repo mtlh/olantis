@@ -1,31 +1,13 @@
 import { getDb } from "@/lib/db";
-import { snapshots, portfolioSnapshots, holdingSnapshots, portfolios, holdings } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { cookies } from "next/headers";
-import { neon } from "@neondatabase/serverless";
+import { snapshots, portfolioSnapshots, holdingSnapshots, portfolios, holdings, accounts, providers } from "@/lib/db/schema";
+import { eq, inArray } from "drizzle-orm";
+import { getUserId, isDemoUser } from "@/lib/auth";
+import { todayISODate } from "@/lib/format";
 
-export async function ensureSnapshotTables() {
-  try {
-    const sql = neon(process.env.DATABASE_URL!);
-    await sql`CREATE TABLE IF NOT EXISTS holding_snapshots (user_id text NOT NULL, holding_id text NOT NULL REFERENCES holdings(id) ON DELETE CASCADE, date text NOT NULL, value real NOT NULL, PRIMARY KEY (user_id, holding_id, date))`;
-  } catch {}
-}
-
-async function getUserId() {
-  const jar = await cookies();
-  if (jar.get("olantis_demo")?.value === "1") return "demo";
-  try {
-    const { withAuth } = await import("@workos-inc/authkit-nextjs");
-    const { user } = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
-    if (user && typeof user === "object" && "id" in user) return String((user as { id: unknown }).id);
-  } catch {}
-  return null;
-}
 export async function GET(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ total: [], byPortfolio: {}, byHolding: {} });
   const db = getDb();
-  await ensureSnapshotTables();
   const { searchParams } = new URL(req.url);
   const holdingId = searchParams.get("holdingId");
   const total = await db.select().from(snapshots).where(eq(snapshots.userId, userId));
@@ -51,9 +33,7 @@ export async function GET(req: Request) {
   }
   const hIds = Object.keys(byHolding);
   if (hIds.length) {
-    const rows = hIds.length
-      ? await db.select().from(holdings).where(eq(holdings.userId, userId))
-      : [];
+    const rows = await db.select().from(holdings).where(eq(holdings.userId, userId));
     for (const h of rows) {
       const entry = byHolding[h.id];
       if (entry) { entry.symbol = h.symbol; entry.name = h.name; }
@@ -63,22 +43,62 @@ export async function GET(req: Request) {
   total.sort((a, b) => a.date.localeCompare(b.date));
   return Response.json({ total: total.map((r) => ({ date: r.date, value: r.value })), byPortfolio, byHolding });
 }
+
+function finiteNumber(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function POST(req: Request) {
   const userId = await getUserId();
-  if (!userId || userId === "demo") return Response.json({ ok: true, skipped: "demo" });
-  const { value, date, portfolios: pfVals, portfolioId, portfolioValue, holdings: hVals } = await req.json();
-  const d = date ?? new Date().toISOString().split("T")[0];
+  if (!userId || isDemoUser(userId)) return Response.json({ ok: true, skipped: "demo" });
+  let body: { value?: unknown; date?: unknown; portfolios?: unknown; portfolioId?: unknown; portfolioValue?: unknown; holdings?: unknown };
+  try { body = await req.json(); } catch { return Response.json({ error: "invalid body" }, { status: 400 }); }
+  const d = typeof body.date === "string" && body.date ? body.date : todayISODate();
   const db = getDb();
-  await ensureSnapshotTables();
-  if (value != null) await db.insert(snapshots).values({ userId, date: d, value: Number(value) }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: Number(value) } });
+
+  const ownedPf = await db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId));
+  const ownedPids = new Set(ownedPf.map((p) => p.id));
+  const ownedPr = await db.select({ id: providers.id }).from(providers).where(eq(providers.userId, userId));
+  const ownedPrids = new Set(ownedPr.map((p) => p.id));
+  const ownedAcc = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.userId, userId));
+  const ownedAids = new Set(ownedAcc.map((a) => a.id));
+
+  const topValue = finiteNumber(body.value);
+  if (topValue != null) {
+    await db.insert(snapshots).values({ userId, date: d, value: topValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: topValue } });
+  }
+
   const batch: { portfolioId: string; value: number }[] = [];
-  if (Array.isArray(pfVals)) for (const p of pfVals) if (p?.id) batch.push({ portfolioId: p.id, value: Number(p.value) });
-  if (portfolioId) batch.push({ portfolioId, value: Number(portfolioValue ?? value) });
-  for (const b of batch) await db.insert(portfolioSnapshots).values({ userId, portfolioId: b.portfolioId, date: d, value: b.value }).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: b.value } });
-  if (Array.isArray(hVals)) {
-    for (const h of hVals) {
-      if (!h?.id) continue;
-      await db.insert(holdingSnapshots).values({ userId, holdingId: h.id, date: d, value: Number(h.value) }).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: Number(h.value) } });
+  if (Array.isArray(body.portfolios)) {
+    for (const p of body.portfolios as Array<{ id?: unknown; value?: unknown }>) {
+      if (!p?.id || typeof p.id !== "string" || !ownedPids.has(p.id)) continue;
+      const v = finiteNumber(p.value);
+      if (v == null) continue;
+      batch.push({ portfolioId: p.id, value: v });
+    }
+  }
+  if (typeof body.portfolioId === "string" && body.portfolioId && ownedPids.has(body.portfolioId)) {
+    const v = finiteNumber(body.portfolioValue ?? body.value);
+    if (v != null) batch.push({ portfolioId: body.portfolioId, value: v });
+  }
+  for (const b of batch) {
+    await db.insert(portfolioSnapshots).values({ userId, portfolioId: b.portfolioId, date: d, value: b.value }).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: b.value } });
+  }
+
+  if (Array.isArray(body.holdings)) {
+    const hv = body.holdings as Array<{ id?: unknown; value?: unknown }>;
+    const ids = hv.map((h) => h?.id).filter((x): x is string => typeof x === "string");
+    if (ids.length) {
+      const rows = await db.select().from(holdings).where(inArray(holdings.id, ids));
+      for (const h of rows) {
+        const owned = (h.portfolioId && ownedPids.has(h.portfolioId)) || (h.providerId && ownedPrids.has(h.providerId)) || (h.accountId && ownedAids.has(h.accountId)) || h.userId === userId;
+        if (!owned) continue;
+        const src = hv.find((x) => x?.id === h.id);
+        const v = finiteNumber(src?.value);
+        if (v == null) continue;
+        await db.insert(holdingSnapshots).values({ userId, holdingId: h.id, date: d, value: v }).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: v } });
+      }
     }
   }
   return Response.json({ ok: true });

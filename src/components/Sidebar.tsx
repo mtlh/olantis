@@ -1,7 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding } from "@/lib/store";
 import { LayoutDashboard, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,19 +13,10 @@ import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PALETTE, portfolioTint } from "@/lib/colors";
+import { fmtRelative, holdingValueGBP, fmtPrice } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
-function fmtRelative(ts?: number | null) {
-  if (!ts) return "never";
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-function holdingValueGBP(h:Holding){ const raw=h.shares*h.currentPrice; if(h.currency==="GBX"||h.currency==="GBp") return raw/100; return raw; }
-function fmtPrice(n:number, currency?:string|null){ if(currency==="GBX"||currency==="GBp") return `${Math.round(n).toLocaleString("en-GB")}p`; if(currency==="GBP") return new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP",maximumFractionDigits:2}).format(n); if(currency==="USD") return `$${Number(n).toFixed(2)}`; if(currency==="EUR") return `€${Number(n).toFixed(2)}`; return `${Number(n).toFixed(2)}${currency?` ${currency}`:""}`; }
 function isLightColor(hex: string) {
   try {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -38,11 +29,9 @@ function isLightColor(hex: string) {
 
 export function Sidebar({ accounts, providers, portfolios, holdings, activeId, onSelect, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void; onSelectHolding?: (h: Holding) => void;
-  onCreate: (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => void;
-  onCreateAccount: (name: string) => void;
+  onCreateAccount: (name: string) => void | Promise<void>;
   onCreateProvider?: (name: string, accountId: string) => Promise<void>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
-  onCreateDirectHolding?: (target: { accountId?: string | null; providerId?: string | null }, data: { symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; exchange?: string }) => Promise<void>;
   onRefresh?: () => Promise<void>;
   isDemo?: boolean; accountsReady?: boolean; portfoliosReady?: boolean;
   onRenameAccount?: (id: string, name: string) => Promise<void>;
@@ -75,6 +64,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   const [directSaving, setDirectSaving] = useState(false);
   const [directSearchResults, setDirectSearchResults] = useState<SearchResult[]>([]);
   const [directShowMenu, setDirectShowMenu] = useState(false);
+  const [directQuery, setDirectQuery] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [expandedProv, setExpandedProv] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
@@ -85,8 +75,8 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
 
   const unassigned = useMemo(()=> sortByOrder(portfolios.filter(p=> !p.accountId && !p.providerId)), [portfolios]);
   const filteredAccounts = useMemo(()=> sortByOrder(accounts.filter(a=> !q || a.name.toLowerCase().includes(q.toLowerCase()))), [accounts,q]);
-  const filteredPortfolios = (list: Portfolio[]) => sortByOrder(list.filter(p=> !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.holdings.some(h=>h.symbol.toLowerCase().includes(q.toLowerCase()))));
-  const filteredProviders = (list: Provider[]) => sortByOrder(list.filter(pr=> !q || pr.name.toLowerCase().includes(q.toLowerCase())));
+  const filteredPortfolios = useMemo(() => (list: Portfolio[]) => sortByOrder(list.filter(p=> !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.holdings.some(h=>h.symbol.toLowerCase().includes(q.toLowerCase())))), [q]);
+  const filteredProviders = useMemo(() => (list: Provider[]) => sortByOrder(list.filter(pr=> !q || pr.name.toLowerCase().includes(q.toLowerCase()))), [q]);
 
   const providersByAccount = useMemo(()=>{
     const m = new Map<string, Provider[]>();
@@ -108,6 +98,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   },[portfolios]);
 
   const directHoldings = holdings ?? [];
+  const accountIndex = useMemo(() => new Map(accounts.map((a, i) => [a.id, i])), [accounts]);
   const accountTotals = (aid: string) => {
     const direct = directByAccount.get(aid) ?? [];
     const provs = providersByAccount.get(aid) ?? [];
@@ -122,6 +113,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
     sum += directHoldings.filter((h:Holding)=> h.providerId===pid).reduce((s,h:Holding)=> s+holdingValueGBP(h),0);
     return sum;
   };
+  const accColorFor = (acc: Account) => acc.color || PALETTE[(accountIndex.get(acc.id) ?? 0) % PALETTE.length].value;
 
   const toggle = (id: string) => setExpanded((e) => ({ ...e, [id]: !(e[id] ?? true) }));
   const toggleProv = (id: string) => setExpandedProv((e)=> ({...e, [id]: !(e[id] ?? true)}));
@@ -207,6 +199,23 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   const lastRefresh = useMemo(() => { const ts = allHoldings.map((h) => h.lastRefreshedAt ?? 0).filter(Boolean) as number[]; return ts.length ? Math.max(...ts) : null; }, [allHoldings]);
   const loading = accountsReady===false || portfoliosReady===false;
 
+  useEffect(() => {
+    const v = directQuery.trim();
+    if (v.length < 2) return;
+    let stale = false;
+    const t = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(v)}`)
+        .then(r => r.json())
+        .then(j => {
+          if (stale) return;
+          setDirectSearchResults(Array.isArray(j) ? j : []);
+          setDirectShowMenu(true);
+        })
+        .catch(() => {});
+    }, 320);
+    return () => { stale = true; clearTimeout(t); };
+  }, [directQuery]);
+
 
   const inner = (
     <>
@@ -240,7 +249,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
               const total = accountTotals(acc.id);
               const provs = filteredProviders(providersByAccount.get(acc.id) ?? []);
               const direct = filteredPortfolios(directByAccount.get(acc.id) ?? []);
-              const accColor = acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value;
+              const accColor = accColorFor(acc);
               return (
                 <div key={acc.id} className="rounded-2xl border overflow-hidden shadow-sm" style={{ borderColor: accColor + "40", background: accColor + "26" }}>
                   <div className="flex items-center gap-1 p-1.5">
@@ -270,7 +279,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                         const ps = filteredPortfolios(portfoliosByProvider.get(pr.id) ?? []);
                         const isProvOpen = expandedProv[pr.id] ?? true;
                         const provTotal = providerTotals(pr.id);
-                        const provColor = pr.color || portfolioTint(acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, pi, provs.length);
+                        const provColor = pr.color || portfolioTint(accColorFor(acc), pi);
                         return (
                           <div key={pr.id} className="rounded-lg border overflow-hidden" style={{ borderColor: provColor + "38", background: provColor + "20" }}>
                             <div className="flex items-center gap-1 p-1">
@@ -296,7 +305,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                 {ps.map((p, pIdx)=>{
                                   const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
                                   const active=activeId===p.id;
-                                  const baseColor = p.color || portfolioTint(provColor, pIdx, ps.length);
+                                  const baseColor = p.color || portfolioTint(provColor, pIdx);
                                   const selectedBg = baseColor;
                                   const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                                   const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
@@ -343,7 +352,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                           {direct.map((p, di)=>{
                             const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
                             const active=activeId===p.id;
-                            const baseColor = p.color || portfolioTint(acc.color || PALETTE[accounts.findIndex(a=>a.id===acc.id) % PALETTE.length].value, di, direct.length);
+                            const baseColor = p.color || portfolioTint(accColorFor(acc), di);
                             const selectedBg = baseColor;
                             const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
                             const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
@@ -516,7 +525,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
             <div className="space-y-2">
               <Label>Symbol *</Label>
               <div className="relative">
-                <Input value={directForm.symbol} onChange={e=>{ const v=e.target.value.toUpperCase(); setDirectForm({...directForm, symbol:v}); if(v.trim().length>=2){ fetch(`/api/search?q=${encodeURIComponent(v)}`).then(r=>r.json()).then(j=>{ setDirectSearchResults(Array.isArray(j)?j:[]); setDirectShowMenu(true); }).catch(()=>{});} else { setDirectSearchResults([]); setDirectShowMenu(false);} }} placeholder="AAPL or Apple" autoComplete="off" />
+                <Input value={directForm.symbol} onChange={e=>{ const v=e.target.value.toUpperCase(); setDirectForm({...directForm, symbol:v}); setDirectQuery(v); if(v.trim().length<2){ setDirectSearchResults([]); setDirectShowMenu(false);} }} placeholder="AAPL or Apple" autoComplete="off" />
                 {directShowMenu && directSearchResults.length>0 && (
                   <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl max-h-48 overflow-auto">
                     {directSearchResults.map((r:SearchResult)=>(

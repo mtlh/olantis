@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Holding } from "@/lib/store";
+import { fmtPrice } from "@/lib/format";
 import { TrendingUp, Plus, Minus, Calculator, Calendar, Hash } from "lucide-react";
 
 type Props = {
@@ -16,19 +17,15 @@ type Props = {
   onSubmit: (data: { shares: number; price: number; date: string }) => Promise<void>;
 };
 
-type BuyPreview = { newShares: number; newAvg: number; newCost: number; newValue: number; costDelta: number };
-type SellPreview = { newShares: number; proceeds: number; pl: number; remaining: number };
-type PreviewError = { error: string };
-type Preview = BuyPreview | SellPreview | PreviewError;
-
-function isBuyPreview(p: Preview): p is BuyPreview { return "newAvg" in p; }
-function isSellPreview(p: Preview): p is SellPreview { return "proceeds" in p; }
-function isPreviewError(p: Preview): p is PreviewError { return "error" in p; }
+type BuyPreview = { kind: "buy"; newShares: number; newAvg: number; newCost: number; newValue: number; costDelta: number };
+type SellPreview = { kind: "sell"; newShares: number; proceeds: number; pl: number; remaining: number };
+type PreviewError = { kind: "error"; error: string };
+type Preview = BuyPreview | SellPreview | PreviewError | null;
 
 export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Props) {
   const [shares, setShares] = useState("");
-  const [price, setPrice] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [price, setPrice] = useState(() => (holding ? String(holding.currentPrice) : ""));
+  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -36,30 +33,22 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
   const p = Number(price);
   const hasValues = s > 0 && p > 0;
 
-  const preview = useMemo(() => {
+  const preview: Preview = useMemo(() => {
     if (!holding || !hasValues) return null;
     if (type === "buy") {
       const newShares = holding.shares + s;
       const newAvg = (holding.shares * holding.avgPrice + s * p) / newShares;
       const newCost = newShares * newAvg;
       const newValue = newShares * holding.currentPrice;
-      return { newShares, newAvg, newCost, newValue, costDelta: s * p } satisfies BuyPreview;
-    } else {
-      if (s > holding.shares) return { error: `You only hold ${holding.shares} shares` } satisfies PreviewError;
-      const newShares = holding.shares - s;
-      const proceeds = s * p;
-      const costBasis = s * holding.avgPrice;
-      const pl = proceeds - costBasis;
-      return { newShares, proceeds, pl, remaining: newShares } satisfies SellPreview;
+      return { kind: "buy", newShares, newAvg, newCost, newValue, costDelta: s * p };
     }
+    if (s > holding.shares) return { kind: "error", error: `You only hold ${holding.shares} shares` };
+    const newShares = holding.shares - s;
+    const proceeds = s * p;
+    const costBasis = s * holding.avgPrice;
+    const pl = proceeds - costBasis;
+    return { kind: "sell", newShares, proceeds, pl, remaining: newShares };
   }, [holding, s, p, type, hasValues]);
-
-  const resetForm = () => {
-    setShares("");
-    setPrice(holding ? String(holding.currentPrice) : "");
-    setDate(new Date().toISOString().split("T")[0]);
-    setError("");
-  };
 
   const submit = async () => {
     if (!s || s <= 0) return setError("Shares must be > 0");
@@ -71,13 +60,16 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
       onOpenChange(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!holding && type === "sell") return null;
+  const cur = holding?.currency;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); onOpenChange(v); }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-zinc-900 border-white/10 text-white sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -85,7 +77,7 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
               {type === "buy" ? <Plus className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
             </span>
             {type === "buy" ? "Buy" : "Sell"} {holding ? holding.symbol : ""}
-            {holding && <Badge variant="outline" className="border-white/10 text-zinc-400 ml-1">{holding.shares} × £{holding.avgPrice.toFixed(2)} avg</Badge>}
+            {holding && <Badge variant="outline" className="border-white/10 text-zinc-400 ml-1">{holding.shares} × {fmtPrice(holding.avgPrice, cur)} avg</Badge>}
           </DialogTitle>
         </DialogHeader>
 
@@ -93,8 +85,8 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
           {holding && (
             <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-white/[0.04] border border-white/5 text-center">
               <div><div className="text-[10px] tracking-widest uppercase text-zinc-500">Shares</div><div className="text-sm font-semibold text-white">{holding.shares}</div></div>
-              <div><div className="text-[10px] tracking-widest uppercase text-zinc-500">Avg cost</div><div className="text-sm font-semibold text-white">£{holding.avgPrice.toFixed(2)}</div></div>
-              <div><div className="text-[10px] tracking-widest uppercase text-zinc-500">Price</div><div className="text-sm font-semibold text-white">£{holding.currentPrice.toFixed(2)}</div></div>
+              <div><div className="text-[10px] tracking-widest uppercase text-zinc-500">Avg cost</div><div className="text-sm font-semibold text-white">{fmtPrice(holding.avgPrice, cur)}</div></div>
+              <div><div className="text-[10px] tracking-widest uppercase text-zinc-500">Price</div><div className="text-sm font-semibold text-white">{fmtPrice(holding.currentPrice, cur)}</div></div>
             </div>
           )}
 
@@ -114,37 +106,37 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
             <Input type="date" value={date} max={new Date().toISOString().split("T")[0]} onChange={(e) => setDate(e.target.value)} />
           </div>
 
-          {type === "buy" && hasValues && preview && isBuyPreview(preview) && (
+          {preview?.kind === "buy" && (
             <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400"><Calculator className="w-3.5 h-3.5" /> Dollar-cost averaging preview</div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New avg cost</div><div className="font-semibold text-white">£{preview.newAvg.toFixed(2)}</div><div className="text-zinc-600 text-[11px]">was £{holding!.avgPrice.toFixed(2)}</div></div>
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New holding</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">+{s} shares • £{preview.costDelta.toFixed(2)} cost</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New avg cost</div><div className="font-semibold text-white">{fmtPrice(preview.newAvg, cur)}</div><div className="text-zinc-600 text-[11px]">was {fmtPrice(holding!.avgPrice, cur)}</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New holding</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">+{s} shares • {fmtPrice(preview.costDelta, cur)} cost</div></div>
               </div>
               {p < holding!.avgPrice && <p className="text-xs text-emerald-300">Buying below your average — your avg cost will decrease ↓</p>}
               {p > holding!.avgPrice && <p className="text-xs text-amber-300">Buying above your average — your avg cost will increase ↑</p>}
             </div>
           )}
 
-          {type === "sell" && hasValues && preview && isSellPreview(preview) && (
+          {preview?.kind === "sell" && (
             <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-red-400"><Calculator className="w-3.5 h-3.5" /> Sale preview</div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Proceeds</div><div className="font-semibold text-white">£{preview.proceeds.toFixed(2)}</div><div className={`text-[11px] ${preview.pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{preview.pl >= 0 ? "+" : ""}£{preview.pl.toFixed(2)} P/L</div></div>
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Remaining</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">{preview.newShares === 0 ? "Position closed" : `${preview.newShares} × £${holding!.avgPrice.toFixed(2)} avg`}</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Proceeds</div><div className="font-semibold text-white">{fmtPrice(preview.proceeds, cur)}</div><div className={`text-[11px] ${preview.pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{preview.pl >= 0 ? "+" : ""}{fmtPrice(preview.pl, cur)} P/L</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Remaining</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">{preview.newShares === 0 ? "Position closed" : `${preview.newShares} × ${fmtPrice(holding!.avgPrice, cur)} avg`}</div></div>
               </div>
             </div>
           )}
 
-          {preview && isPreviewError(preview) && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{preview.error}</p>}
+          {preview?.kind === "error" && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{preview.error}</p>}
           {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</p>}
           <div className="flex items-center gap-2 text-xs text-zinc-500"><TrendingUp className="w-3 h-3" /> Uses weighted average. Chart will mark this trade.</div>
         </div>
 
         <div className="flex justify-end gap-2 mt-6">
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={submit} disabled={saving || !hasValues} className={type === "buy" ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "bg-red-600 hover:bg-red-700 text-white border-red-600"}>
-            {saving ? "Saving…" : type === "buy" ? <><Plus className="w-4 h-4" /> Buy {s ? `${s} @ £${p}` : ""}</> : <><Minus className="w-4 h-4" /> Sell {s ? `${s} @ £${p}` : ""}</>}
+          <Button onClick={() => void submit()} disabled={saving || !hasValues} className={type === "buy" ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "bg-red-600 hover:bg-red-700 text-white border-red-600"}>
+            {saving ? "Saving…" : type === "buy" ? <><Plus className="w-4 h-4" /> Buy {s ? `${s} @ ${fmtPrice(p, cur)}` : ""}</> : <><Minus className="w-4 h-4" /> Sell {s ? `${s} @ ${fmtPrice(p, cur)}` : ""}</>}
           </Button>
         </div>
       </DialogContent>

@@ -2,8 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { neon } from "@neondatabase/serverless";
+import { eq, sql } from "drizzle-orm";
+import { DEMO_USER_ID } from "@/lib/auth";
 
 function weeklyDates(years = 3): string[] {
   const out: string[] = [];
@@ -23,40 +23,35 @@ function weeklyDates(years = 3): string[] {
   return out;
 }
 
+type YahooChartRaw = { quotes?: Array<{ date?: string | number | Date; close?: number | null }> };
+
 async function seedDemo(userId: string) {
   const db = getDb();
   const existing = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
   if (existing.length > 0) return;
   const now = Math.floor(Date.now() / 1000);
-  try {
-    const sql = neon(process.env.DATABASE_URL!);
-    await sql`CREATE TABLE IF NOT EXISTS providers (id text PRIMARY KEY, user_id text NOT NULL, account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, name text NOT NULL, created_at integer NOT NULL)`;
-    await sql`ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS provider_id text REFERENCES providers(id) ON DELETE SET NULL`;
-  } catch {}
-  const accHousehold = { id: crypto.randomUUID(), userId, name: "Household", createdAt: now };
-  const accPersonal = { id: crypto.randomUUID(), userId, name: "Personal", createdAt: now };
+  const accHousehold: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Household", createdAt: now };
+  const accPersonal: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Personal", createdAt: now };
   await db.insert(accounts).values([accHousehold, accPersonal]);
-  const provVanguard = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Vanguard", createdAt: now };
-  const provT212 = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Trading 212", createdAt: now };
-  const provHL = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, name: "Hargreaves Lansdown", createdAt: now };
-  try { await db.insert(providers).values([provVanguard, provT212, provHL]); } catch { const sql = neon(process.env.DATABASE_URL!); for(const pr of [provVanguard, provT212, provHL]) await sql`INSERT INTO providers (id, user_id, account_id, name, created_at) VALUES (${pr.id}, ${pr.userId}, ${pr.accountId}, ${pr.name}, ${pr.createdAt}) ON CONFLICT DO NOTHING`; }
-  const p1 = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA — Global Tracker", type: "live", createdAt: now };
-  const p2 = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 — Growth", type: "live", createdAt: now };
-  const p3 = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP — Retirement", type: "live", createdAt: now };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await db.insert(portfolios).values([p1, p2, p3] as any);
-  const hs = [
-    { id: crypto.randomUUID(), portfolioId: p1.id, symbol: "VWRP", name: "Vanguard FTSE All-World", shares: 120, avgPrice: 98, currentPrice: 106.4, currency: "GBP", purchaseDate: "2024-01-15", exchange: "LSE" },
-    { id: crypto.randomUUID(), portfolioId: p1.id, symbol: "AAPL", name: "Apple Inc", shares: 15, avgPrice: 145, currentPrice: 178, currency: "USD", purchaseDate: "2024-03-10", exchange: "NASDAQ" },
-    { id: crypto.randomUUID(), portfolioId: p1.id, symbol: "NVDA", name: "NVIDIA", shares: 8, avgPrice: 420, currentPrice: 485, currency: "USD", purchaseDate: "2024-05-20", exchange: "NASDAQ" },
-    { id: crypto.randomUUID(), portfolioId: p2.id, symbol: "VUAG", name: "Vanguard S&P 500", shares: 200, avgPrice: 68, currentPrice: 74.2, currency: "GBP", purchaseDate: "2023-11-01", exchange: "LSE" },
-    { id: crypto.randomUUID(), portfolioId: p3.id, symbol: "VWCE", name: "Vanguard FTSE All-World Acc", shares: 85, avgPrice: 95, currentPrice: 102.3, currency: "GBP", purchaseDate: "2024-02-10", exchange: "LSE" },
+  const provVanguard: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Vanguard", createdAt: now };
+  const provT212: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Trading 212", createdAt: now };
+  const provHL: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, name: "Hargreaves Lansdown", createdAt: now };
+  await db.insert(providers).values([provVanguard, provT212, provHL]);
+  const p1: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA — Global Tracker", type: "live", createdAt: now };
+  const p2: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 — Growth", type: "live", createdAt: now };
+  const p3: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP — Retirement", type: "live", createdAt: now };
+  await db.insert(portfolios).values([p1, p2, p3]);
+  const hs: (typeof holdings.$inferInsert)[] = [
+    { id: crypto.randomUUID(), userId, portfolioId: p1.id, symbol: "VWRP", name: "Vanguard FTSE All-World", shares: 120, avgPrice: 98, currentPrice: 106.4, currency: "GBP", purchaseDate: "2024-01-15", exchange: "LSE" },
+    { id: crypto.randomUUID(), userId, portfolioId: p1.id, symbol: "AAPL", name: "Apple Inc", shares: 15, avgPrice: 145, currentPrice: 178, currency: "USD", purchaseDate: "2024-03-10", exchange: "NASDAQ" },
+    { id: crypto.randomUUID(), userId, portfolioId: p1.id, symbol: "NVDA", name: "NVIDIA", shares: 8, avgPrice: 420, currentPrice: 485, currency: "USD", purchaseDate: "2024-05-20", exchange: "NASDAQ" },
+    { id: crypto.randomUUID(), userId, portfolioId: p2.id, symbol: "VUAG", name: "Vanguard S&P 500", shares: 200, avgPrice: 68, currentPrice: 74.2, currency: "GBP", purchaseDate: "2023-11-01", exchange: "LSE" },
+    { id: crypto.randomUUID(), userId, portfolioId: p3.id, symbol: "VWCE", name: "Vanguard FTSE All-World Acc", shares: 85, avgPrice: 95, currentPrice: 102.3, currency: "GBP", purchaseDate: "2024-02-10", exchange: "LSE" },
   ];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await db.insert(holdings).values(hs as any);
+  await db.insert(holdings).values(hs);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const yahoo = await import("yahoo-finance2").then((m: any) => new m.default({ suppressNotices: ["yahooSurvey", "ripHistorical"] }));
+  const YahooFinanceCtor = (await import("yahoo-finance2")).default;
+  const yahoo = new YahooFinanceCtor({ suppressNotices: ["yahooSurvey", "ripHistorical"] });
   const dates = weeklyDates(3);
   const period1 = dates[0];
   const period2 = dates[dates.length - 1];
@@ -64,15 +59,14 @@ async function seedDemo(userId: string) {
   for (const h of hs) {
     const m = new Map<string, number>();
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const chart: any = await yahoo.chart(h.symbol, { period1, period2, interval: "1wk" });
+      const chart = (await yahoo.chart(h.symbol, { period1, period2, interval: "1wk" })) as unknown as YahooChartRaw;
       for (const r of chart.quotes ?? []) {
-        const key = new Date(r.date).toISOString().slice(0, 10);
+        const key = new Date(r.date ?? 0).toISOString().slice(0, 10);
         if (r.close != null) m.set(key, r.close);
       }
     } catch {}
     if (m.size < 20) {
-      let p = h.avgPrice * (0.88 + Math.random() * 0.08);
+      let p = (h.avgPrice ?? 0) * (0.88 + Math.random() * 0.08);
       for (const d of dates) {
         const r = Math.random();
         let ret: number;
@@ -80,13 +74,13 @@ async function seedDemo(userId: string) {
         else if (r < 0.2) ret = Math.random() * 0.055 + 0.015;
         else ret = Math.random() * 0.068 - 0.034;
         p = p * (1 + ret);
-        p = Math.max(p, h.avgPrice * 0.55);
+        p = Math.max(p, (h.avgPrice ?? 0) * 0.55);
         if (!m.has(d)) m.set(d, p);
       }
       const last = dates[dates.length - 1];
       if (m.has(last)) {
         const cur = m.get(last)!;
-        const target = h.currentPrice;
+        const target = h.currentPrice ?? 0;
         const scale = target / cur;
         const blended = new Map<string, number>();
         for (const [k, v] of m) {
@@ -140,18 +134,21 @@ async function seedDemo(userId: string) {
     const first = [...m.keys()].sort()[0];
     return first ? m.get(first) : undefined;
   }
-  for (const date of dates) {
+  const snapRows = dates.map((date) => {
     let total = 0;
     const byPort = new Map<string, number>();
     for (const h of hs) {
-      const v = (priceFor(h.symbol, date) ?? h.currentPrice) * h.shares;
+      const v = (priceFor(h.symbol, date) ?? h.currentPrice ?? 0) * (h.shares ?? 0);
       total += v;
-      byPort.set(h.portfolioId, (byPort.get(h.portfolioId) ?? 0) + v);
+      const pid = h.portfolioId!;
+      byPort.set(pid, (byPort.get(pid) ?? 0) + v);
     }
-    await db.insert(snapshots).values({ userId, date, value: total }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: total } });
-    for (const [pid, val] of byPort) {
-      await db.insert(portfolioSnapshots).values({ userId, portfolioId: pid, date, value: val }).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: val } });
-    }
+    return { date, total, byPort };
+  });
+  await db.insert(snapshots).values(snapRows.map((r) => ({ userId, date: r.date, value: r.total }))).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: sql`excluded.value` } });
+  const portRows = snapRows.flatMap((r) => [...r.byPort].map(([pid, val]) => ({ userId, portfolioId: pid, date: r.date, value: val })));
+  if (portRows.length) {
+    await db.insert(portfolioSnapshots).values(portRows).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value` } });
   }
 }
 
@@ -161,19 +158,19 @@ export async function GET(req: Request) {
   const jar = await cookies();
   if (clear) {
     const db = getDb();
-    try { await db.delete(snapshots).where(eq(snapshots.userId, "demo")); } catch {}
-    try { await db.delete(portfolioSnapshots).where(eq(portfolioSnapshots.userId, "demo")); } catch {}
+    try { await db.delete(snapshots).where(eq(snapshots.userId, DEMO_USER_ID)); } catch {}
+    try { await db.delete(portfolioSnapshots).where(eq(portfolioSnapshots.userId, DEMO_USER_ID)); } catch {}
     try {
-      const ps = await getDb().select().from(portfolios).where(eq(portfolios.userId, "demo"));
-      for (const p of ps) await getDb().delete(holdings).where(eq(holdings.portfolioId, p.id));
-      await getDb().delete(portfolios).where(eq(portfolios.userId, "demo"));
-      try { await db.delete(providers).where(eq(providers.userId, "demo")); } catch { try { const sql = neon(process.env.DATABASE_URL!); await sql`DELETE FROM providers WHERE user_id='demo'`; } catch {} }
-      await getDb().delete(accounts).where(eq(accounts.userId, "demo"));
+      const ps = await db.select().from(portfolios).where(eq(portfolios.userId, DEMO_USER_ID));
+      for (const p of ps) await db.delete(holdings).where(eq(holdings.portfolioId, p.id));
+      await db.delete(portfolios).where(eq(portfolios.userId, DEMO_USER_ID));
+      await db.delete(providers).where(eq(providers.userId, DEMO_USER_ID));
+      await db.delete(accounts).where(eq(accounts.userId, DEMO_USER_ID));
     } catch {}
     jar.delete("olantis_demo");
     redirect("/");
   }
-  jar.set("olantis_demo", "1", { httpOnly: false, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 7 });
-  await seedDemo("demo");
+  jar.set("olantis_demo", "1", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 7, secure: process.env.NODE_ENV === "production" });
+  await seedDemo(DEMO_USER_ID);
   redirect("/dashboard");
 }
