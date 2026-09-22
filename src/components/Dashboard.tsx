@@ -152,65 +152,77 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   }, [displayTx, chartData]);
 
   const allocation = useMemo(() => {
-    if (allocMode === "account") {
-      const portTotal = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0), 0);
-      const directTotal = directHoldings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
-      const total = portTotal + directTotal;
-      if (!total) return [];
-      if (accounts.length === 0) {
-        return portfolios.map((p, i) => {
-          const v = p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0);
-          const c = p.color || CHART_COLORS[i % CHART_COLORS.length];
-          return { name: p.name, value: v, color: c, pct: (v / total) * 100 };
-        }).sort((a,b)=> b.value - a.value);
+    const unique = new Map<string, Holding>();
+    const parentByHolding = new Map<string, Portfolio>();
+    if (active) {
+      for (const h of active.holdings) {
+        unique.set(h.id, h);
+        parentByHolding.set(h.id, active);
       }
-      const byAccount = new Map<string, number>();
-      let unassignedVal = 0;
+    } else {
       for (const p of portfolios) {
-        const v = p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0);
-        if (p.accountId) byAccount.set(p.accountId, (byAccount.get(p.accountId) ?? 0) + v);
-        else unassignedVal += v;
+        for (const h of p.holdings) {
+          unique.set(h.id, h);
+          parentByHolding.set(h.id, p);
+        }
       }
-      for (const h of directHoldings) {
-        const v = holdingValueGBP(h);
-        if (h.accountId) byAccount.set(h.accountId, (byAccount.get(h.accountId) ?? 0) + v);
-        else if (h.providerId) {
-          const pr = providers.find(pp=> pp.id===h.providerId);
-          if (pr?.accountId) byAccount.set(pr.accountId, (byAccount.get(pr.accountId) ?? 0) + v);
-          else unassignedVal += v;
-        } else unassignedVal += v;
-      }
-      const out: AllocationItem[] = accounts.map((acc, i) => {
-        const fallback = PALETTE[i % PALETTE.length].value;
-        const col = acc.color || fallback;
-        return { name: acc.name, value: byAccount.get(acc.id) ?? 0, color: col, pct: ((byAccount.get(acc.id) ?? 0) / total) * 100 };
-      }).filter((x) => x.value > 0);
-      if (unassignedVal > 0) out.push({ name: "Unassigned", value: unassignedVal, color: "#71717a", pct: (unassignedVal / total) * 100 });
-      return out.sort((a,b)=> b.value - a.value);
+      for (const h of directHoldings) unique.set(h.id, h);
     }
-    const portHoldings = active ? active.holdings : portfolios.flatMap((p) => p.holdings);
-    const allHoldings = active ? portHoldings : [...portHoldings, ...directHoldings];
-    const holdings = allHoldings;
+    const holdings = [...unique.values()];
     const total = holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
     if (!total) return [];
-    if (active) {
-      const prov = providers.find(pr=> pr.id===active.providerId);
-      const acc = accounts.find(a=> a.id===active.accountId);
-      const base = active.color || prov?.color || acc?.color || CHART_COLORS[0];
-      const sorted = [...holdings].sort((a: Holding, b: Holding)=> holdingValueGBP(b) - holdingValueGBP(a));
-      return sorted.map((h: Holding, i) => ({ name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i), pct: (holdingValueGBP(h) / total) * 100 }));
+    const accountIds = new Set(accounts.map((a) => a.id));
+    const resolveAccountId = (h: Holding): string | null => {
+      if (h.accountId && accountIds.has(h.accountId)) return h.accountId;
+      if (h.providerId) {
+        const pr = providers.find((pp) => pp.id === h.providerId);
+        if (pr?.accountId && accountIds.has(pr.accountId)) return pr.accountId;
+      }
+      const parent = parentByHolding.get(h.id);
+      if (parent?.accountId && accountIds.has(parent.accountId)) return parent.accountId;
+      return null;
+    };
+    if (allocMode === "account") {
+      const byAccount = new Map<string, number>();
+      let unassignedVal = 0;
+      for (const h of holdings) {
+        const v = holdingValueGBP(h);
+        const accId = resolveAccountId(h);
+        if (accId) byAccount.set(accId, (byAccount.get(accId) ?? 0) + v);
+        else unassignedVal += v;
+      }
+      const out: AllocationItem[] = [];
+      for (let i = 0; i < accounts.length; i++) {
+        const acc = accounts[i];
+        const v = byAccount.get(acc.id) ?? 0;
+        if (v <= 0) continue;
+        out.push({ name: acc.name, value: v, color: acc.color || PALETTE[i % PALETTE.length].value, pct: (v / total) * 100 });
+      }
+      if (unassignedVal > 0) out.push({ name: "Unassigned", value: unassignedVal, color: "#71717a", pct: (unassignedVal / total) * 100 });
+      return out.sort((a, b) => b.value - a.value);
     }
-      const sortedHoldings = [...holdings].sort((a: Holding, b: Holding)=> holdingValueGBP(b) - holdingValueGBP(a));
-      const parentByHolding = new Map<string, Portfolio>();
-      for (const p of portfolios) for (const x of p.holdings) parentByHolding.set(x.id, p);
-      return sortedHoldings.map((h: Holding, i) => {
+    const bySymbol = new Map<string, { value: number; colorBase: string | null }>();
+    for (const h of holdings) {
+      const v = holdingValueGBP(h);
       const parent = parentByHolding.get(h.id);
       let base: string | null = parent?.color || null;
-      if (!base && h.providerId) base = providers.find(pr=> pr.id===h.providerId)?.color ?? null;
-      if (!base && h.accountId) base = accounts.find(a=> a.id===h.accountId)?.color ?? null;
-      base = base || CHART_COLORS[i % CHART_COLORS.length];
-      return { name: h.symbol, value: holdingValueGBP(h), color: portfolioTint(base, i), pct: (holdingValueGBP(h) / total) * 100 };
-    });
+      if (!base && h.providerId) base = providers.find((pr) => pr.id === h.providerId)?.color ?? null;
+      if (!base && h.accountId) base = accounts.find((a) => a.id === h.accountId)?.color ?? null;
+      const prev = bySymbol.get(h.symbol);
+      if (prev) prev.value += v;
+      else bySymbol.set(h.symbol, { value: v, colorBase: base });
+    }
+    const activeBase = active
+      ? (active.color || providers.find((pr) => pr.id === active.providerId)?.color || accounts.find((a) => a.id === active.accountId)?.color || CHART_COLORS[0])
+      : null;
+    return [...bySymbol.entries()]
+      .sort((a, b) => b[1].value - a[1].value)
+      .map(([symbol, info], i) => ({
+        name: symbol,
+        value: info.value,
+        color: portfolioTint(active ? activeBase : info.colorBase, i),
+        pct: (info.value / total) * 100,
+      }));
   }, [active, portfolios, allocMode, accounts, providers, directHoldings]);
 
   const handleCreate = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
@@ -524,9 +536,9 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       <div className="flex gap-4">
                         <div className="w-40 h-40 shrink-0">
                           <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
+                            <PieChart key={allocMode}>
                               <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} stroke="none">
-                                {allocation.map((e) => <Cell key={e.name} fill={e.color} />)}
+                                {allocation.map((e, i) => <Cell key={`${allocMode}-${e.name}-${i}`} fill={e.color} />)}
                               </Pie>
                               <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v)=>fmtGBP(Number(v))} />
                             </PieChart>
@@ -534,7 +546,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                         </div>
                         <div className="flex-1 space-y-2">
                           {allocation.map((a) => (
-                            <div key={a.name} className="flex items-center justify-between text-sm">
+                            <div key={`${allocMode}-${a.name}`} className="flex items-center justify-between text-sm">
                               <span className="flex items-center gap-2 text-zinc-400"><span className="w-2.5 h-2.5 rounded-full" style={{ background: a.color }} />{a.name}</span>
                               <span className="text-white tabular-nums">{a.pct.toFixed(1)}%</span>
                             </div>
@@ -774,9 +786,9 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       <>
                         <div className="h-[180px]">
                           <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
+                            <PieChart key={allocMode}>
                               <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} stroke="none">
-                                {allocation.map((e) => <Cell key={e.name} fill={e.color} />)}
+                                {allocation.map((e, i) => <Cell key={`${allocMode}-${e.name}-${i}`} fill={e.color} />)}
                               </Pie>
                               <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v)=>fmtGBP(Number(v))} />
                             </PieChart>
@@ -784,7 +796,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                         </div>
                         <div className="space-y-2 mt-2">
                           {allocation.slice(0, 6).map((a) => (
-                            <div key={a.name} className="flex items-center justify-between text-sm">
+                            <div key={`${allocMode}-${a.name}`} className="flex items-center justify-between text-sm">
                               <span className="flex items-center gap-2 text-zinc-400"><span className="w-2.5 h-2.5 rounded-full" style={{ background: a.color }} />{a.name}</span>
                               <span className="text-white tabular-nums">{a.pct.toFixed(1)}%</span>
                             </div>
