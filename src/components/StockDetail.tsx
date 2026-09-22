@@ -23,7 +23,8 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
       .then(async (r) => {
         if (!r.ok) throw new Error();
         const j = await r.json();
-        if (!cancel) setSnapSeries((j.byHolding?.[holding.id]?.data ?? []) as PriceRow[]);
+        const rows = (j.byHolding?.[holding.id]?.data ?? []) as { date: string; value: number }[];
+        if (!cancel) setSnapSeries(rows.map((p) => ({ date: p.date, price: p.value })));
       })
       .catch(() => {
         if (!cancel) setSnapSeries([]);
@@ -139,7 +140,7 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
             </div>
           </CardHeader>
           <CardContent>
-            {isManual ? (
+            {isManual && !hasValueSeries ? (
               <div className="h-[320px] grid place-items-center text-center">
                 <div>
                   <Wallet className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
