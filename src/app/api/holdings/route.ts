@@ -28,7 +28,10 @@ export async function GET(req: Request) {
   let rows: typeof holdings.$inferSelect[] = [];
   try {
     rows = await loadOwnedHoldings(db, userId);
-  } catch { rows = []; }
+  } catch (error) {
+    return Response.json({ error: "Unable to load holdings", detail: error instanceof Error ? error.message : String(error) }, { status: 503 });
+  }
+  rows = rows.filter((h) => h.shares > 0);
   if (portfolioId) rows = rows.filter((h) => h.portfolioId === portfolioId);
   if (providerId) rows = rows.filter((h) => h.providerId === providerId);
   if (accountId) rows = rows.filter((h) => h.accountId === accountId);
@@ -42,8 +45,8 @@ function capStr(v: unknown, max: number): string {
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const body = (await req.json()) as { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol?: string; name?: string; shares?: number; avgPrice?: number; currentPrice?: number; currency?: string; purchaseDate?: string; exchange?: string };
-  const { id, portfolioId, providerId, accountId, symbol, name, shares, avgPrice, currentPrice, currency, purchaseDate, exchange } = body;
+  const body = (await req.json()) as { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol?: string; name?: string; shares?: number; avgPrice?: number; currentPrice?: number; currency?: string; sector?: string | null; purchaseDate?: string; exchange?: string };
+  const { id, portfolioId, providerId, accountId, symbol, name, shares, avgPrice, currentPrice, currency, sector, purchaseDate, exchange } = body;
   const symbolStr = capStr(symbol, 12).toUpperCase().trim();
   const sharesNum = Number(shares);
   const avgPriceNum = Number(avgPrice);
@@ -79,6 +82,7 @@ export async function POST(req: Request) {
       patch.avgPrice = avgPriceNum;
       patch.currentPrice = currentPriceNum;
       patch.currency = currencyStr;
+      patch.sector = typeof sector === "string" ? capStr(sector, 48).trim() || null : null;
       patch.purchaseDate = purchaseDate;
       patch.exchange = exchangeStr;
     }
@@ -121,7 +125,7 @@ export async function POST(req: Request) {
     if (!a[0] || a[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 404 });
   }
   const nid = crypto.randomUUID();
-  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbolStr, name: nameStr || symbolStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, purchaseDate, exchange: exchangeStr, lastRefreshedAt: null });
+  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbolStr, name: nameStr || symbolStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, sector: typeof sector === "string" ? capStr(sector, 48).trim() || null : null, purchaseDate, exchange: exchangeStr, lastRefreshedAt: null });
   return Response.json({ id: nid });
 }
 
@@ -159,15 +163,21 @@ export async function PATCH(req: Request) {
   let all: typeof holdings.$inferSelect[] = [];
   try {
     all = await loadOwnedHoldings(db, userId);
-  } catch { all = []; }
+  } catch (error) {
+    return Response.json({ error: "Unable to load holdings", detail: error instanceof Error ? error.message : String(error) }, { status: 503 });
+  }
+  const portfolioTypes = await db.select({ id: portfolios.id, type: portfolios.type }).from(portfolios).where(eq(portfolios.userId, userId));
+  const manualIds = new Set(portfolioTypes.filter((p) => p.type === "manual").map((p) => p.id));
   const now = Math.floor(Date.now() / 1000);
   const DAY = 86400;
   let updated = 0;
   let skipped = 0;
+  let manualSkipped = 0;
   let nextAllowedAt: number | null = null;
   for (const h of all) {
     const upd = symbols[h.symbol];
     if (!upd) continue;
+    if (h.portfolioId && manualIds.has(h.portfolioId)) { manualSkipped++; continue; }
     if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
     if (!force && h.lastRefreshedAt && now - h.lastRefreshedAt < DAY) {
       skipped++;
@@ -181,5 +191,5 @@ export async function PATCH(req: Request) {
   if (!force && updated === 0 && skipped > 0) {
     return Response.json({ ok: false, error: "daily limit", message: "Prices already refreshed within 24h", nextAllowedAt, skipped }, { status: 429 });
   }
-  return Response.json({ ok: true, updated, skipped, nextAllowedAt });
+  return Response.json({ ok: true, updated, skipped, manualSkipped, nextAllowedAt });
 }

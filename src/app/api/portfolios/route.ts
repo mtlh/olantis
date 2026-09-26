@@ -10,7 +10,7 @@ export async function GET() {
   const ps = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
   if (ps.length === 0) return Response.json([]);
   const pids = ps.map((p) => p.id);
-  const hs = await db.select().from(holdings).where(inArray(holdings.portfolioId, pids));
+  const hs = (await db.select().from(holdings).where(inArray(holdings.portfolioId, pids))).filter((holding) => holding.shares > 0);
   const byPid = new Map<string, typeof hs>();
   for (const h of hs) {
     const arr = byPid.get(h.portfolioId!) ?? [];

@@ -43,8 +43,12 @@ export async function fetchQuotes(
   const out: QuoteMap = {};
   const key = (symbol: string, exchange?: string) =>
     opts?.disambiguate ? quoteKey(symbol, exchange) : symbol.toUpperCase();
-  await Promise.allSettled(
-    symbols.map(async ({ symbol, exchange }) => {
+  // Keep upstream quote bursts bounded while allowing portfolios larger than
+  // one Yahoo batch. Each batch settles independently so one bad ticker never
+  // prevents the rest from refreshing.
+  for (let offset = 0; offset < symbols.length; offset += 20) {
+    await Promise.allSettled(
+      symbols.slice(offset, offset + 20).map(async ({ symbol, exchange }) => {
       const ys = toYahooSymbol(symbol, exchange);
       try {
         // Cache per Yahoo symbol so repeated refreshes across holdings/requests
@@ -65,8 +69,9 @@ export async function fetchQuotes(
       } catch {
         /* symbol not found */
       }
-    })
-  );
+      })
+    );
+  }
   return out;
 }
 

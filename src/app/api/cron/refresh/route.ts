@@ -3,7 +3,8 @@ import { fetchQuotes, lookupQuote } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
 import { holdings, snapshots, portfolioSnapshots, holdingSnapshots, portfolios } from "@/lib/db/schema";
 import { eq, sql, notLike, isNull, or } from "drizzle-orm";
-import { toGBP, todayISODate } from "@/lib/format";
+import { toGBP, todayISODate, DEFAULT_FX_RATES } from "@/lib/format";
+import { getLatestFxRates, refreshFxRates } from "@/lib/fx";
 
 const REFRESH_GUARD_SECONDS = 23 * 60 * 60;
 
@@ -24,6 +25,9 @@ const quoteKey = (symbol: string, exchange?: string | null) => `${symbol.toUpper
 
 async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: string }>; force?: boolean }) {
   const db = getDb();
+  try { await refreshFxRates(); } catch { /* retain the most recent stored rates */ }
+  let fxRates = DEFAULT_FX_RATES;
+  try { fxRates = { ...DEFAULT_FX_RATES, ...(await getLatestFxRates()).rates }; } catch {}
 
   let symbols = body.symbols ?? [];
   // Demo tenants (`demo:*`) carry a predefined dataset and are deliberately
@@ -32,18 +36,21 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   const targetHoldings: HoldingRow[] = await db
     .select()
     .from(holdings)
-    .where(or(isNull(holdings.userId), notLike(holdings.userId, "demo:%")));
+      .where(or(isNull(holdings.userId), notLike(holdings.userId, "demo:%")));
+  const manualRows = await db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.type, "manual"));
+  const manualPortfolioIds = new Set(manualRows.map((p) => p.id));
+  const refreshableHoldings = targetHoldings.filter((h) => !h.portfolioId || !manualPortfolioIds.has(h.portfolioId));
 
   if (!symbols.length) {
     const map = new Map<string, { symbol: string; exchange?: string }>();
-    for (const h of targetHoldings) {
+    for (const h of refreshableHoldings) {
       if (/^CASH$/i.test(h.symbol.trim())) continue;
       map.set(quoteKey(h.symbol, h.exchange), { symbol: h.symbol, exchange: h.exchange ?? undefined });
     }
     symbols = [...map.values()];
   }
 
-  if (symbols.length === 0) return { success: true, symbolsUpdated: 0, skipped: 0, updatedAt: new Date().toISOString(), message: "No holdings" };
+  if (symbols.length === 0) return { success: true, symbolsUpdated: 0, skipped: 0, failed: [], updatedAt: new Date().toISOString(), message: "No holdings" };
 
   let quotes: Record<string, { price: number; currency: string }> = {};
   try {
@@ -54,9 +61,10 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   const applied = new Map<string, { price: number; currency: string }>();
   let updated = 0;
   let skipped = 0;
+  const failed = symbols.filter((s) => !lookupQuote(quotes, s.symbol, s.exchange)).map((s) => s.symbol);
 
   const updates: Promise<unknown>[] = [];
-  for (const h of targetHoldings) {
+  for (const h of refreshableHoldings) {
     if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
     const q = lookupQuote(quotes, h.symbol, h.exchange);
     if (!q) continue;
@@ -71,12 +79,12 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
     const a = applied.get(h.id);
     return a ? { ...h, currentPrice: a.price, currency: a.currency, lastRefreshedAt: unixNow } : h;
   });
-  await createSnapshots(refreshedHoldings);
+  await createSnapshots(refreshedHoldings, fxRates);
 
-  return { success: true, symbolsUpdated: updated, skipped, updatedAt: new Date().toISOString() };
+  return { success: true, symbolsUpdated: updated, skipped, failed: [...new Set(failed)], updatedAt: new Date().toISOString() };
 }
 
-async function createSnapshots(allHoldings: HoldingRow[]) {
+async function createSnapshots(allHoldings: HoldingRow[], fxRates: Record<string, number>) {
   const db = getDb();
   const today = todayISODate();
   const userHoldings = new Map<string, HoldingRow[]>();
@@ -87,7 +95,7 @@ async function createSnapshots(allHoldings: HoldingRow[]) {
     userHoldings.set(h.userId, arr);
   }
 
-  const valGBP = (h: HoldingRow) => toGBP(h.shares * (h.currentPrice ?? 0), h.currency);
+  const valGBP = (h: HoldingRow) => toGBP(h.shares * (h.currentPrice ?? 0), h.currency, fxRates);
 
   for (const [userId, hs] of userHoldings) {
     const totalValue = hs.reduce((sum, h) => sum + valGBP(h), 0);

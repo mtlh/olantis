@@ -1,4 +1,4 @@
-import { pgTable, text, numeric, integer, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, numeric, integer, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * Money and share counts use `numeric` (unlimited-precision decimal) rather
@@ -52,6 +52,12 @@ export const userSettings = pgTable("user_settings", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const fxRates = pgTable("fx_rates", {
+  currency: text("currency").notNull(),
+  date: text("date").notNull(),
+  rateToGbp: money("rate_to_gbp").notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.currency, t.date] }) }));
+
 export const holdings = pgTable("holdings", {
   id: text("id").primaryKey(),
   portfolioId: text("portfolio_id").references(() => portfolios.id, { onDelete: "cascade" }),
@@ -64,6 +70,7 @@ export const holdings = pgTable("holdings", {
   avgPrice: money("avg_price").notNull(),
   currentPrice: money("current_price").notNull(),
   currency: text("currency"),
+  sector: text("sector"),
   purchaseDate: text("purchase_date"),
   exchange: text("exchange"),
   lastRefreshedAt: integer("last_refreshed_at"),
@@ -101,5 +108,24 @@ export const transactions = pgTable("transactions", {
   price: money("price").notNull(),
   date: text("date").notNull(),
   note: text("note"),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const watchlistItems = pgTable("watchlist_items", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  name: text("name").notNull(),
+  exchange: text("exchange"),
+  currency: text("currency"),
+  createdAt: integer("created_at").notNull(),
+}, (t) => ({ userSymbolUnique: uniqueIndex("watchlist_items_user_symbol_unique").on(t.userId, t.symbol) }));
+
+export const goals = pgTable("goals", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  targetValue: money("target_value").notNull(),
+  targetDate: text("target_date").notNull(),
   createdAt: integer("created_at").notNull(),
 });

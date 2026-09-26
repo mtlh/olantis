@@ -4,10 +4,12 @@ import type { Holding, Portfolio, Snapshot } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, ReferenceDot } from "recharts";
-import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase, FolderPlus } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase, FolderPlus, Activity, Target, Trophy, Clock3 } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
 import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
 import { StockDetail } from "@/components/StockDetail";
+import { WatchlistPanel } from "@/components/WatchlistPanel";
+import { GoalPanel } from "@/components/GoalPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,27 +22,26 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 
 import { PALETTE, portfolioTint } from "@/lib/colors";
-import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, chartDateLabel, gbpAxisFormatter, paddedDomain, numericValues } from "@/lib/format";
+import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, chartDateLabel, gbpAxisFormatter, paddedDomain, numericValues, filterByRange } from "@/lib/format";
 import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
 const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
 const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d399", GIA: "#f472b6" };
-const RANGE_COUNT: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
 
 type SymbolResult = { symbol: string; name: string; exchange: string; exchDisp?: string; price?: number | null; currency?: string | null; longname?: string; rawExchange?: string; type?: string };
 type ChartDot = { x: string; y: number; type: "buy" | "sell"; symbol: string; date: string; shares: number; price: number };
 type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };
 type AllocationItem = { name: string; value: number; color: string; pct: number };
-type ChartRow = { date: string; total: number; [key: string]: string | number };
+type ChartRow = { date: string; total: number; [key: string]: string | number | null };
 
 export function Dashboard({ isDemo }: { isDemo?: boolean }) {
-  const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady } = useAccounts();
+  const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
-  const { portfolios, create, remove, upsertHolding, deleteHolding, moveHolding, refresh: refreshPortfolios, ready: portfoliosReady } = usePortfolios();
-  const { holdings: allHoldingsList, refresh: refreshAllHoldings } = useHoldings();
+  const { portfolios, create, remove, upsertHolding, deleteHolding, moveHolding, refresh: refreshPortfolios, ready: portfoliosReady, error: portfoliosError } = usePortfolios();
+  const { holdings: allHoldingsList, refresh: refreshAllHoldings, error: holdingsError } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
-  const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings);
   const { settings } = useSettings();
+  const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tradeHolding, setTradeHolding] = useState<Holding | null>(null);
@@ -64,6 +65,17 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     rangeTouched.current = true;
     setRange(r);
   }, []);
+  const [benchmark, setBenchmark] = useState("__none__");
+  const [benchmarkPrices, setBenchmarkPrices] = useState<{ key: string; rows: Array<{ date: string; price: number }> } | null>(null);
+  useEffect(() => {
+    if (benchmark === "__none__") return;
+    let cancelled = false;
+    fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=${range}`)
+      .then(async (response) => response.ok ? (await response.json()).chart as Array<{ date: string; price: number }> : [])
+      .then((rows) => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:${range}`, rows }); })
+      .catch(() => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:${range}`, rows: [] }); });
+    return () => { cancelled = true; };
+  }, [benchmark, range]);
   // Overview chart series filters — toggle a series out to compare the rest on a tighter scale.
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(() => new Set());
   const toggleSeries = useCallback((key: string) => {
@@ -74,7 +86,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       return next;
     });
   }, []);
-  const [allocMode, setAllocMode] = useState<"holding" | "account">("holding");
+  const [allocMode, setAllocMode] = useState<"holding" | "account" | "sector">("holding");
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
@@ -98,7 +110,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   useEffect(()=>{ if(prevPortfoliosRef.current !== portfolios && activeId && !portfolios.find(p=>p.id===activeId)) setActiveId(null); prevPortfoliosRef.current = portfolios; },[portfolios,activeId]);
   const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); return active.color || prov?.color || acc?.color || "#60a5fa"; }, [active, providers, accounts]);
   const overviewTx = useTransactions(null);
-  const { create: createTx, refresh: refreshTx } = overviewTx;
+  const { create: createTx, refresh: refreshTx, remove: removeTx } = overviewTx;
   const displayTx = useMemo(
     () => (activeId ? overviewTx.transactions.filter((t) => t.portfolioId === activeId) : overviewTx.transactions),
     [activeId, overviewTx.transactions]
@@ -117,29 +129,86 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     } catch (e: unknown) { toast({ title: "Trade failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); throw e; }
   };
 
+  const handleDeleteTransaction = async (id: string) => {
+    if (!window.confirm("Delete this trade and recalculate the position?")) return;
+    try {
+      await removeTx(id);
+      await Promise.all([refreshPortfolios(), refreshAllHoldings(), refreshTx()]);
+      toast({ title: "Trade deleted", description: "The affected position was recalculated.", variant: "success" });
+    } catch (error) {
+      toast({ title: "Could not delete trade", description: error instanceof Error ? error.message : String(error), variant: "error" });
+    }
+  };
+
   const { totalValue, totalCost, totalGain, totalGainPct } = useMemo(() => {
-    const vPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0), 0);
-    const cPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingCostGBP(h), 0), 0);
-    const vDirect = directHoldings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
-    const cDirect = directHoldings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
+    const vPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h, settings.fxRates), 0), 0);
+    const cPort = portfolios.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingCostGBP(h, settings.fxRates), 0), 0);
+    const vDirect = directHoldings.reduce((s, h: Holding) => s + holdingValueGBP(h, settings.fxRates), 0);
+    const cDirect = directHoldings.reduce((s, h: Holding) => s + holdingCostGBP(h, settings.fxRates), 0);
     const v = vPort + vDirect;
     const c = cPort + cDirect;
     return { totalValue: v, totalCost: c, totalGain: v - c, totalGainPct: c ? ((v - c) / c) * 100 : 0 };
-  }, [portfolios, directHoldings]);
+  }, [portfolios, directHoldings, settings.fxRates]);
+
+  const accountInsights = useMemo(() => {
+    const byId = new Map<string, { holding: Holding; portfolioName: string }>();
+    for (const portfolio of portfolios) {
+      for (const holding of portfolio.holdings) {
+        byId.set(holding.id, { holding, portfolioName: portfolio.name });
+      }
+    }
+    for (const holding of directHoldings) {
+      if (!byId.has(holding.id)) byId.set(holding.id, { holding, portfolioName: "Direct holding" });
+    }
+
+    const positions = [...byId.values()].map(({ holding, portfolioName }) => {
+      const value = holdingValueGBP(holding, settings.fxRates);
+      const cost = holdingCostGBP(holding, settings.fxRates);
+      const gain = value - cost;
+      return {
+        holding,
+        portfolioName,
+        value,
+        gain,
+        returnPct: cost > 0 ? (gain / cost) * 100 : null,
+      };
+    });
+    const withCostBasis = positions.filter((position) => position.returnPct !== null);
+    const largest = positions.reduce<typeof positions[number] | null>(
+      (best, position) => !best || position.value > best.value ? position : best,
+      null
+    );
+    const bestPerformer = withCostBasis.reduce<typeof withCostBasis[number] | null>(
+      (best, position) => !best || position.returnPct! > best.returnPct! ? position : best,
+      null
+    );
+    const latestRefresh = positions.reduce<number | null>((latest, position) => {
+      const refreshedAt = position.holding.lastRefreshedAt;
+      return refreshedAt && (!latest || refreshedAt > latest) ? refreshedAt : latest;
+    }, null);
+
+    return {
+      positions,
+      profitableCount: withCostBasis.filter((position) => position.gain > 0).length,
+      losingCount: withCostBasis.filter((position) => position.gain < 0).length,
+      unchangedCount: withCostBasis.filter((position) => position.gain === 0).length,
+      largest,
+      bestPerformer,
+      latestRefresh,
+      refreshedCount: positions.filter((position) => position.holding.lastRefreshedAt).length,
+    };
+  }, [portfolios, directHoldings, settings.fxRates]);
 
   const filteredSnapshots = useMemo(() => {
-    const n = RANGE_COUNT[range];
-    if (snapshots.length <= n) return snapshots;
-    return snapshots.slice(-n);
+    return filterByRange(snapshots, range);
   }, [snapshots, range]);
 
   const chartData = useMemo<ChartRow[]>(() => {
-    const n = RANGE_COUNT[range];
     const activeSeries = active ? ((byPortfolio[active.id]?.data ?? []) as Snapshot[]) : [];
     if (active) {
-      const trimmed = activeSeries.length > n ? activeSeries.slice(-n) : activeSeries;
+      const trimmed = filterByRange(activeSeries, range);
       if (trimmed.length === 0) {
-        return [{ date: chartDateLabel(todayISODate()), total: active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0) }] as ChartRow[];
+        return [{ date: chartDateLabel(todayISODate()), total: active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h, settings.fxRates), 0) }] as ChartRow[];
       }
       return trimmed.map((s) => ({ date: chartDateLabel(s.date), total: s.value }));
     }
@@ -156,7 +225,16 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       }
       return row;
     });
-  }, [filteredSnapshots, byPortfolio, totalValue, active, range]);
+  }, [filteredSnapshots, byPortfolio, totalValue, active, range, settings.fxRates]);
+
+  const chartDataWithBenchmark = useMemo(() => {
+    const priceRows = benchmarkPrices?.key === `${benchmark}:${range}` ? benchmarkPrices.rows : [];
+    if (!priceRows.length || benchmark === "__none__" || !chartData.length) return chartData;
+    const basePrice = priceRows[0].price;
+    if (!basePrice) return chartData;
+    const normalized = new Map(priceRows.map((point) => [chartDateLabel(point.date), chartData[0].total * point.price / basePrice]));
+    return chartData.map((row) => ({ ...row, benchmark: normalized.get(row.date) ?? null }));
+  }, [benchmarkPrices, benchmark, range, chartData]);
 
   const chartDots = useMemo(() => {
     if (!chartData.length) return [];
@@ -171,7 +249,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       .filter((x): x is ChartDot => x !== null);
   }, [displayTx, chartData]);
 
-  const chartZoom = useChartZoom(chartData);
+  const chartZoom = useChartZoom(chartDataWithBenchmark);
   const axisValues = useMemo(() => numericValues(chartZoom.visible), [chartZoom.visible]);
   const axisFmt = useMemo(() => gbpAxisFormatter(axisValues), [axisValues]);
   const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
@@ -235,7 +313,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       for (const h of directHoldings) unique.set(h.id, h);
     }
     const holdings = [...unique.values()];
-    const total = holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
+    const total = holdings.reduce((s, h: Holding) => s + holdingValueGBP(h, settings.fxRates), 0);
     if (!total) return [];
     const accountIds = new Set(accounts.map((a) => a.id));
     const resolveAccountId = (h: Holding): string | null => {
@@ -252,7 +330,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       const byAccount = new Map<string, number>();
       let unassignedVal = 0;
       for (const h of holdings) {
-        const v = holdingValueGBP(h);
+        const v = holdingValueGBP(h, settings.fxRates);
         const accId = resolveAccountId(h);
         if (accId) byAccount.set(accId, (byAccount.get(accId) ?? 0) + v);
         else unassignedVal += v;
@@ -267,9 +345,17 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
       if (unassignedVal > 0) out.push({ name: "Unassigned", value: unassignedVal, color: "#71717a", pct: (unassignedVal / total) * 100 });
       return out.sort((a, b) => b.value - a.value);
     }
+    if (allocMode === "sector") {
+      const bySector = new Map<string, number>();
+      for (const h of holdings) {
+        const key = h.sector?.trim() || "Unclassified";
+        bySector.set(key, (bySector.get(key) ?? 0) + holdingValueGBP(h, settings.fxRates));
+      }
+      return [...bySector.entries()].sort((a, b) => b[1] - a[1]).map(([name, value], i) => ({ name, value, color: CHART_COLORS[i % CHART_COLORS.length], pct: value / total * 100 }));
+    }
     const bySymbol = new Map<string, { value: number; colorBase: string | null }>();
     for (const h of holdings) {
-      const v = holdingValueGBP(h);
+      const v = holdingValueGBP(h, settings.fxRates);
       const parent = parentByHolding.get(h.id);
       let base: string | null = parent?.color || null;
       if (!base && h.providerId) base = providers.find((pr) => pr.id === h.providerId)?.color ?? null;
@@ -289,7 +375,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
         color: portfolioTint(active ? activeBase : info.colorBase, i),
         pct: (info.value / total) * 100,
       }));
-  }, [active, portfolios, allocMode, accounts, providers, directHoldings]);
+  }, [active, portfolios, allocMode, accounts, providers, directHoldings, settings]);
 
   const handleCreate = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
     try { const r = await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"}); return r; } catch(e: unknown){toast({title:"Failed to create portfolio",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
@@ -312,7 +398,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
 
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"value" | "gain" | "symbol">("value");
-  const [form, setForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP" });
+  const [form, setForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP", sector: "" });
   const [formErrors, setFormErrors] = useState<Record<string,string>>({});
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteInfo, setQuoteInfo] = useState<string>("");
@@ -365,8 +451,8 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     else if (r.symbol) fetchQuote(r.symbol);
   };
 
-  const openAdd = () => { const manualDefault = active?.type === "manual"; setIsManual(manualDefault); setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: settings.currency || "GBP" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
-  const openEdit = (h: Holding) => { const manualDetected = active?.type === "manual" || !isListedSymbol(h.symbol); setIsManual(manualDetected); setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: h.exchange ?? "", currency: h.currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openAdd = () => { const manualDefault = active?.type === "manual"; setIsManual(manualDefault); setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: settings.currency || "GBP", sector: "" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openEdit = (h: Holding) => { const manualDetected = active?.type === "manual" || !isListedSymbol(h.symbol); setIsManual(manualDetected); setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: h.exchange ?? "", currency: h.currency ?? "GBP", sector: h.sector ?? "" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
 
   const fetchQuote = async (sym:string)=>{
     if(!sym.trim() || sym.length<1) return;
@@ -389,25 +475,25 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     if(dup){ setFormErrors({symbol:"Already in this portfolio"}); return; }
     setSaving(true);
     try {
-      await upsertHolding(activeId, { id: editingId ?? undefined, symbol: form.symbol.toUpperCase().trim(), name: form.name?.trim() || form.symbol.toUpperCase().trim(), shares: Number(form.shares), avgPrice: Number(form.avgPrice), currentPrice: Number(form.currentPrice || form.avgPrice), currency: form.currency || "GBP", purchaseDate: form.purchaseDate, exchange: form.exchange || undefined });
+      await upsertHolding(activeId, { id: editingId ?? undefined, symbol: form.symbol.toUpperCase().trim(), name: form.name?.trim() || form.symbol.toUpperCase().trim(), shares: Number(form.shares), avgPrice: Number(form.avgPrice), currentPrice: Number(form.currentPrice || form.avgPrice), currency: form.currency || "GBP", sector: form.sector.trim() || null, purchaseDate: form.purchaseDate, exchange: form.exchange || undefined });
       setShowHolding(false); toast({title: editingId?"Holding updated":"Holding added",description:form.symbol.toUpperCase(),variant:"success"});
     } catch(e: unknown){ toast({title:"Save failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); setFormErrors({symbol: e instanceof Error ? e.message : String(e)}); }
     finally{ setSaving(false); }
   };
 
-  const activeValue = active ? active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0) : totalValue;
-  const activeCost = active ? active.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0) : totalCost;
+  const activeValue = active ? active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h, settings.fxRates), 0) : totalValue;
+  const activeCost = active ? active.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h, settings.fxRates), 0) : totalCost;
   const activeGain = activeValue - activeCost;
   const activeGainPct = activeCost ? (activeGain / activeCost) * 100 : 0;
 
   const filteredHoldings = useMemo(() => {
     if (!active) return [];
     let hs = active.holdings.filter((h) => !q || h.symbol.toLowerCase().includes(q.toLowerCase()) || h.name.toLowerCase().includes(q.toLowerCase()));
-    if (sort === "value") hs = [...hs].sort((a: Holding, b: Holding) => holdingValueGBP(b) - holdingValueGBP(a));
-    else if (sort==="gain") hs = [...hs].sort((a: Holding, b: Holding) => (holdingValueGBP(b) - holdingCostGBP(b)) - (holdingValueGBP(a) - holdingCostGBP(a)));
+    if (sort === "value") hs = [...hs].sort((a: Holding, b: Holding) => holdingValueGBP(b, settings.fxRates) - holdingValueGBP(a, settings.fxRates));
+    else if (sort==="gain") hs = [...hs].sort((a: Holding, b: Holding) => (holdingValueGBP(b, settings.fxRates) - holdingCostGBP(b, settings.fxRates)) - (holdingValueGBP(a, settings.fxRates) - holdingCostGBP(a, settings.fxRates)));
     else hs = [...hs].sort((a,b)=> a.symbol.localeCompare(b.symbol));
     return hs;
-  }, [active, q, sort]);
+  }, [active, q, sort, settings.fxRates]);
 
   const [confirmPortfolio, setConfirmPortfolio] = useState<null | typeof active>(null);
   const [confirmPortfolioInput, setConfirmPortfolioInput] = useState("");
@@ -491,7 +577,8 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     if(allHs.length===0) return;
     setRefreshing(true);
     try{
-      const symbols = allHs.filter((h: Holding)=> isListedSymbol(h.symbol)).map(h=>({symbol:h.symbol,exchange:h.exchange}));
+      const manualIds = new Set(portfolios.filter((p) => p.type === "manual").map((p) => p.id));
+      const symbols = allHs.filter((h: Holding)=> isListedSymbol(h.symbol) && !(h.portfolioId && manualIds.has(h.portfolioId))).map(h=>({symbol:h.symbol,exchange:h.exchange}));
       if(!symbols.length) { toast({title:"No holdings to refresh",variant:"info"}); return; }
       const r = await fetch("/api/quote",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols})});
       const quotes = await r.json();
@@ -509,7 +596,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const exportCsv = ()=>{
     if(!active) return;
     const rows = [["Symbol","Name","Shares","AvgPrice","CurrentPrice","Value","Gain","PurchaseDate"]];
-    for(const h of active.holdings){ const v=holdingValueGBP(h), c=holdingCostGBP(h); rows.push([h.symbol,h.name,String(h.shares),String(h.avgPrice),String(h.currentPrice),String(v),String(v-c),h.purchaseDate]); }
+    for(const h of active.holdings){ const v=holdingValueGBP(h, settings.fxRates), c=holdingCostGBP(h, settings.fxRates); rows.push([h.symbol,h.name,String(h.shares),String(h.avgPrice),String(h.currentPrice),String(v),String(v-c),h.purchaseDate]); }
     const csv = rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
     const blob = new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=`${active.name}-holdings.csv`; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000);
   };
@@ -549,6 +636,12 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
         onDeletePortfolio={(p) => setConfirmPortfolio(p)} />
       <main className="flex-1 min-w-0 pt-12 md:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
+          {(portfoliosError || holdingsError || accountsError) && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              <span><AlertTriangle className="inline w-4 h-4 mr-2" />Some portfolio data could not be loaded. Your saved data has not been deleted. {portfoliosError || holdingsError || accountsError}</span>
+              <Button variant="outline" size="sm" className="border-amber-500/30 bg-black/20" onClick={() => void Promise.all([refreshPortfolios(), refreshAllHoldings(), refreshAccounts(), refreshProviders()])}>Retry</Button>
+            </div>
+          )}
           {showWizard ? (
             <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId}
               onCreate={handleWizardCreate} inline />
@@ -621,7 +714,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       {active.accountId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{accounts.find((a) => a.id === active.accountId)?.name ?? ""}</Badge>}
                       {active.providerId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-500">{providers.find((p) => p.id === active.providerId)?.name ?? ""}</Badge>}
                     </div>
-                    <p className="text-sm mt-2 text-zinc-500">{active.holdings.length} holdings • {active.type} • updated {fmtRelative(Math.max(...active.holdings.map((h) => h.lastRefreshedAt ?? 0), 0) || null)}</p>
+                    <p className="text-sm mt-2 text-zinc-500">{active.holdings.length} holdings • {active.type} • updated {fmtRelative(Math.max(...active.holdings.map((h) => h.lastRefreshedAt ?? 0), 0) || null, settings.dateFormat)}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" className="bg-white/5 border-white/10" onClick={() => setActiveId(null)}>← Overview</Button>
@@ -652,6 +745,10 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       <CardDescription>{chartData.length} points • {active.name} {chartDots.length ? `• ${chartDots.length} trades` : ""}</CardDescription>
                     </div>
                     <div className="flex items-center gap-1">
+                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")}>
+                        <SelectTrigger className="h-7 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
+                      </Select>
                       {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
                         <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
                       ))}
@@ -683,6 +780,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                     <div className="flex gap-1">
                       <Button variant={allocMode === "holding" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("holding")}>Holdings</Button>
                       <Button variant={allocMode === "account" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("account")}>Accounts</Button>
+                      <Button variant={allocMode === "sector" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("sector")}>Sectors</Button>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -753,7 +851,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       </TableHeader>
                       <TableBody>
                         {filteredHoldings.map((h: Holding) => {
-                          const val = holdingValueGBP(h); const cost = holdingCostGBP(h); const pct = cost ? ((val - cost) / cost) * 100 : 0;
+                           const val = holdingValueGBP(h, settings.fxRates); const cost = holdingCostGBP(h, settings.fxRates); const pct = cost ? ((val - cost) / cost) * 100 : 0;
                           return (
                             <TableRow key={h.id} className="border-white/5 hover:bg-white/[0.04] cursor-pointer" onClick={() => setHoldingViewId(h.id)}>
                               <TableCell>
@@ -765,7 +863,11 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                               <TableCell className="text-sm text-zinc-400 hidden md:table-cell">{h.shares} × {fmtPrice(h.avgPrice, h.currency)}</TableCell>
                               <TableCell className="text-right font-semibold text-white tabular-nums">{fmtGBP(val)}</TableCell>
                               <TableCell className="text-right"><Badge variant="outline" className="border-white/10" style={{ color: pct >= 0 ? "#34d399" : "#f87171" }}>{fmtPct(pct)}</Badge></TableCell>
-                              <TableCell className="text-right text-xs text-zinc-500 tabular-nums hidden sm:table-cell" title={h.lastRefreshedAt ? new Date(h.lastRefreshedAt * 1000).toLocaleString() : "Never refreshed (cron runs daily 06:00 UTC)"}>{fmtRelative(h.lastRefreshedAt)}</TableCell>
+                              <TableCell className="text-right text-xs tabular-nums hidden sm:table-cell" title={h.lastRefreshedAt ? new Date(h.lastRefreshedAt * 1000).toLocaleString(settings.dateFormat) : "Never refreshed (cron runs daily 06:00 UTC)"}>
+                                {active.type === "live" && isListedSymbol(h.symbol) && (!h.lastRefreshedAt || fmtRelative(h.lastRefreshedAt, settings.dateFormat).includes("d ago"))
+                                  ? <span className="text-amber-400" title="Yahoo Finance has not refreshed this price recently">Stale · {fmtRelative(h.lastRefreshedAt, settings.dateFormat)}</span>
+                                  : <span className="text-zinc-500">{fmtRelative(h.lastRefreshedAt, settings.dateFormat)}</span>}
+                              </TableCell>
                               <TableCell>
                                 <div className="flex justify-end gap-1">
                                   <Button variant="outline" size="xs" className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20" onClick={(e) => { e.stopPropagation(); openTrade(h, "buy"); }} title="Buy / DCA"><Plus className="w-3.5 h-3.5" /> Buy</Button>
@@ -819,7 +921,8 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                             <div className="text-sm text-white font-medium flex items-center gap-2"><span className={t.type === "buy" ? "text-emerald-400" : "text-red-400"}>{t.type === "buy" ? "Buy" : "Sell"}</span> {t.symbol} • {t.shares} @ £{Number(t.price).toFixed(2)} <span className="text-zinc-500 font-normal hidden sm:inline">• {t.date}</span></div>
                             <div className="text-xs text-zinc-500">{t.type === "buy" ? "DCA updated" : "Proceeds"} £{(t.shares * t.price).toFixed(2)}</div>
                           </div>
-                          <span className="text-xs text-zinc-600 tabular-nums">{new Date(t.date).toLocaleDateString("en-GB", { month: "short", day: "numeric" })}</span>
+                          <span className="text-xs text-zinc-600 tabular-nums">{new Date(t.date).toLocaleDateString(settings.dateFormat, { month: "short", day: "numeric" })}</span>
+                          <Button variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" title="Delete trade and reverse its position impact" onClick={() => void handleDeleteTransaction(t.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>
                       ))}
                     </div>
@@ -879,6 +982,11 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
               </div>
               )}
 
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <WatchlistPanel />
+                <GoalPanel currentValue={totalValue} dateFormat={settings.dateFormat} />
+              </div>
+
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                 <Card className="xl:col-span-2 glass-card">
                   <CardHeader className="flex flex-row items-center justify-between">
@@ -887,6 +995,10 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       <CardDescription>Overall + per-portfolio • {chartData.length} points • {range}{hiddenSeries.size > 0 ? ` • ${overviewVisibleKeys.size}/${1 + overviewSeries.length} series` : ""}</CardDescription>
                     </div>
                     <div className="flex items-center gap-1">
+                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")}>
+                        <SelectTrigger className="h-7 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
+                      </Select>
                       {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
                         <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
                       ))}
@@ -903,6 +1015,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                           <YAxis domain={overviewYDomain ?? ["auto", "auto"]} tickFormatter={overviewAxisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
                           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
                           {!hiddenSeries.has("total") && <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} />}
+                          {benchmark !== "__none__" && <Area type="monotone" dataKey="benchmark" name={benchmark === "^FTSE" ? "FTSE 100" : benchmark === "^GSPC" ? "S&P 500" : benchmark} stroke="#fbbf24" fill="transparent" strokeWidth={2} dot={false} strokeDasharray="5 4" connectNulls />}
                           {overviewSeries.filter((s) => !hiddenSeries.has(s.pid)).map((s) => (
                             <Area key={s.pid} type="monotone" dataKey={s.name} stroke={s.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />
                           ))}
@@ -934,6 +1047,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                     <div className="flex gap-1">
                       <Button variant={allocMode === "holding" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("holding")}>Holdings</Button>
                       <Button variant={allocMode === "account" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("account")}>Accounts</Button>
+                      <Button variant={allocMode === "sector" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("sector")}>Sectors</Button>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -982,160 +1096,85 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                 </Card>
               )}
 
-              <Card className="glass-card overflow-hidden">
-                <CardHeader className="border-b border-white/5 flex flex-row items-center justify-between">
-                  <CardTitle className="text-white">Accounts & portfolios</CardTitle>
-                  <Button variant="ghost" size="sm" className="text-zinc-400" onClick={()=>openWizard(null)}><Plus className="w-4 h-4"/> Portfolio</Button>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {portfolios.length === 0 && accounts.length === 0 ? <div className="p-10 text-center"><div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 grid place-items-center mx-auto mb-3"><Wallet className="w-6 h-6 text-zinc-500"/></div><p className="text-sm text-zinc-400">No accounts or portfolios yet.</p><p className="text-xs text-zinc-600 mt-1">Create an account → provider → portfolio.</p><div className="flex justify-center gap-2 mt-4"><Button onClick={()=> (document.querySelector("[aria-label='New account']") as HTMLElement | null)?.click()}><Plus className="w-4 h-4"/> New account</Button><Button variant="outline" className="bg-white/5 border-white/10" onClick={()=>openWizard(null)}>New portfolio</Button></div></div> : (
-                    <div className="divide-y divide-white/5">
-                      {accounts.map((acc) => {
-                        const provs = providers.filter(pr=> pr.accountId===acc.id);
-                        const direct = portfolios.filter(p=> p.accountId===acc.id && !p.providerId);
-                        const viaProv = portfolios.filter(p=> provs.some(pr=> pr.id===p.providerId));
-                        const allPs = [...direct, ...viaProv];
-                        const accVal = allPs.reduce((s, p) => s + p.holdings.reduce((a, h: Holding) => a + holdingValueGBP(h), 0), 0);
-                        return (
-                          <div key={acc.id} className="p-5">
-                            <div className="flex items-center justify-between mb-3">
-                              <span className="font-semibold text-white flex items-center gap-2">{acc.name} <Badge variant="outline" className="border-white/10 text-zinc-500 text-xs">{provs.length} providers • {allPs.length} portfolios</Badge></span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-zinc-400 hidden sm:inline">{fmtGBP(accVal)}</span>
-                                <Button variant="ghost" size="icon-xs" onClick={()=>openWizard(acc.id, null)} aria-label="Add portfolio"><Plus className="w-3.5 h-3.5"/></Button>
-                                <Button variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400 hover:bg-red-500/10" onClick={() => { setConfirmAccount(acc); setConfirmAccountInput(""); }} aria-label="Delete account"><Trash2 className="w-3.5 h-3.5" /></Button>
-                              </div>
-                            </div>
-                            {provs.length===0 && direct.length===0 ? <div className="p-4 rounded-xl border border-dashed border-white/10 bg-white/[0.02] text-center"><p className="text-xs text-zinc-500">No providers or portfolios. Add a provider first.</p><div className="flex justify-center gap-2 mt-2"><Button variant="ghost" size="sm" className="text-xs" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3 h-3"/> Provider</Button><Button variant="ghost" size="sm" className="text-xs" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3 h-3"/> Portfolio</Button></div></div> : (
-                              <div className="space-y-4">
-                                {provs.map(pr=>{
-                                  const ps = portfolios.filter(p=> p.providerId===pr.id);
-                                  const provVal = ps.reduce((s,p)=>s+p.holdings.reduce((a,h: Holding)=>a+holdingValueGBP(h),0),0);
-                                  return (
-                                    <div key={pr.id} className="rounded-xl bg-black/20 border border-white/5 p-3">
-                                      <div className="flex items-center justify-between mb-2">
-                                        <span className="text-sm font-medium text-zinc-300 flex items-center gap-1.5"><Briefcase className="w-3.5 h-3.5 text-zinc-500"/>{pr.name} <Badge variant="outline" className="border-white/10 text-zinc-500 text-[11px]">{ps.length} portfolios</Badge></span>
-                                        <div className="flex items-center gap-1">
-                                          <span className="text-xs text-zinc-500 hidden sm:inline">{fmtGBP(provVal)}</span>
-                                          <Button variant="ghost" size="icon-xs" onClick={()=>openWizard(acc.id, pr.id)}><Plus className="w-3 h-3"/></Button>
-                                          <Button variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" onClick={()=>{setConfirmProvider(pr); setConfirmProviderInput("");}}><Trash2 className="w-3 h-3"/></Button>
-                                        </div>
-                                      </div>
-                                      {ps.length===0 ? <p className="text-xs text-zinc-600 px-1">No portfolios in this provider.</p> : (
-                                        <div className="card-grid gap-3">
-                                          {ps.map((p) => {
-                                            const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
-                                            const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
-                                            const pct = c ? ((v - c) / c) * 100 : 0;
-                                            return (
-                                              <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
-                                                <button onClick={() => setActiveId(p.id)} className="absolute inset-0 rounded-xl" aria-label={`Open ${p.name}`}/>
-                                                <div className="flex items-center justify-between relative">
-                                                  <span className="font-medium text-white text-sm">{p.name}</span>
-                                                  <div className="flex items-center gap-1">
-                                                    <Badge variant="outline" className="capitalize border-white/10 text-zinc-400 text-xs">{p.type}</Badge>
-                                                    <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6" onClick={(e)=>{e.stopPropagation(); openEditPortfolio(p);}}><Pencil className="w-3 h-3"/></Button>
-                                                  </div>
-                                                </div>
-                                                <div className="text-xl font-bold text-white relative">{fmtGBP(v)}</div>
-                                                <div className="flex items-center gap-2 text-xs relative"><span className="text-zinc-500">{p.holdings.length} holdings</span><span className={`px-1.5 py-0.5 rounded text-xs ${pct >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>{fmtPct(pct)}</span></div>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      )}
-                                      {(directHoldings.filter((h: Holding)=> h.providerId===pr.id).length>0) && (
-                                        <div className="mt-3 pt-3 border-t border-white/5">
-                                          <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks</div>
-                                          <div className="card-grid gap-2">
-                                            {directHoldings.filter((h: Holding)=> h.providerId===pr.id).map((h: Holding)=>(
-                                              <div key={h.id} onClick={() => setHoldingViewId(h.id)} className="cursor-pointer hover:bg-white/[0.06] flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
-                                                <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
-                                                <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
-                                                <span className="text-sm font-semibold text-white">{fmtGBP(holdingValueGBP(h))}</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                                {direct.length>0 && (
-                                  <div>
-                                    <div className="text-[10px] tracking-widest uppercase text-zinc-600 mb-2">No provider — direct</div>
-                                    <div className="card-grid gap-3">
-                                      {direct.map((p) => {
-                                        const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
-                                        const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
-                                        const pct = c ? ((v - c) / c) * 100 : 0;
-                                        return (
-                                          <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
-                                            <button onClick={() => setActiveId(p.id)} className="absolute inset-0 rounded-xl" aria-label={`Open ${p.name}`}/>
-                                            <div className="flex items-center justify-between relative">
-                                              <span className="font-medium text-white text-sm">{p.name}</span>
-                                              <div className="flex items-center gap-1">
-                                                <Badge variant="outline" className="capitalize border-white/10 text-zinc-400 text-xs">{p.type}</Badge>
-                                                <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6" onClick={(e)=>{e.stopPropagation(); openEditPortfolio(p);}}><Pencil className="w-3 h-3"/></Button>
-                                              </div>
-                                            </div>
-                                            <div className="text-xl font-bold text-white relative">{fmtGBP(v)}</div>
-                                            <div className="flex items-center gap-2 text-xs relative"><span className="text-zinc-500">{p.holdings.length} holdings</span><span className={`px-1.5 py-0.5 rounded text-xs ${pct >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>{fmtPct(pct)}</span></div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                                {(directHoldings.filter((h: Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0) && (
-                                  <div className="mt-3 pt-3 border-t border-white/5">
-                                    <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks — {acc.name}</div>
-                                    <div className="card-grid gap-2">
-                                      {directHoldings.filter((h: Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h: Holding)=>(
-                                        <div key={h.id} onClick={() => setHoldingViewId(h.id)} className="cursor-pointer hover:bg-white/[0.06] flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
-                                          <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
-                                          <div className="flex-1 min-w-0"><div className="text-sm text-white font-medium">{h.symbol}</div><div className="text-xs text-zinc-500 truncate">{h.name}</div></div>
-                                          <span className="text-sm font-semibold text-white">{fmtGBP(holdingValueGBP(h))}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+              <section aria-labelledby="portfolio-insights-heading">
+                <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
+                  <div>
+                    <h2 id="portfolio-insights-heading" className="text-lg font-semibold text-white">Portfolio insights</h2>
+                    <p className="text-xs text-zinc-500 mt-1">A closer look across your entire account</p>
+                  </div>
+                  <span className="text-xs text-zinc-600">{accountInsights.positions.length} positions tracked</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                  <Card className="glass-card">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-xs tracking-widest uppercase text-zinc-500 font-semibold">Position momentum</CardTitle>
+                      <Activity className="w-4 h-4 text-zinc-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-white tabular-nums">{accountInsights.profitableCount} <span className="text-sm font-medium text-zinc-500">gaining</span></div>
+                      {accountInsights.profitableCount + accountInsights.losingCount + accountInsights.unchangedCount > 0 ? (
+                        <>
+                          <div className="flex h-1.5 overflow-hidden rounded-full bg-white/5 mt-3">
+                            <span className="bg-emerald-400" style={{ width: `${(accountInsights.profitableCount / (accountInsights.profitableCount + accountInsights.losingCount + accountInsights.unchangedCount)) * 100}%` }} />
+                            <span className="bg-red-400" style={{ width: `${(accountInsights.losingCount / (accountInsights.profitableCount + accountInsights.losingCount + accountInsights.unchangedCount)) * 100}%` }} />
+                            <span className="bg-zinc-500" style={{ width: `${(accountInsights.unchangedCount / (accountInsights.profitableCount + accountInsights.losingCount + accountInsights.unchangedCount)) * 100}%` }} />
                           </div>
-                        );
-                      })}
-                      {portfolios.filter((p) => !p.accountId && !p.providerId).length > 0 && (
-                        <div className="p-5">
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="font-semibold text-zinc-400">Unassigned</span>
-                            <span className="text-sm text-zinc-500">{portfolios.filter((p) => !p.accountId && !p.providerId).length} portfolios</span>
+                          <p className="text-xs text-zinc-500 mt-2">{accountInsights.losingCount} falling · {accountInsights.unchangedCount} unchanged</p>
+                        </>
+                      ) : <p className="text-xs text-zinc-500 mt-2">Add positions with a cost basis to see momentum</p>}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="glass-card">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-xs tracking-widest uppercase text-zinc-500 font-semibold">Largest position</CardTitle>
+                      <Target className="w-4 h-4 text-zinc-500" />
+                    </CardHeader>
+                    <CardContent>
+                      {accountInsights.largest ? (
+                        <>
+                          <div className="text-2xl font-bold text-white tabular-nums">{fmtGBP(accountInsights.largest.value)}</div>
+                          <p className="text-xs text-zinc-500 mt-2 truncate" title={`${accountInsights.largest.holding.symbol} · ${accountInsights.largest.portfolioName}`}>
+                            <span className="text-zinc-300">{accountInsights.largest.holding.symbol}</span> · {totalValue > 0 ? `${((accountInsights.largest.value / totalValue) * 100).toFixed(1)}% of account` : "0.0% of account"}
+                          </p>
+                        </>
+                      ) : <p className="text-sm text-zinc-500 mt-1">No positions yet</p>}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="glass-card">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-xs tracking-widest uppercase text-zinc-500 font-semibold">Best performer</CardTitle>
+                      <Trophy className="w-4 h-4 text-zinc-500" />
+                    </CardHeader>
+                    <CardContent>
+                      {accountInsights.bestPerformer ? (
+                        <>
+                          <div className={`text-2xl font-bold tabular-nums ${accountInsights.bestPerformer.gain >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            {fmtPct(accountInsights.bestPerformer.returnPct!)} <span className="text-sm font-medium">{accountInsights.bestPerformer.holding.symbol}</span>
                           </div>
-                          <div className="card-grid gap-3">
-                            {portfolios.filter((p) => !p.accountId && !p.providerId).map((p) => {
-                              const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
-                              const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
-                              const pct = c ? ((v - c) / c) * 100 : 0;
-                              return (
-                                <div key={p.id} className="group text-left p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] flex flex-col gap-2 relative">
-                                  <button onClick={() => setActiveId(p.id)} className="absolute inset-0 rounded-xl" aria-label={`Open ${p.name}`}/>
-                                  <div className="flex items-center justify-between relative">
-                                    <span className="font-medium text-white text-sm">{p.name}</span>
-                                    <Badge variant="outline" className="capitalize border-white/10 text-zinc-400 text-xs">{p.type}</Badge>
-                                  </div>
-                                  <div className="text-xl font-bold text-white relative">{fmtGBP(v)}</div>
-                                  <div className="flex items-center gap-2 text-xs relative"><span className="text-zinc-500">{p.holdings.length} holdings</span><span className={`px-1.5 py-0.5 rounded text-xs ${pct >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>{fmtPct(pct)}</span></div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                          <p className="text-xs text-zinc-500 mt-2">{fmtGBP(accountInsights.bestPerformer.gain)} overall gain</p>
+                        </>
+                      ) : <p className="text-sm text-zinc-500 mt-1">No cost basis data yet</p>}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="glass-card">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-xs tracking-widest uppercase text-zinc-500 font-semibold">Latest price update</CardTitle>
+                      <Clock3 className="w-4 h-4 text-zinc-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-white">{accountInsights.latestRefresh ? fmtRelative(accountInsights.latestRefresh, settings.dateFormat) : "—"}</div>
+                      <p className="text-xs text-zinc-500 mt-2">
+                        {accountInsights.latestRefresh
+                          ? `${accountInsights.refreshedCount} of ${accountInsights.positions.length} positions have a recorded update`
+                          : "No price updates recorded yet"}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </section>
             </>
           )}
 
@@ -1217,6 +1256,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                     <div className="space-y-1.5"><Label>Name</Label><Input placeholder="Apple Inc — auto-filled from Yahoo" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
                   </>
                 )}
+                <div className="space-y-1.5"><Label>Sector / asset class</Label><Input placeholder="e.g. Technology, Cash, Bonds, Property" maxLength={48} value={form.sector} onChange={(e) => setForm({ ...form, sector: e.target.value })} /><p className="text-xs text-zinc-600">Used to group this position in sector allocation.</p></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5"><Label>{effectiveIsManual ? "Amount (£) *" : "Shares *"}</Label><Input type="number" placeholder={effectiveIsManual ? "5000" : "10"} value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} className={formErrors.shares?"border-red-500/50":""} />{formErrors.shares && <p className="text-xs text-red-400">{formErrors.shares}</p>}{effectiveIsManual && <p className="text-xs text-zinc-600">Tip: use 1 share × price = total for cash</p>}</div>
                   <div className="space-y-1.5"><Label>{effectiveIsManual ? "Price (per unit) *" : "Avg price (cost) *"}</Label><Input type="number" placeholder={effectiveIsManual ? "1.00" : "150.00"} value={form.avgPrice} onChange={(e) => setForm({ ...form, avgPrice: e.target.value })} className={formErrors.avgPrice?"border-red-500/50":""} />{formErrors.avgPrice && <p className="text-xs text-red-400">{formErrors.avgPrice}</p>}</div>

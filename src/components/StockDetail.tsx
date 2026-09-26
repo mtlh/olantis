@@ -6,12 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
-import { fmtGBP, fmtPrice, fmtPct, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, gbpAxisFormatter, priceAxisFormatter, paddedDomain, numericValues, type MoneyHolding } from "@/lib/format";
+import { fmtGBP, fmtPrice, fmtPct, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, gbpAxisFormatter, priceAxisFormatter, paddedDomain, numericValues, filterByRange, type MoneyHolding } from "@/lib/format";
 import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
 
 type PriceRow = { date: string; price: number };
-
-const RANGE_COUNT: Record<string, number> = { "1M": 40, "3M": 130, "1Y": 366, MAX: 9999 };
 
 export function StockDetail({ holding, portfolioId, portfolioName, color, onBack, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
   const { settings } = useSettings();
@@ -76,7 +74,7 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
 
   const hasValueSeries = (snapSeriesFull?.length ?? 0) >= 2;
   const snapSeries = useMemo(
-    () => (hasValueSeries ? (snapSeriesFull ?? []).slice(-(RANGE_COUNT[range] ?? 366)) : null),
+    () => (hasValueSeries ? filterByRange(snapSeriesFull ?? [], range) : null),
     [hasValueSeries, snapSeriesFull, range]
   );
   const chartData = useMemo(() => {
@@ -114,8 +112,8 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
     return shownDots.filter((d) => dates.has(d.x));
   }, [shownDots, chartZoom.visible]);
 
-  const val = holdingValueGBP(holding as MoneyHolding);
-  const cost = holdingCostGBP(holding as MoneyHolding);
+  const val = holdingValueGBP(holding as MoneyHolding, settings.fxRates);
+  const cost = holdingCostGBP(holding as MoneyHolding, settings.fxRates);
   const gain = val - cost;
   const pct = cost ? (gain / cost) * 100 : 0;
   const isManual = !isListed;
@@ -236,7 +234,7 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
                     <div className="min-w-0 flex-1">
                       <div className="text-sm text-white font-medium">{t.type === "buy" ? "Buy" : "Sell"} • {t.shares} @ {fmtPrice(t.price, holding.currency)}</div>
                     </div>
-                    <span className="text-xs text-zinc-600 tabular-nums">{new Date(t.date).toLocaleDateString("en-GB", { month: "short", day: "numeric" })}</span>
+                    <span className="text-xs text-zinc-600 tabular-nums">{new Date(t.date).toLocaleDateString(settings.dateFormat, { month: "short", day: "numeric" })}</span>
                   </div>
                 ))}
               </div>

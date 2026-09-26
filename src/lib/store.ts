@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { holdingValueGBP } from "@/lib/format";
+import { DEFAULT_FX_RATES, holdingValueGBP, type FxRates } from "@/lib/format";
 
-export type Holding = { id: string; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; purchaseDate: string; exchange?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; userId?: string | null; lastRefreshedAt?: number | null };
+export type Holding = { id: string; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; sector?: string | null; purchaseDate: string; exchange?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; userId?: string | null; lastRefreshedAt?: number | null };
 export type Portfolio = { id: string; name: string; type: "live" | "manual"; accountId: string | null; providerId: string | null; color: string | null; sortOrder?: number | null; holdings: Holding[]; userId?: string; createdAt?: number };
 export type Account = { id: string; name: string; color: string | null; sortOrder?: number | null; userId?: string; createdAt?: number };
 export type Provider = { id: string; name: string; color: string | null; accountId: string; sortOrder?: number | null; userId?: string; createdAt?: number };
@@ -13,7 +13,7 @@ export type Transaction = { id: string; userId?: string; portfolioId?: string | 
 
 type AccountPayload = { id: string; name?: string; color?: string | null };
 type ProviderPayload = { id: string; name?: string; color?: string | null; accountId?: string };
-type HoldingsBody = { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; purchaseDate?: string; exchange?: string };
+type HoldingsBody = { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; sector?: string | null; purchaseDate?: string; exchange?: string };
 
 async function api(path: string, opts?: RequestInit) {
   const r = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", ...(opts?.headers ?? {}) } });
@@ -57,11 +57,13 @@ function useAsyncInit(load: () => Promise<void>) {
 export function useAccounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
       setAccounts(parseList<Account>(await api("/api/accounts")));
-    } catch {
-      setAccounts([]);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load accounts");
     }
     setReady(true);
   }, []);
@@ -84,7 +86,7 @@ export function useAccounts() {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ id, color }) });
     await refresh();
   };
-  return { accounts, ready, create, remove, rename, setColor, refresh, setAccounts };
+  return { accounts, ready, error, create, remove, rename, setColor, refresh, setAccounts };
 }
 
 export function useProviders() {
@@ -124,11 +126,13 @@ export function useProviders() {
 export function usePortfolios() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
       setPortfolios(parseList<Portfolio>(await api("/api/portfolios")));
-    } catch {
-      setPortfolios([]);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load portfolios");
     }
     setReady(true);
   }, []);
@@ -175,12 +179,12 @@ export function usePortfolios() {
     await api("/api/holdings", { method: "PATCH", body: JSON.stringify({ symbols: prices }) });
     await refresh();
   };
-  return { portfolios, ready, create, remove, move, setColor, upsertHolding, deleteHolding, moveHolding, updatePrices, refresh, setPortfolios };
+  return { portfolios, ready, error, create, remove, move, setColor, upsertHolding, deleteHolding, moveHolding, updatePrices, refresh, setPortfolios };
 }
 
 const SNAPSHOT_DEBOUNCE_MS = 2000;
 
-export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] = []) {
+export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] = [], fxRates: FxRates = DEFAULT_FX_RATES) {
   const [data, setData] = useState<SnapResponse>({ total: [], byPortfolio: {} });
   const refresh = useCallback(async () => {
     try {
@@ -197,16 +201,16 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
   useVisibilityRefresh(refresh);
 
   const pfVals = useMemo(
-    () => portfolios.map((p) => ({ id: p.id, value: p.holdings.reduce((a, h) => a + holdingValueGBP(h), 0) })),
-    [portfolios]
+    () => portfolios.map((p) => ({ id: p.id, value: p.holdings.reduce((a, h) => a + holdingValueGBP(h, fxRates), 0) })),
+    [portfolios, fxRates]
   );
   const hVals = useMemo(() => {
     const out: Array<{ id: string; value: number }> = [];
-    for (const p of portfolios) for (const h of p.holdings) out.push({ id: h.id, value: holdingValueGBP(h) });
-    for (const h of directHoldings) out.push({ id: h.id, value: holdingValueGBP(h) });
+    for (const p of portfolios) for (const h of p.holdings) out.push({ id: h.id, value: holdingValueGBP(h, fxRates) });
+    for (const h of directHoldings) out.push({ id: h.id, value: holdingValueGBP(h, fxRates) });
     return out;
-  }, [portfolios, directHoldings]);
-  const totalValue = useMemo(() => pfVals.reduce((s, p) => s + p.value, 0) + directHoldings.reduce((s, h) => s + holdingValueGBP(h), 0), [pfVals, directHoldings]);
+  }, [portfolios, directHoldings, fxRates]);
+  const totalValue = useMemo(() => pfVals.reduce((s, p) => s + p.value, 0) + directHoldings.reduce((s, h) => s + holdingValueGBP(h, fxRates), 0), [pfVals, directHoldings, fxRates]);
 
   const lastPosted = useRef<{ day: string; value: number } | null>(null);
   useEffect(() => {
@@ -234,17 +238,19 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
 export function useHoldings() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
       setHoldings(parseList<Holding>(await api("/api/holdings")));
-    } catch {
-      setHoldings([]);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load holdings");
     }
     setReady(true);
   }, []);
   useAsyncInit(refresh);
   useVisibilityRefresh(refresh);
-  return { holdings, ready, refresh };
+  return { holdings, ready, error, refresh };
 }
 
 export function useTransactions(portfolioId?: string | null, symbol?: string | null, holdingId?: string | null) {
@@ -292,6 +298,8 @@ export type AppSettings = {
   dateFormat: string;
   defaultRange: "1M" | "3M" | "1Y" | "MAX";
   showTradeMarkers: boolean;
+  fxRates: FxRates;
+  fxDate: string | null;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -299,6 +307,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dateFormat: "en-GB",
   defaultRange: "1Y",
   showTradeMarkers: true,
+  fxRates: DEFAULT_FX_RATES,
+  fxDate: null,
 };
 
 const RANGE_KEYS = ["1M", "3M", "1Y", "MAX"] as const;
@@ -313,6 +323,8 @@ function normalizeSettings(raw: unknown): AppSettings {
     dateFormat: typeof r.dateFormat === "string" && r.dateFormat ? r.dateFormat : DEFAULT_SETTINGS.dateFormat,
     defaultRange: range,
     showTradeMarkers: r.showTradeMarkers == null ? DEFAULT_SETTINGS.showTradeMarkers : Number(r.showTradeMarkers) !== 0,
+    fxRates: DEFAULT_FX_RATES,
+    fxDate: null,
   };
 }
 
@@ -327,7 +339,10 @@ export function useSettings() {
 
   const refresh = useCallback(async () => {
     try {
-      setSettings(normalizeSettings(await api("/api/settings")));
+      const [rawSettings, rawFx] = await Promise.all([api("/api/settings"), api("/api/fx").catch(() => null)]);
+      const normalized = normalizeSettings(rawSettings);
+      const fx = rawFx as { rates?: FxRates; date?: string | null } | null;
+      setSettings({ ...normalized, fxRates: { ...DEFAULT_FX_RATES, ...(fx?.rates ?? {}) }, fxDate: fx?.date ?? null });
     } catch {
       setSettings(DEFAULT_SETTINGS);
     }

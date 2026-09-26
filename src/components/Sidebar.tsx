@@ -105,15 +105,15 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   const accountTotals = (aid: string) => {
     const direct = directByAccount.get(aid) ?? [];
     const provs = providersByAccount.get(aid) ?? [];
-    let sum = direct.reduce((s,p)=> s + p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h),0),0);
-    for(const pr of provs){ const ps=portfoliosByProvider.get(pr.id)??[]; sum+= ps.reduce((s,p)=>s+p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h),0),0); }
-    sum += directHoldings.filter((h:Holding)=> h.accountId===aid && !h.providerId && !h.portfolioId).reduce((s,h:Holding)=> s+holdingValueGBP(h),0);
-    for(const pr of provs){ sum += directHoldings.filter((h:Holding)=> h.providerId===pr.id).reduce((s,h:Holding)=> s+holdingValueGBP(h),0); }
+    let sum = direct.reduce((s,p)=> s + p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h, settings.fxRates),0),0);
+    for(const pr of provs){ const ps=portfoliosByProvider.get(pr.id)??[]; sum+= ps.reduce((s,p)=>s+p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h, settings.fxRates),0),0); }
+    sum += directHoldings.filter((h:Holding)=> h.accountId===aid && !h.providerId && !h.portfolioId).reduce((s,h:Holding)=> s+holdingValueGBP(h, settings.fxRates),0);
+    for(const pr of provs){ sum += directHoldings.filter((h:Holding)=> h.providerId===pr.id).reduce((s,h:Holding)=> s+holdingValueGBP(h, settings.fxRates),0); }
     return sum;
   };
   const providerTotals = (pid: string) => {
-    let sum = (portfoliosByProvider.get(pid)??[]).reduce((s,p)=>s+p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h),0),0);
-    sum += directHoldings.filter((h:Holding)=> h.providerId===pid).reduce((s,h:Holding)=> s+holdingValueGBP(h),0);
+    let sum = (portfoliosByProvider.get(pid)??[]).reduce((s,p)=>s+p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h, settings.fxRates),0),0);
+    sum += directHoldings.filter((h:Holding)=> h.providerId===pid).reduce((s,h:Holding)=> s+holdingValueGBP(h, settings.fxRates),0);
     return sum;
   };
   const accColorFor = (acc: Account) => acc.color || PALETTE[(accountIndex.get(acc.id) ?? 0) % PALETTE.length].value;
@@ -313,7 +313,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                               <div className="px-1 pb-1 space-y-0.5">
                                 {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
                                 {ps.map((p, pIdx)=>{
-                                  const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
+                                  const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h, settings.fxRates),0);
                                   const active=activeId===p.id;
                                   const baseColor = p.color || portfolioTint(provColor, pIdx);
                                   const selectedBg = baseColor;
@@ -346,7 +346,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                       <div key={h.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs ${onSelectHolding?"cursor-pointer hover:bg-white/[0.07]":""}`} onClick={()=> onSelectHolding?.(h)}>
                                         <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                                         <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
-                                        <span className="text-zinc-500">£{holdingValueGBP(h).toFixed(0)}</span>
+                                        <span className="text-zinc-500">£{holdingValueGBP(h, settings.fxRates).toFixed(0)}</span>
                                         {editMode && (
                                         <>
                                           <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-white" onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
@@ -366,7 +366,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                         <div className="space-y-1">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct portfolios</div>
                           {direct.map((p, di)=>{
-                            const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h),0);
+                            const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h, settings.fxRates),0);
                             const active=activeId===p.id;
                             const baseColor = p.color || portfolioTint(accColorFor(acc), di);
                             const selectedBg = baseColor;
@@ -402,7 +402,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                             <div key={h.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs ${onSelectHolding?"cursor-pointer hover:bg-white/[0.07]":""}`} onClick={()=> onSelectHolding?.(h)}>
                               <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                               <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
-                              <span className="text-zinc-500">£{holdingValueGBP(h).toFixed(0)}</span>
+                              <span className="text-zinc-500">£{holdingValueGBP(h, settings.fxRates).toFixed(0)}</span>
                               {editMode && (
                               <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
                               )}
@@ -424,7 +424,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                 </div>
                 <div className="px-1.5 pb-1.5 space-y-1">
                     {(filteredPortfolios(unassigned)).map((p, ui) => {
-                    const val = p.holdings.reduce((s, h:Holding) => s + holdingValueGBP(h), 0);
+                    const val = p.holdings.reduce((s, h:Holding) => s + holdingValueGBP(h, settings.fxRates), 0);
                     const active = activeId === p.id;
                     const baseColor = p.color || PALETTE[ui % PALETTE.length].value;
                     const selectedBg = baseColor;
@@ -472,7 +472,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
           </div>
           <div className="flex items-center justify-between text-[11px]">
             <span className="text-zinc-600">Last refresh</span>
-            <span className="text-zinc-400 tabular-nums">{lastRefresh ? fmtRelative(lastRefresh) : "—"}</span>
+            <span className="text-zinc-400 tabular-nums">{lastRefresh ? fmtRelative(lastRefresh, settings.dateFormat) : "—"}</span>
           </div>
         </div>
         <a href="/settings" className={buttonVariants({ variant: "ghost", size: "sm", className: "w-full justify-start gap-2 text-zinc-400 hover:text-white" })}><Settings className="w-4 h-4"/> Settings</a>

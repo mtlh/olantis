@@ -6,17 +6,32 @@ export type MoneyHolding = {
 };
 
 /** Convert a quoted amount into GBP (GBX/GBp pence → pounds). */
-export function toGBP(value: number, currency?: string | null): number {
+export type FxRates = Record<string, number>;
+
+// Each entry is the number of GBP represented by one unit of that currency.
+export const DEFAULT_FX_RATES: FxRates = { GBP: 1, USD: 0.7874, EUR: 0.8547, CAD: 0.5814, AUD: 0.5128, JPY: 0.00526, CHF: 0.8929, HKD: 0.101, CNY: 0.1087 };
+
+export function toGBP(value: number, currency?: string | null, rates: FxRates = DEFAULT_FX_RATES): number {
   if (currency === "GBX" || currency === "GBp") return value / 100;
-  return value;
+  const code = currency?.toUpperCase() ?? "GBP";
+  if (code === "GBP") return value;
+  const rateToGbp = rates[code];
+  return rateToGbp && Number.isFinite(rateToGbp) ? value * rateToGbp : value;
 }
 
-export function holdingValueGBP(h: MoneyHolding): number {
-  return toGBP(h.shares * (h.currentPrice ?? 0), h.currency);
+export function holdingValueGBP(h: MoneyHolding, rates?: FxRates): number {
+  return toGBP(h.shares * (h.currentPrice ?? 0), h.currency, rates);
 }
 
-export function holdingCostGBP(h: MoneyHolding): number {
-  return toGBP(h.shares * (h.avgPrice ?? 0), h.currency);
+export function holdingCostGBP(h: MoneyHolding, rates?: FxRates): number {
+  return toGBP(h.shares * (h.avgPrice ?? 0), h.currency, rates);
+}
+
+export function filterByRange<T extends { date: string }>(rows: T[], range: string): T[] {
+  if (range === "MAX") return rows;
+  const days = range === "1M" ? 31 : range === "3M" ? 92 : 365;
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return rows.filter((row) => row.date >= cutoff);
 }
 
 export function fmtGBP(n: number): string {
@@ -60,14 +75,14 @@ export function fmtPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
-export function fmtRelative(ts?: number | null): string {
+export function fmtRelative(ts?: number | null, locale = "en-GB"): string {
   if (!ts) return "never";
   const diff = Math.floor(Date.now() / 1000) - ts;
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return new Date(ts * 1000).toLocaleDateString("en-GB");
+  return new Date(ts * 1000).toLocaleDateString(locale);
 }
 
 export function isListedSymbol(symbol: string): boolean {

@@ -16,6 +16,8 @@ export async function POST(req: Request) {
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
   const body = (await req.json()) as { currency?: string; dateFormat?: string; defaultRange?: string; showTradeMarkers?: boolean | number };
   const { currency, dateFormat, defaultRange, showTradeMarkers } = body;
+  if (dateFormat !== undefined && !["en-GB", "en-US", "de-DE", "fr-FR"].includes(dateFormat)) return Response.json({ error: "unsupported date format" }, { status: 400 });
+  if (defaultRange !== undefined && !["1M", "3M", "1Y", "MAX"].includes(defaultRange)) return Response.json({ error: "unsupported chart range" }, { status: 400 });
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);
   const existing = await db.select().from(userSettings).where(eq(userSettings.userId, userId));

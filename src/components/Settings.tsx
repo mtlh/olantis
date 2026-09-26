@@ -13,8 +13,32 @@ import { PALETTE, tintColor, portfolioTint } from "@/lib/colors";
 
 interface SettingsState {
   currency: string | null;
+  dateFormat: string | null;
   defaultRange: string | null;
   showTradeMarkers: number | null;
+}
+
+function parseCsv(source: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (quoted) {
+      if (char === '"' && source[i + 1] === '"') { cell += '"'; i++; }
+      else if (char === '"') quoted = false;
+      else cell += char;
+    } else if (char === '"') quoted = true;
+    else if (char === ",") { row.push(cell); cell = ""; }
+    else if (char === "\n" || char === "\r") {
+      if (char === "\r" && source[i + 1] === "\n") i++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += char;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  if (quoted) throw new Error("CSV contains an unclosed quoted field");
+  return rows;
 }
 
 function Swatch({ color, active, onClick }: { color: string; active?: boolean; onClick?: () => void }) {
@@ -28,9 +52,11 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   const { providers, setColor: setProviderColor, refresh: refreshProviders } = useProviders();
   const { portfolios, setColor: setPortfolioColor, refresh: refreshPortfolios } = usePortfolios();
   const { toast } = useToast();
-  const [settings, setSettings] = useState<SettingsState>({ currency: "GBP", defaultRange: "1Y", showTradeMarkers: 1 });
+  const [settings, setSettings] = useState<SettingsState>({ currency: "GBP", dateFormat: "en-GB", defaultRange: "1Y", showTradeMarkers: 1 });
   const [saving, setSaving] = useState<string | null>(null);
   const [colorTab, setColorTab] = useState<"accounts" | "providers" | "portfolios">("accounts");
+  const [importPortfolioId, setImportPortfolioId] = useState("");
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     let cancel = false;
@@ -407,6 +433,13 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 <p className="text-xs text-zinc-600">Applied to new holdings and trades. Existing holdings keep the currency they were recorded with.</p>
               </div>
               <div className="space-y-2">
+                <Label>Date format</Label>
+                <Select value={settings.dateFormat ?? "en-GB"} onValueChange={v=> saveSettings({ dateFormat: v })}>
+                  <SelectTrigger><span className="flex-1 text-left truncate">{settings.dateFormat ?? "en-GB"}</span></SelectTrigger>
+                  <SelectContent><SelectItem value="en-GB">Day / month / year</SelectItem><SelectItem value="en-US">Month / day / year</SelectItem><SelectItem value="de-DE">Day.month.year</SelectItem><SelectItem value="fr-FR">Day / month / year (French)</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Default chart range</Label>
                 <Select value={settings.defaultRange ?? "1Y"} onValueChange={v=> saveSettings({ defaultRange: v })}>
                   <SelectTrigger><span className="flex-1 text-left truncate">{settings.defaultRange ?? "1Y"}</span></SelectTrigger>
@@ -440,6 +473,63 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             </CardHeader>
             <CardContent className="space-y-3">
               <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" onClick={exportAll}><Download className="w-4 h-4"/> Export all as JSON</Button>
+              <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <Label htmlFor="import-portfolio">Import CSV into portfolio</Label>
+                <Select value={importPortfolioId} onValueChange={(value) => setImportPortfolioId(value ?? "")}>
+                  <SelectTrigger id="import-portfolio"><span className="flex-1 text-left truncate">{portfolios.find((p) => p.id === importPortfolioId)?.name ?? "Choose portfolio"}</span></SelectTrigger>
+                  <SelectContent>{portfolios.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                </Select>
+                <input
+                  id="import-csv"
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  disabled={importing || !importPortfolioId}
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file || !importPortfolioId) return;
+                    setImporting(true);
+                    try {
+                      const text = await file.text();
+                      const lines = parseCsv(text);
+                      if (lines.length < 2) throw new Error("CSV must contain a header and at least one data row");
+                      const headers = lines[0].map((value) => value.toLowerCase().replace(/[^a-z0-9]/g, ""));
+                      const index = (...names: string[]) => headers.findIndex((header) => names.includes(header));
+                      const field = (row: string[], ...names: string[]) => row[index(...names)]?.trim() ?? "";
+                      let imported = 0;
+                      for (const [rowIndex, row] of lines.slice(1).entries()) {
+                        if (row.every((cell) => !cell.trim())) continue;
+                        const type = field(row, "type", "transactiontype").toLowerCase();
+                        const symbol = field(row, "symbol", "ticker").toUpperCase();
+                        const shares = Number(field(row, "shares", "quantity", "qty"));
+                        const date = field(row, "date", "purchasedate", "tradedate") || new Date().toISOString().slice(0, 10);
+                        if (!symbol || !Number.isFinite(shares) || shares <= 0) throw new Error(`Row ${rowIndex + 2}: symbol and positive shares/quantity are required`);
+                        let response: Response;
+                        if (type === "buy" || type === "sell") {
+                          const price = Number(field(row, "price", "pricepershare", "unitprice"));
+                          if (!Number.isFinite(price) || price <= 0) throw new Error(`Row ${rowIndex + 2}: positive price is required for a trade`);
+                          response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ portfolioId: importPortfolioId, symbol, name: field(row, "name", "description") || symbol, type, shares, price, date, currency: field(row, "currency") || "GBP" }) });
+                        } else {
+                          const avgPrice = Number(field(row, "avgprice", "averageprice", "costbasis", "pricepershare"));
+                          const currentPriceRaw = field(row, "currentprice", "marketprice");
+                          const currentPrice = currentPriceRaw ? Number(currentPriceRaw) : avgPrice;
+                          if (!Number.isFinite(avgPrice) || avgPrice <= 0 || !Number.isFinite(currentPrice) || currentPrice <= 0) throw new Error(`Row ${rowIndex + 2}: positive AvgPrice (and CurrentPrice, if supplied) are required`);
+                          response = await fetch("/api/holdings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ portfolioId: importPortfolioId, symbol, name: field(row, "name", "description") || symbol, shares, avgPrice, currentPrice, currency: field(row, "currency") || "GBP", sector: field(row, "sector", "assetclass"), purchaseDate: date, exchange: field(row, "exchange") || undefined }) });
+                        }
+                        if (!response.ok) throw new Error(`Row ${rowIndex + 2}: ${(await response.text()).slice(0, 240)}`);
+                        imported++;
+                      }
+                      await refreshPortfolios();
+                      toast({ title: "CSV import complete", description: `${imported} rows imported into ${portfolios.find((p) => p.id === importPortfolioId)?.name ?? "portfolio"}.`, variant: "success" });
+                    } catch (error) {
+                      toast({ title: "CSV import stopped", description: error instanceof Error ? error.message : String(error), variant: "error" });
+                    } finally { setImporting(false); }
+                  }}
+                />
+                <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" disabled={importing || !importPortfolioId} onClick={() => document.getElementById("import-csv")?.click()}><Upload className="w-4 h-4"/>{importing ? "Importing…" : "Import holdings or buy/sell CSV"}</Button>
+                <p className="text-xs text-zinc-600">Holdings: Symbol, Name, Shares, AvgPrice, CurrentPrice, Currency. Trades: Symbol, Type, Shares, Price, Date.</p>
+              </div>
               {/* eslint-disable-next-line @next/next/no-location-assign-relative-destination */}
               <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" onClick={()=> { window.location.href="/api/demo"; }} disabled={isDemo}><Upload className="w-4 h-4"/> Load demo data</Button>
               <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">

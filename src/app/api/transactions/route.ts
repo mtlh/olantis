@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     if (holdingId) conds.push(eq(transactions.holdingId, holdingId));
     if (symbol) conds.push(eq(transactions.symbol, symbol.toUpperCase()));
     rows = await db.select().from(transactions).where(and(...conds));
-  } catch { return Response.json([]); }
+  } catch (error) { return Response.json({ error: "Unable to load transactions", detail: error instanceof Error ? error.message : String(error) }, { status: 503 }); }
   rows.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
   return Response.json(rows);
 }
@@ -137,11 +137,7 @@ export async function POST(req: Request) {
     }
   } else {
     const remaining = holding!.shares - s;
-    if (remaining <= 1e-6) {
-      await db.delete(holdings).where(eq(holdings.id, holding!.id));
-    } else {
-      await db.update(holdings).set({ shares: remaining }).where(eq(holdings.id, holding!.id));
-    }
+    await db.update(holdings).set({ shares: Math.max(0, remaining) }).where(eq(holdings.id, holding!.id));
   }
 
   return Response.json({ id, ok: true });
@@ -155,7 +151,55 @@ export async function DELETE(req: Request) {
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const db = getDb();
   const rows = await db.select().from(transactions).where(eq(transactions.id, id));
-  if (!rows[0] || rows[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+  const tx = rows[0];
+  if (!tx || tx.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+  if (tx.type !== "buy" && tx.type !== "sell") return Response.json({ error: "Only buy/sell transactions affect holdings" }, { status: 400 });
+
+  const candidates = (await db.select().from(holdings).where(eq(holdings.symbol, tx.symbol)))
+    .filter((h) => !tx.portfolioId || h.portfolioId === tx.portfolioId);
+  let holding = candidates.find((h) => tx.holdingId === h.id);
+  if (!holding) {
+    for (const candidate of candidates) {
+      if (await ownsHolding(db, candidate, userId)) { holding = candidate; break; }
+    }
+  }
+  if (!holding) return Response.json({ error: "The position for this transaction no longer exists" }, { status: 409 });
+  if (!(await ownsHolding(db, holding, userId))) return Response.json({ error: "forbidden" }, { status: 403 });
+
+  const ledger = (await db.select().from(transactions).where(and(
+    eq(transactions.userId, userId),
+    eq(transactions.symbol, tx.symbol),
+    tx.portfolioId ? eq(transactions.portfolioId, tx.portfolioId) : eq(transactions.holdingId, holding.id),
+  ))).filter((item) => item.type === "buy" || item.type === "sell");
+  const ordered = [...ledger].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+
+  // Recover the opening position by reversing the complete weighted-average
+  // ledger from today's state, then replay it without the deleted trade.
+  let shares = holding.shares;
+  let average = holding.avgPrice;
+  for (const item of [...ordered].reverse()) {
+    if (item.type === "sell") shares += item.shares;
+    else {
+      const priorShares = shares - item.shares;
+      if (priorShares < -1e-6) return Response.json({ error: "Cannot safely reverse this transaction history" }, { status: 409 });
+      const priorCost = shares * average - item.shares * item.price;
+      shares = Math.max(0, priorShares);
+      average = shares > 1e-6 ? Math.max(0, priorCost) / shares : 0;
+    }
+  }
+  for (const item of ordered) {
+    if (item.id === id) continue;
+    if (item.type === "buy") {
+      const next = shares + item.shares;
+      average = next > 0 ? (shares * average + item.shares * item.price) / next : 0;
+      shares = next;
+    } else {
+      if (item.shares > shares + 1e-6) return Response.json({ error: "Deleting this transaction would leave a later sale uncovered" }, { status: 409 });
+      shares = Math.max(0, shares - item.shares);
+      if (shares <= 1e-6) { shares = 0; average = 0; }
+    }
+  }
   await db.delete(transactions).where(eq(transactions.id, id));
+  await db.update(holdings).set({ shares, avgPrice: average }).where(eq(holdings.id, holding.id));
   return Response.json({ ok: true });
 }
