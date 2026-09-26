@@ -228,14 +228,14 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
             <LayoutDashboard className="w-4 h-4" /> Dashboard
           </Link>
         )}
+        <Link href="/performance" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "performance" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
+          <TrendingUp className="w-4 h-4" /> Performance
+        </Link>
         <Link href="/watchlist" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "watchlist" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
           <Eye className="w-4 h-4" /> Watchlist
         </Link>
         <Link href="/goals" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "goals" ? "secondary" : "ghost", className: "w-full justify-start gap-2.5" })}>
           <Target className="w-4 h-4" /> Goals
-        </Link>
-        <Link href="/performance" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "performance" ? "secondary" : "ghost", className: "w-full justify-start gap-2.5" })}>
-          <TrendingUp className="w-4 h-4" /> Performance
         </Link>
 
         <div className="mt-4 relative">

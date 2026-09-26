@@ -100,7 +100,7 @@ export function PerformanceChart({
             </div>
           ) : (
             <>
-              <div className="h-[calc(100vh-18rem)] min-h-[340px] flex-1 select-none">
+              <div className="h-[480px] w-full shrink-0 select-none md:h-[560px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />

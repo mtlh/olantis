@@ -73,18 +73,17 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
     rangeTouched.current = true;
     setRange(r);
   }, []);
-  const [benchmark, setBenchmark] = useState(isDemo ? "VWRL.L" : "__none__");
+  const [benchmark, setBenchmark] = useState(isDemo && section === "performance" ? "VWRL.L" : "__none__");
   const [benchmarkPrices, setBenchmarkPrices] = useState<{ key: string; rows: Array<{ date: string; price: number }> } | null>(null);
   useEffect(() => {
-    if (benchmark === "__none__") return;
+    if (section !== "performance" || benchmark === "__none__") return;
     let cancelled = false;
-    const benchmarkRange = section === "performance" ? "MAX" : range;
-    fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=${benchmarkRange}`)
+    fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=MAX`)
       .then(async (response) => response.ok ? (await response.json()).chart as Array<{ date: string; price: number }> : [])
-      .then((rows) => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:${benchmarkRange}`, rows }); })
-      .catch(() => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:${benchmarkRange}`, rows: [] }); });
+      .then((rows) => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:MAX`, rows }); })
+      .catch(() => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:MAX`, rows: [] }); });
     return () => { cancelled = true; };
-  }, [benchmark, range, section]);
+  }, [benchmark, section]);
   // Overview chart series filters — toggle a series out to compare the rest on a tighter scale.
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(() => new Set());
   const toggleSeries = useCallback((key: string) => {
@@ -238,29 +237,6 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
     });
   }, [filteredSnapshots, byPortfolio, totalValue, active, range, settings.fxRates]);
 
-  const chartDataWithBenchmark = useMemo(() => {
-    const priceRows = benchmarkPrices?.key === `${benchmark}:${range}` ? benchmarkPrices.rows : [];
-    if (!priceRows.length || benchmark === "__none__" || !chartData.length) return chartData;
-    const orderedPrices = [...priceRows]
-      .filter((point) => Number.isFinite(point.price) && point.price > 0)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    let priceIndex = 0;
-    let latestPrice = orderedPrices[0]?.price;
-    if (!latestPrice) return chartData;
-    while (priceIndex < orderedPrices.length && orderedPrices[priceIndex].date <= chartData[0].dateISO) {
-      latestPrice = orderedPrices[priceIndex].price;
-      priceIndex++;
-    }
-    const basePrice = latestPrice;
-    return chartData.map((row) => {
-      while (priceIndex < orderedPrices.length && orderedPrices[priceIndex].date <= row.dateISO) {
-        latestPrice = orderedPrices[priceIndex].price;
-        priceIndex++;
-      }
-      return { ...row, benchmark: chartData[0].total * latestPrice / basePrice };
-    });
-  }, [benchmarkPrices, benchmark, range, chartData]);
-
   const chartDots = useMemo(() => {
     if (!chartData.length) return [];
     const map = new Map(chartData.map((d) => [d.date, d.total]));
@@ -274,7 +250,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
       .filter((x): x is ChartDot => x !== null);
   }, [displayTx, chartData]);
 
-  const chartZoom = useChartZoom(chartDataWithBenchmark);
+  const chartZoom = useChartZoom(chartData);
   const axisValues = useMemo(() => numericValues(chartZoom.visible), [chartZoom.visible]);
   const axisFmt = useMemo(() => gbpAxisFormatter(axisValues), [axisValues]);
   const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
@@ -827,10 +803,6 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
                       <CardDescription>{chartData.length} points • {active.name} {chartDots.length ? `• ${chartDots.length} trades` : ""}</CardDescription>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")} items={{ __none__: "Benchmark", "VWRL.L": "VWRL", "^FTSE": "FTSE 100", "^GSPC": "S&P 500", MSFT: "Microsoft" }}>
-                        <SelectTrigger className="h-7 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="VWRL.L">VWRL</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
-                      </Select>
                       {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
                         <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
                       ))}
@@ -1008,10 +980,6 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
                       <CardDescription>Overall + per-portfolio • {chartData.length} points • {range}{hiddenSeries.size > 0 ? ` • ${overviewVisibleKeys.size}/${1 + overviewSeries.length} series` : ""}</CardDescription>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")} items={{ __none__: "Benchmark", "VWRL.L": "VWRL", "^FTSE": "FTSE 100", "^GSPC": "S&P 500", MSFT: "Microsoft" }}>
-                        <SelectTrigger className="h-7 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="VWRL.L">VWRL</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
-                      </Select>
                       {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
                         <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
                       ))}
@@ -1028,7 +996,6 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
                           <YAxis domain={overviewYDomain ?? ["auto", "auto"]} tickFormatter={overviewAxisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
                           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
                           {!hiddenSeries.has("total") && <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} />}
-                          {benchmark !== "__none__" && <Area type="monotone" dataKey="benchmark" name={benchmark === "VWRL.L" ? "VWRL" : benchmark === "^FTSE" ? "FTSE 100" : benchmark === "^GSPC" ? "S&P 500" : benchmark} stroke="#fbbf24" fill="transparent" strokeWidth={2} dot={false} strokeDasharray="5 4" connectNulls />}
                           {overviewSeries.filter((s) => !hiddenSeries.has(s.pid)).map((s) => (
                             <Area key={s.pid} type="monotone" dataKey={s.name} stroke={s.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />
                           ))}
