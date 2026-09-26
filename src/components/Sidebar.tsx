@@ -1,6 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
-import { LayoutDashboard, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,8 +28,9 @@ function isLightColor(hex: string) {
   } catch { return false; }
 }
 
-export function Sidebar({ accounts, providers, portfolios, holdings, activeId, onSelect, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+export function Sidebar({ accounts, providers, portfolios, holdings, activeId, page, onSelect, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void; onSelectHolding?: (h: Holding) => void;
+  page: "dashboard" | "watchlist" | "goals";
   onCreateAccount: (name: string) => void | Promise<void>;
   onCreateProvider?: (name: string, accountId: string) => Promise<void>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
@@ -227,9 +229,21 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
         <Button variant="ghost" size="icon-xs" className="md:hidden" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
-        <Button variant={activeId === null ? "secondary" : "ghost"} className="w-full justify-start gap-2.5" onClick={() => { onSelect(null); setMobileOpen(false); }}>
-          <LayoutDashboard className="w-4 h-4" /> Dashboard
-        </Button>
+        {page === "dashboard" ? (
+          <Button variant={activeId === null ? "secondary" : "ghost"} className="w-full justify-start gap-2.5" onClick={() => { onSelect(null); setMobileOpen(false); }}>
+            <LayoutDashboard className="w-4 h-4" /> Dashboard
+          </Button>
+        ) : (
+          <Link href="/dashboard" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: "ghost", className: "w-full justify-start gap-2.5" })}>
+            <LayoutDashboard className="w-4 h-4" /> Dashboard
+          </Link>
+        )}
+        <Link href="/watchlist" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "watchlist" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
+          <Eye className="w-4 h-4" /> Watchlist
+        </Link>
+        <Link href="/goals" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "goals" ? "secondary" : "ghost", className: "w-full justify-start gap-2.5" })}>
+          <Target className="w-4 h-4" /> Goals
+        </Link>
 
         <div className="mt-4 relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>

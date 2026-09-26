@@ -34,7 +34,9 @@ type ChartDot = { x: string; y: number; type: "buy" | "sell"; symbol: string; da
 type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };
 type ChartRow = { date: string; total: number; [key: string]: string | number | null };
 
-export function Dashboard({ isDemo }: { isDemo?: boolean }) {
+export type DashboardSection = "dashboard" | "watchlist" | "goals";
+
+export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean; section?: DashboardSection }) {
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
@@ -631,7 +633,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={(id) => { setActiveId(id); setHoldingViewId(null); }} onSelectHolding={(h) => { setActiveId(null); setHoldingViewId(h.id); }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} page={section} onSelect={(id) => { setActiveId(id); setHoldingViewId(null); }} onSelectHolding={(h) => { setActiveId(null); setHoldingViewId(h.id); }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={(a) => setConfirmAccount(a)}
         onDeleteProvider={(p) => setConfirmProvider(p)}
         onDeletePortfolio={(p) => setConfirmPortfolio(p)} />
@@ -643,7 +645,17 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
               <Button variant="outline" size="sm" className="border-amber-500/30 bg-black/20" onClick={() => void Promise.all([refreshPortfolios(), refreshAllHoldings(), refreshAccounts(), refreshProviders()])}>Retry</Button>
             </div>
           )}
-          {showWizard ? (
+          {section === "watchlist" ? (
+            <section className="space-y-4">
+              <div><h1 className="text-3xl font-bold tracking-tight text-white">Watchlist</h1><p className="mt-1 text-sm text-zinc-500">Keep an eye on symbols before adding them to a portfolio.</p></div>
+              <WatchlistPanel />
+            </section>
+          ) : section === "goals" ? (
+            <section className="space-y-4">
+              <div><h1 className="text-3xl font-bold tracking-tight text-white">Goals</h1><p className="mt-1 text-sm text-zinc-500">Track your progress toward a portfolio target.</p></div>
+              <GoalPanel currentValue={totalValue} dateFormat={settings.dateFormat} />
+            </section>
+          ) : showWizard ? (
             <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId}
               onCreate={handleWizardCreate} inline />
           ) : viewHolding ? (
@@ -732,7 +744,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       <CardDescription>{chartData.length} points • {active.name} {chartDots.length ? `• ${chartDots.length} trades` : ""}</CardDescription>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")}>
+                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")} items={{ __none__: "Benchmark", "^FTSE": "FTSE 100", "^GSPC": "S&P 500", MSFT: "Microsoft" }}>
                         <SelectTrigger className="h-7 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
                       </Select>
@@ -905,10 +917,6 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
               onNewPortfolio={() => openWizard(null)}
               onCreateFirstPortfolio={() => { void handleCreate("ISA", "live", accounts[0]?.id ?? null); }}
             >
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <WatchlistPanel />
-                <GoalPanel currentValue={totalValue} dateFormat={settings.dateFormat} />
-              </div>
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                 <Card className="xl:col-span-2 glass-card">
                   <CardHeader className="flex flex-row items-center justify-between">
@@ -917,7 +925,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       <CardDescription>Overall + per-portfolio • {chartData.length} points • {range}{hiddenSeries.size > 0 ? ` • ${overviewVisibleKeys.size}/${1 + overviewSeries.length} series` : ""}</CardDescription>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")}>
+                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")} items={{ __none__: "Benchmark", "^FTSE": "FTSE 100", "^GSPC": "S&P 500", MSFT: "Microsoft" }}>
                         <SelectTrigger className="h-7 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
                       </Select>
