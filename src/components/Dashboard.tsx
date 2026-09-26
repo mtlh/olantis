@@ -3,6 +3,7 @@ import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders
 import type { Holding, Portfolio, Snapshot } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceDot } from "recharts";
 import { Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase, FolderPlus, Activity, Target, Trophy, Clock3 } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
@@ -12,6 +13,7 @@ import { MainDashboard } from "@/components/dashboard/MainDashboard";
 import { PortfolioDashboard } from "@/components/dashboard/PortfolioDashboard";
 import { WatchlistPanel } from "@/components/WatchlistPanel";
 import { GoalPanel } from "@/components/GoalPanel";
+import { PerformanceChart, type PerformanceChartRow } from "@/components/dashboard/PerformanceChart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,11 +34,14 @@ const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d39
 type SymbolResult = { symbol: string; name: string; exchange: string; exchDisp?: string; price?: number | null; currency?: string | null; longname?: string; rawExchange?: string; type?: string };
 type ChartDot = { x: string; y: number; type: "buy" | "sell"; symbol: string; date: string; shares: number; price: number };
 type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };
-type ChartRow = { date: string; total: number; [key: string]: string | number | null };
+type ChartRow = { date: string; dateISO: string; total: number; [key: string]: string | number | null };
 
-export type DashboardSection = "dashboard" | "watchlist" | "goals";
+export type DashboardSection = "dashboard" | "watchlist" | "goals" | "performance";
 
 export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean; section?: DashboardSection }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const portfolioFromUrl = searchParams.get("portfolio");
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
@@ -46,7 +51,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   const { settings } = useSettings();
   const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(portfolioFromUrl);
   const [tradeHolding, setTradeHolding] = useState<Holding | null>(null);
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
   const [showTrade, setShowTrade] = useState(false);
@@ -58,27 +63,28 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   const [isManual, setIsManual] = useState(false);
   // Default chart range comes from user settings; once the viewer picks a
   // range manually we stop following the preference for this visit.
-  const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
+  const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">(section === "performance" ? "MAX" : "1Y");
   const rangeTouched = useRef(false);
   useEffect(() => {
     if (rangeTouched.current) return;
-    setRange(settings.defaultRange);
-  }, [settings.defaultRange]);
+    setRange(section === "performance" ? "MAX" : settings.defaultRange);
+  }, [settings.defaultRange, section]);
   const pickRange = useCallback((r: "1M" | "3M" | "1Y" | "MAX") => {
     rangeTouched.current = true;
     setRange(r);
   }, []);
-  const [benchmark, setBenchmark] = useState("__none__");
+  const [benchmark, setBenchmark] = useState(isDemo ? "VWRL.L" : "__none__");
   const [benchmarkPrices, setBenchmarkPrices] = useState<{ key: string; rows: Array<{ date: string; price: number }> } | null>(null);
   useEffect(() => {
     if (benchmark === "__none__") return;
     let cancelled = false;
-    fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=${range}`)
+    const benchmarkRange = section === "performance" ? "MAX" : range;
+    fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=${benchmarkRange}`)
       .then(async (response) => response.ok ? (await response.json()).chart as Array<{ date: string; price: number }> : [])
-      .then((rows) => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:${range}`, rows }); })
-      .catch(() => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:${range}`, rows: [] }); });
+      .then((rows) => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:${benchmarkRange}`, rows }); })
+      .catch(() => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:${benchmarkRange}`, rows: [] }); });
     return () => { cancelled = true; };
-  }, [benchmark, range]);
+  }, [benchmark, range, section]);
   // Overview chart series filters — toggle a series out to compare the rest on a tighter scale.
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(() => new Set());
   const toggleSeries = useCallback((key: string) => {
@@ -211,17 +217,19 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
     if (active) {
       const trimmed = filterByRange(activeSeries, range);
       if (trimmed.length === 0) {
-        return [{ date: chartDateLabel(todayISODate()), total: active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h, settings.fxRates), 0) }] as ChartRow[];
+        const dateISO = todayISODate();
+        return [{ date: chartDateLabel(dateISO), dateISO, total: active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h, settings.fxRates), 0) }] as ChartRow[];
       }
-      return trimmed.map((s) => ({ date: chartDateLabel(s.date), total: s.value }));
+      return trimmed.map((s) => ({ date: chartDateLabel(s.date), dateISO: s.date, total: s.value }));
     }
     if (filteredSnapshots.length === 0) {
-      return [{ date: chartDateLabel(todayISODate()), total: totalValue }] as ChartRow[];
+      const dateISO = todayISODate();
+      return [{ date: chartDateLabel(dateISO), dateISO, total: totalValue } as ChartRow];
     }
     const byPort = byPortfolio;
     const dates = filteredSnapshots.map((s) => s.date);
     return dates.map((d) => {
-      const row: ChartRow = { date: chartDateLabel(d), total: filteredSnapshots.find((s) => s.date === d)?.value ?? 0 };
+      const row: ChartRow = { date: chartDateLabel(d), dateISO: d, total: filteredSnapshots.find((s) => s.date === d)?.value ?? 0 };
       for (const [, info] of Object.entries(byPort)) {
         const v = info.data.find((x: Snapshot) => x.date === d)?.value;
         if (v != null) row[info.name] = v;
@@ -233,10 +241,24 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   const chartDataWithBenchmark = useMemo(() => {
     const priceRows = benchmarkPrices?.key === `${benchmark}:${range}` ? benchmarkPrices.rows : [];
     if (!priceRows.length || benchmark === "__none__" || !chartData.length) return chartData;
-    const basePrice = priceRows[0].price;
-    if (!basePrice) return chartData;
-    const normalized = new Map(priceRows.map((point) => [chartDateLabel(point.date), chartData[0].total * point.price / basePrice]));
-    return chartData.map((row) => ({ ...row, benchmark: normalized.get(row.date) ?? null }));
+    const orderedPrices = [...priceRows]
+      .filter((point) => Number.isFinite(point.price) && point.price > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    let priceIndex = 0;
+    let latestPrice = orderedPrices[0]?.price;
+    if (!latestPrice) return chartData;
+    while (priceIndex < orderedPrices.length && orderedPrices[priceIndex].date <= chartData[0].dateISO) {
+      latestPrice = orderedPrices[priceIndex].price;
+      priceIndex++;
+    }
+    const basePrice = latestPrice;
+    return chartData.map((row) => {
+      while (priceIndex < orderedPrices.length && orderedPrices[priceIndex].date <= row.dateISO) {
+        latestPrice = orderedPrices[priceIndex].price;
+        priceIndex++;
+      }
+      return { ...row, benchmark: chartData[0].total * latestPrice / basePrice };
+    });
   }, [benchmarkPrices, benchmark, range, chartData]);
 
   const chartDots = useMemo(() => {
@@ -276,6 +298,58 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
       }),
     [byPortfolio, portfolios, providers, accounts]
   );
+  const performanceSeries = useMemo(
+    () => overviewSeries.map((item) => ({ key: item.pid, name: item.name, color: item.color })),
+    [overviewSeries]
+  );
+  const performanceRows = useMemo<PerformanceChartRow[]>(() => {
+    const totalHistory = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+    const portfolioHistories = Object.entries(byPortfolio).map(([id, info]) => ({
+      id,
+      history: [...info.data].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    const dates = new Set<string>(totalHistory.map((snapshot) => snapshot.date));
+    for (const { history } of portfolioHistories) for (const snapshot of history) dates.add(snapshot.date);
+    const orderedDates = [...dates].sort((a, b) => a.localeCompare(b));
+    if (!orderedDates.length) return [];
+
+    const percentAt = (history: Snapshot[], date: string): number | null => {
+      const first = history[0];
+      if (!first || first.value <= 0 || date < first.date) return null;
+      let latest: Snapshot | undefined;
+      for (const snapshot of history) {
+        if (snapshot.date > date) break;
+        latest = snapshot;
+      }
+      return latest ? ((latest.value / first.value) - 1) * 100 : null;
+    };
+
+    const benchmarkHistory = benchmarkPrices?.key === `${benchmark}:MAX`
+      ? [...benchmarkPrices.rows].filter((point) => Number.isFinite(point.price) && point.price > 0).sort((a, b) => a.date.localeCompare(b.date))
+      : [];
+    const portfolioStart = totalHistory[0]?.date ?? orderedDates[0];
+    const benchmarkBase = [...benchmarkHistory].reverse().find((point) => point.date <= portfolioStart) ?? benchmarkHistory[0];
+
+    return orderedDates.map((date) => {
+      const row: PerformanceChartRow = { date: chartDateLabel(date), dateISO: date };
+      const totalPct = percentAt(totalHistory, date);
+      if (totalPct != null) row.total = totalPct;
+      for (const { id, history } of portfolioHistories) {
+        const value = percentAt(history, date);
+        if (value != null) row[id] = value;
+      }
+      if (benchmarkBase && date >= benchmarkBase.date) {
+        let latestPrice: number | undefined;
+        for (const point of benchmarkHistory) {
+          if (point.date > date) break;
+          latestPrice = point.price;
+        }
+        if (latestPrice != null) row.benchmark = ((latestPrice / benchmarkBase.price) - 1) * 100;
+      }
+      return row;
+    });
+  }, [snapshots, byPortfolio, benchmarkPrices, benchmark]);
+  const performanceRangeRows = useMemo(() => filterByRange(performanceRows, range), [performanceRows, range]);
   const overviewVisibleKeys = useMemo(() => {
     const keys = new Set<string>();
     if (!hiddenSeries.has("total")) keys.add("total");
@@ -633,7 +707,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} page={section} onSelect={(id) => { setActiveId(id); setHoldingViewId(null); }} onSelectHolding={(h) => { setActiveId(null); setHoldingViewId(h.id); }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} page={section} onSelect={(id) => { setActiveId(id); setHoldingViewId(null); if (id && section !== "dashboard") router.push(`/dashboard?portfolio=${encodeURIComponent(id)}`); }} onSelectHolding={(h) => { setActiveId(null); setHoldingViewId(h.id); }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={(a) => setConfirmAccount(a)}
         onDeleteProvider={(p) => setConfirmProvider(p)}
         onDeletePortfolio={(p) => setConfirmPortfolio(p)} />
@@ -653,8 +727,17 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
           ) : section === "goals" ? (
             <section className="space-y-4">
               <div><h1 className="text-3xl font-bold tracking-tight text-white">Goals</h1><p className="mt-1 text-sm text-zinc-500">Track your progress toward a portfolio target.</p></div>
-              <GoalPanel currentValue={totalValue} dateFormat={settings.dateFormat} />
+              <GoalPanel currentValue={totalValue} history={snapshots} dateFormat={settings.dateFormat} />
             </section>
+          ) : section === "performance" ? (
+            <PerformanceChart
+              data={performanceRangeRows}
+              series={performanceSeries}
+              range={range}
+              onRangeChange={pickRange}
+              benchmark={benchmark}
+              onBenchmarkChange={setBenchmark}
+            />
           ) : showWizard ? (
             <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId}
               onCreate={handleWizardCreate} inline />
@@ -744,9 +827,9 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
                       <CardDescription>{chartData.length} points • {active.name} {chartDots.length ? `• ${chartDots.length} trades` : ""}</CardDescription>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")} items={{ __none__: "Benchmark", "^FTSE": "FTSE 100", "^GSPC": "S&P 500", MSFT: "Microsoft" }}>
+                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")} items={{ __none__: "Benchmark", "VWRL.L": "VWRL", "^FTSE": "FTSE 100", "^GSPC": "S&P 500", MSFT: "Microsoft" }}>
                         <SelectTrigger className="h-7 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
+                        <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="VWRL.L">VWRL</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
                       </Select>
                       {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
                         <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
@@ -925,9 +1008,9 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
                       <CardDescription>Overall + per-portfolio • {chartData.length} points • {range}{hiddenSeries.size > 0 ? ` • ${overviewVisibleKeys.size}/${1 + overviewSeries.length} series` : ""}</CardDescription>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")} items={{ __none__: "Benchmark", "^FTSE": "FTSE 100", "^GSPC": "S&P 500", MSFT: "Microsoft" }}>
+                      <Select value={benchmark} onValueChange={(value) => setBenchmark(value ?? "__none__")} items={{ __none__: "Benchmark", "VWRL.L": "VWRL", "^FTSE": "FTSE 100", "^GSPC": "S&P 500", MSFT: "Microsoft" }}>
                         <SelectTrigger className="h-7 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
+                        <SelectContent><SelectItem value="__none__">Benchmark</SelectItem><SelectItem value="VWRL.L">VWRL</SelectItem><SelectItem value="^FTSE">FTSE 100</SelectItem><SelectItem value="^GSPC">S&amp;P 500</SelectItem><SelectItem value="MSFT">Microsoft</SelectItem></SelectContent>
                       </Select>
                       {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
                         <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
@@ -945,7 +1028,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
                           <YAxis domain={overviewYDomain ?? ["auto", "auto"]} tickFormatter={overviewAxisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
                           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
                           {!hiddenSeries.has("total") && <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} />}
-                          {benchmark !== "__none__" && <Area type="monotone" dataKey="benchmark" name={benchmark === "^FTSE" ? "FTSE 100" : benchmark === "^GSPC" ? "S&P 500" : benchmark} stroke="#fbbf24" fill="transparent" strokeWidth={2} dot={false} strokeDasharray="5 4" connectNulls />}
+                          {benchmark !== "__none__" && <Area type="monotone" dataKey="benchmark" name={benchmark === "VWRL.L" ? "VWRL" : benchmark === "^FTSE" ? "FTSE 100" : benchmark === "^GSPC" ? "S&P 500" : benchmark} stroke="#fbbf24" fill="transparent" strokeWidth={2} dot={false} strokeDasharray="5 4" connectNulls />}
                           {overviewSeries.filter((s) => !hiddenSeries.has(s.pid)).map((s) => (
                             <Area key={s.pid} type="monotone" dataKey={s.name} stroke={s.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />
                           ))}

@@ -24,7 +24,7 @@ export async function AuthenticatedDashboardPage({ section }: { section: Dashboa
       const requestCookies = await cookies();
       const hasSession = requestCookies.getAll().some((cookie) => cookie.name === "wos-session");
       if (hasSession) {
-        const path = section === "dashboard" ? "/dashboard" : `/${section}`;
+          const path = section === "dashboard" ? "/dashboard" : `/${section}`;
         return (
           <div className="min-h-screen flex items-center justify-center p-6">
             <Card className="glass-card max-w-lg w-full">
@@ -42,5 +42,5 @@ export async function AuthenticatedDashboardPage({ section }: { section: Dashboa
   }
 
   if (!user) redirect("/login");
-  return <Dashboard isDemo={isDemo} section={section} />;
+  return <Dashboard key={section} isDemo={isDemo} section={section} />;
 }

@@ -18,19 +18,9 @@ import { fmtRelative, holdingValueGBP, fmtPrice } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
-function isLightColor(hex: string) {
-  try {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    return lum > 180;
-  } catch { return false; }
-}
-
 export function Sidebar({ accounts, providers, portfolios, holdings, activeId, page, onSelect, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void; onSelectHolding?: (h: Holding) => void;
-  page: "dashboard" | "watchlist" | "goals";
+  page: "dashboard" | "watchlist" | "goals" | "performance";
   onCreateAccount: (name: string) => void | Promise<void>;
   onCreateProvider?: (name: string, accountId: string) => Promise<void>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
@@ -234,7 +224,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
             <LayoutDashboard className="w-4 h-4" /> Dashboard
           </Button>
         ) : (
-          <Link href="/dashboard" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: "ghost", className: "w-full justify-start gap-2.5" })}>
+          <Link href="/dashboard" onClick={() => { onSelect(null); setMobileOpen(false); }} className={buttonVariants({ variant: "ghost", className: "w-full justify-start gap-2.5" })}>
             <LayoutDashboard className="w-4 h-4" /> Dashboard
           </Link>
         )}
@@ -243,6 +233,9 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
         </Link>
         <Link href="/goals" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "goals" ? "secondary" : "ghost", className: "w-full justify-start gap-2.5" })}>
           <Target className="w-4 h-4" /> Goals
+        </Link>
+        <Link href="/performance" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "performance" ? "secondary" : "ghost", className: "w-full justify-start gap-2.5" })}>
+          <TrendingUp className="w-4 h-4" /> Performance
         </Link>
 
         <div className="mt-4 relative">
@@ -271,15 +264,15 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
               const direct = filteredPortfolios(directByAccount.get(acc.id) ?? []);
               const accColor = accColorFor(acc);
               return (
-                <div key={acc.id} className="rounded-2xl border overflow-hidden shadow-sm" style={{ borderColor: accColor + "40", background: accColor + "26" }}>
-                  <div className="flex items-center gap-1 p-1.5">
-                    <Button variant="ghost" size="icon-xs" onClick={() => toggle(acc.id)} className="shrink-0"><ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? "" : "-rotate-90"}`} /></Button>
-                    <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer" onClick={()=>toggle(acc.id)}>
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: accColor }} />
-                      {isOpen ? <FolderOpen className="w-4 h-4 text-zinc-500 shrink-0" /> : <Building2 className="w-4 h-4 text-zinc-500 shrink-0" />}
-                      <span className="truncate text-sm font-medium text-zinc-200">{acc.name}</span>
+                <div key={acc.id} className="group overflow-hidden rounded-2xl border shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-[filter] hover:brightness-110" style={{ borderColor: accColor + "42", background: accColor + "10" }}>
+                  <div className="flex items-center gap-1.5 px-2 py-2">
+                    <Button variant="ghost" size="icon-xs" onClick={() => toggle(acc.id)} aria-expanded={isOpen} aria-label={`${isOpen ? "Collapse" : "Expand"} ${acc.name}`} className="shrink-0 text-zinc-500 hover:text-white"><ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? "" : "-rotate-90"}`} /></Button>
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full shrink-0 ring-2 ring-white/[0.04]" style={{ background: accColor }} />
+                      {isOpen ? <FolderOpen className="w-4 h-4 shrink-0" style={{ color: accColor }} /> : <Building2 className="w-4 h-4 text-zinc-500 shrink-0" />}
+                      <span className="truncate text-sm font-semibold text-zinc-200">{acc.name}</span>
                     </div>
-                    <span className="text-xs tabular-nums text-zinc-500 pr-1 hidden sm:inline">£{total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                    <span className="text-xs tabular-nums font-medium text-zinc-400 pr-1">£{total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
                     {editMode && (
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Account actions"><MoreVertical className="w-3.5 h-3.5"/></Button>} />
@@ -295,7 +288,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
                     )}
                   </div>
                   {isOpen && (
-                    <div className="px-3 pb-3 space-y-3">
+                    <div className="px-2.5 pb-2.5 space-y-2.5">
                       {provs.length===0 && direct.length===0 && <div className="p-4 rounded-xl border border-dashed border-white/10 bg-black/20 text-center"><p className="text-sm text-zinc-400">No providers yet</p><p className="text-xs text-zinc-600 mt-1">Add a provider like Vanguard or Trading 212</p><div className="flex gap-2 mt-3"><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>{setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true);}}><Plus className="w-3.5 h-3.5"/> Provider</Button><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3.5 h-3.5"/> Portfolio</Button></div></div>}
                       {provs.map((pr, pi)=>{
                         const ps = filteredPortfolios(portfoliosByProvider.get(pr.id) ?? []);
@@ -303,13 +296,13 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
                         const provTotal = providerTotals(pr.id);
                         const provColor = pr.color || portfolioTint(accColorFor(acc), pi);
                         return (
-                          <div key={pr.id} className="rounded-lg border overflow-hidden" style={{ borderColor: provColor + "38", background: provColor + "20" }}>
-                            <div className="flex items-center gap-1 p-1">
-                              <Button variant="ghost" size="icon-xs" onClick={()=>toggleProv(pr.id)} className="shrink-0"><ChevronDown className={`w-3 h-3 transition-transform ${isProvOpen ? "" : "-rotate-90"}`} /></Button>
+                          <div key={pr.id} className="overflow-hidden rounded-xl border transition-[filter] hover:brightness-110" style={{ borderColor: provColor + "32", background: provColor + "0A" }}>
+                            <div className="flex items-center gap-1.5 px-1.5 py-1.5">
+                              <Button variant="ghost" size="icon-xs" onClick={()=>toggleProv(pr.id)} aria-expanded={isProvOpen} aria-label={`${isProvOpen ? "Collapse" : "Expand"} ${pr.name}`} className="shrink-0 text-zinc-500 hover:text-white"><ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isProvOpen ? "" : "-rotate-90"}`} /></Button>
                               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: provColor }} />
-                              <Briefcase className="w-3.5 h-3.5 text-zinc-600 shrink-0"/>
-                              <span className="flex-1 truncate text-xs font-medium text-zinc-300">{pr.name}</span>
-                              <span className="text-[11px] tabular-nums text-zinc-500">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                              <Briefcase className="w-3.5 h-3.5 text-zinc-500 shrink-0"/>
+                              <span className="flex-1 truncate text-xs font-semibold text-zinc-300">{pr.name}</span>
+                              <span className="text-[11px] tabular-nums text-zinc-400">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                               {editMode && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
@@ -324,19 +317,18 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
                               )}
                             </div>
                             {isProvOpen && (
-                              <div className="px-1 pb-1 space-y-0.5">
+                              <div className="px-1.5 pb-1.5 space-y-1">
                                 {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
                                 {ps.map((p, pIdx)=>{
                                   const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h, settings.fxRates),0);
                                   const active=activeId===p.id;
                                   const baseColor = p.color || portfolioTint(provColor, pIdx);
-                                  const selectedBg = baseColor;
-                                  const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
-                                  const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
+                                  const activeText = "#fff";
+                                  const activeMuted = "rgba(255,255,255,0.62)";
                                   return (
-                                    <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-md border ${active?"border-2 shadow-md":"bg-white/[0.04] text-zinc-300 border-white/[0.04] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
-                                      <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-1.5 h-6 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
-                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
+                                    <div key={p.id} className={`group flex items-center gap-1 rounded-lg border p-1 transition-colors ${active?"shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]":"bg-white/[0.035] text-zinc-300 border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12]"}`} style={active ? { background: "rgba(255,255,255,0.08)", borderColor: baseColor + "70", color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                                      <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-1.5 h-7 ${active?"hover:bg-white/[0.04]":"hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
+                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: baseColor, boxShadow: active ? `0 0 8px ${baseColor}80` : undefined }} />
                                         <Folder className="w-3 h-3 shrink-0" style={{ color: active ? activeMuted : undefined }} />
                                         <span className="truncate text-[11px] font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                                       </Button>
@@ -383,18 +375,17 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
                             const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h, settings.fxRates),0);
                             const active=activeId===p.id;
                             const baseColor = p.color || portfolioTint(accColorFor(acc), di);
-                            const selectedBg = baseColor;
-                            const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
-                            const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
+                            const activeText = "#fff";
+                            const activeMuted = "rgba(255,255,255,0.62)";
                             return (
-                              <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border ${active?"border-2 shadow-md":"bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
-                                <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active?"hover:bg-black/10":"hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
-                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor, opacity: active ? 0.9 : 1 }} />
-                                  <Folder className={`w-3.5 h-3.5 shrink-0`} style={{ color: active ? activeMuted : undefined }} />
+                              <div key={p.id} className={`group flex items-center gap-1 rounded-lg border p-1 transition-colors ${active ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]" : "bg-white/[0.035] text-zinc-300 border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12]"}`} style={active ? { background: "rgba(255,255,255,0.08)", borderColor: baseColor + "70", color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                                <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-white/[0.04]" : "hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: baseColor, boxShadow: active ? `0 0 8px ${baseColor}80` : undefined }} />
+                                  <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
                                   <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
-                                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full capitalize font-medium" style={active ? { background: isLightColor(selectedBg) ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.18)", color: activeMuted } : {}}>{p.type}</span>
+                                  <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize" style={active ? { background: "rgba(255,255,255,0.12)", color: activeMuted } : {}}>{p.type}</span>
                                 </Button>
-                                <span className="text-xs tabular-nums pr-1 hidden md:inline" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                                <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                                 {editMode && (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
@@ -441,13 +432,12 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
                     const val = p.holdings.reduce((s, h:Holding) => s + holdingValueGBP(h, settings.fxRates), 0);
                     const active = activeId === p.id;
                     const baseColor = p.color || PALETTE[ui % PALETTE.length].value;
-                    const selectedBg = baseColor;
-                    const activeText = isLightColor(selectedBg) ? "#0a0a0a" : "#fff";
-                    const activeMuted = isLightColor(selectedBg) ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
+                    const activeText = "#fff";
+                    const activeMuted = "rgba(255,255,255,0.62)";
                     return (
-                      <div key={p.id} className={`group flex items-center gap-1 p-1 rounded-lg border transition-colors ${active ? "border-2 shadow-md" : "bg-white/[0.04] text-zinc-300 border-white/[0.06] hover:border-white/10"}`} style={active ? { background: selectedBg, borderColor: selectedBg, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
-                        <Button variant="ghost" size="sm" className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-black/10" : "hover:bg-white/5"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? activeText : baseColor }} />
+                      <div key={p.id} className={`group flex items-center gap-1 rounded-lg border p-1 transition-colors ${active ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]" : "bg-white/[0.035] text-zinc-300 border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12]"}`} style={active ? { background: "rgba(255,255,255,0.08)", borderColor: baseColor + "70", color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                        <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-white/[0.04]" : "hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: baseColor, boxShadow: active ? `0 0 8px ${baseColor}80` : undefined }} />
                           <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
                           <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                         </Button>
