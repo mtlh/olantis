@@ -52,7 +52,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   const { settings } = useSettings();
   const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
-  const [activeId, setActiveId] = useState<string | null>(portfolioFromUrl);
+  const activeId = portfolioFromUrl;
   const [tradeHolding, setTradeHolding] = useState<Holding | null>(null);
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
   const [showTrade, setShowTrade] = useState(false);
@@ -99,7 +99,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
-  const [holdingViewId, setHoldingViewId] = useState<string | null>(holdingFromUrl);
+  const holdingViewId = holdingFromUrl;
   const viewHolding = useMemo(() => {
     if (!holdingViewId) return null;
     const h = allHoldingsList.find((x: Holding) => x.id === holdingViewId) ?? null;
@@ -115,8 +115,6 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
     const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
     return pf?.color || prov?.color || acc?.color || "#60a5fa";
   }, [viewHolding, viewPortfolio, providers, accounts]);
-  const prevPortfoliosRef = useRef<Portfolio[]>([]);
-  useEffect(()=>{ if(prevPortfoliosRef.current !== portfolios && activeId && !portfolios.find(p=>p.id===activeId)) setActiveId(null); prevPortfoliosRef.current = portfolios; },[portfolios,activeId]);
   const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); return active.color || prov?.color || acc?.color || "#60a5fa"; }, [active, providers, accounts]);
   const overviewTx = useTransactions(null);
   const { create: createTx, refresh: refreshTx, remove: removeTx } = overviewTx;
@@ -685,13 +683,9 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   return (
     <div className="flex min-h-screen">
       <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} page={section} onSelect={(id) => {
-        setActiveId(id);
-        setHoldingViewId(null);
         if (id) router.push(`/dashboard?portfolio=${encodeURIComponent(id)}`);
         else if (section === "dashboard") router.replace("/dashboard");
       }} onSelectHolding={(h) => {
-        setActiveId(null);
-        setHoldingViewId(h.id);
         router.push(`/dashboard?holding=${encodeURIComponent(h.id)}`);
       }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={(a) => setConfirmAccount(a)}
@@ -733,7 +727,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
               portfolioId={viewPortfolio?.id ?? null}
               portfolioName={viewPortfolio?.name ?? providers.find((provider) => provider.id === viewHolding.providerId)?.name ?? accounts.find((account) => account.id === viewHolding.accountId)?.name}
               color={viewColor}
-              onBack={() => { setHoldingViewId(null); router.replace("/dashboard"); }}
+              onBack={() => router.replace("/dashboard")}
               onBuy={() => openTrade(viewHolding, "buy")}
               onSell={() => openTrade(viewHolding, "sell")}
               onAddToPortfolio={() => openAssign(viewHolding)}
@@ -799,7 +793,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
               cost={activeCost}
               gain={activeGain}
               gainPct={activeGainPct}
-              onBack={() => { setActiveId(null); router.replace("/dashboard"); }}
+              onBack={() => router.replace("/dashboard")}
               onEdit={() => openEditPortfolio(active)}
               onAddHolding={openAdd}
               onDelete={() => { setConfirmPortfolio(active); setConfirmPortfolioInput(""); }}
@@ -886,7 +880,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
                         {filteredHoldings.map((h: Holding) => {
                            const val = holdingValueGBP(h, settings.fxRates); const cost = holdingCostGBP(h, settings.fxRates); const pct = cost ? ((val - cost) / cost) * 100 : 0;
                           return (
-                            <TableRow key={h.id} className="border-white/5 hover:bg-white/[0.04] cursor-pointer" onClick={() => setHoldingViewId(h.id)}>
+                            <TableRow key={h.id} className="border-white/5 hover:bg-white/[0.04] cursor-pointer" onClick={() => router.push(`/dashboard?holding=${encodeURIComponent(h.id)}`)}>
                               <TableCell>
                                 <div className="flex items-center gap-3">
                                   <div className="w-9 h-9 rounded-xl grid place-items-center font-bold text-xs bg-white/10 border border-white/10 text-white shrink-0">{h.symbol.slice(0, 3)}</div>
@@ -1280,7 +1274,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <Button variant="ghost" onClick={() => setConfirmPortfolio(null)}>Cancel</Button>
-                <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 border border-red-500/20" disabled={confirmPortfolioInput !== confirmPortfolio?.name} onClick={async () => { if (!confirmPortfolio) return; await remove(confirmPortfolio.id); setActiveId(null); setConfirmPortfolio(null); toast({title:"Portfolio deleted",variant:"success"}); }}>Delete portfolio</Button>
+                <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 border border-red-500/20" disabled={confirmPortfolioInput !== confirmPortfolio?.name} onClick={async () => { if (!confirmPortfolio) return; const deletedId = confirmPortfolio.id; await remove(deletedId); if (portfolioFromUrl === deletedId) router.replace("/dashboard"); setConfirmPortfolio(null); toast({title:"Portfolio deleted",variant:"success"}); }}>Delete portfolio</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -1328,7 +1322,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
                   await deleteHolding(id);
                   await refreshAllHoldings();
                   setConfirmHolding(null);
-                  if (wasViewing) setHoldingViewId(null);
+                  if (wasViewing) router.replace("/dashboard");
                   toast({ title: "Holding deleted", variant: "success" });
                 }}>Delete</Button>
               </div>
