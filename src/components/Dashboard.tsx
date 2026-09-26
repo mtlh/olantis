@@ -42,6 +42,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   const router = useRouter();
   const searchParams = useSearchParams();
   const portfolioFromUrl = searchParams.get("portfolio");
+  const holdingFromUrl = searchParams.get("holding");
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
@@ -98,7 +99,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
-  const [holdingViewId, setHoldingViewId] = useState<string | null>(null);
+  const [holdingViewId, setHoldingViewId] = useState<string | null>(holdingFromUrl);
   const viewHolding = useMemo(() => {
     if (!holdingViewId) return null;
     const h = allHoldingsList.find((x: Holding) => x.id === holdingViewId) ?? null;
@@ -683,7 +684,16 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} page={section} onSelect={(id) => { setActiveId(id); setHoldingViewId(null); if (id && section !== "dashboard") router.push(`/dashboard?portfolio=${encodeURIComponent(id)}`); }} onSelectHolding={(h) => { setActiveId(null); setHoldingViewId(h.id); }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} page={section} onSelect={(id) => {
+        setActiveId(id);
+        setHoldingViewId(null);
+        if (id) router.push(`/dashboard?portfolio=${encodeURIComponent(id)}`);
+        else if (section === "dashboard") router.replace("/dashboard");
+      }} onSelectHolding={(h) => {
+        setActiveId(null);
+        setHoldingViewId(h.id);
+        router.push(`/dashboard?holding=${encodeURIComponent(h.id)}`);
+      }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={(a) => setConfirmAccount(a)}
         onDeleteProvider={(p) => setConfirmProvider(p)}
         onDeletePortfolio={(p) => setConfirmPortfolio(p)} />
@@ -723,7 +733,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
               portfolioId={viewPortfolio?.id ?? null}
               portfolioName={viewPortfolio?.name ?? providers.find((provider) => provider.id === viewHolding.providerId)?.name ?? accounts.find((account) => account.id === viewHolding.accountId)?.name}
               color={viewColor}
-              onBack={() => setHoldingViewId(null)}
+              onBack={() => { setHoldingViewId(null); router.replace("/dashboard"); }}
               onBuy={() => openTrade(viewHolding, "buy")}
               onSell={() => openTrade(viewHolding, "sell")}
               onAddToPortfolio={() => openAssign(viewHolding)}
@@ -789,7 +799,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
               cost={activeCost}
               gain={activeGain}
               gainPct={activeGainPct}
-              onBack={() => setActiveId(null)}
+              onBack={() => { setActiveId(null); router.replace("/dashboard"); }}
               onEdit={() => openEditPortfolio(active)}
               onAddHolding={openAdd}
               onDelete={() => { setConfirmPortfolio(active); setConfirmPortfolioInput(""); }}
