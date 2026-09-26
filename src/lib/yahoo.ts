@@ -1,4 +1,5 @@
 import YahooFinance from "yahoo-finance2";
+import { cached } from "@/lib/http-cache";
 
 const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
@@ -46,9 +47,14 @@ export async function fetchQuotes(
     symbols.map(async ({ symbol, exchange }) => {
       const ys = toYahooSymbol(symbol, exchange);
       try {
-        const q = (await yf.quote(ys)) as unknown as YahooQuoteResult;
-        const price = q.regularMarketPrice;
-        const currency = q.currency || "USD";
+        // Cache per Yahoo symbol so repeated refreshes across holdings/requests
+        // share one upstream call and survive 429s with the last good price.
+        const q = await cached("quote", ys, async () => {
+          const raw = (await yf.quote(ys)) as unknown as YahooQuoteResult;
+          return { price: raw.regularMarketPrice ?? null, currency: raw.currency || "USD" };
+        });
+        const price = q.price;
+        const currency = q.currency;
         if (!price) return;
         const entry = { price, currency };
         const up = symbol.toUpperCase();
@@ -87,22 +93,55 @@ export const CHART_RANGE_KEYS = Object.keys(CHART_RANGES);
 export async function fetchChart(symbol: string, exchange?: string, range = "1Y"): Promise<ChartPoint[]> {
   const ys = toYahooSymbol(symbol, exchange);
   const cfg = CHART_RANGES[range] ?? CHART_RANGES["1Y"];
-  const period1 = new Date(Date.now() - cfg.days * 86400000).toISOString().slice(0, 10);
   const period2 = new Date().toISOString().slice(0, 10);
-  try {
-    const res = await yf.chart(ys, { period1, period2, interval: cfg.interval, return: "array" });
-    type RawChart = { quotes?: Array<{ date?: string | number; close?: number | null }> };
-    const quotes = (res as unknown as RawChart).quotes ?? [];
-    const out: ChartPoint[] = [];
-    for (const q of quotes) {
-      if (q.close == null || q.date == null) continue;
-      const d = typeof q.date === "number" ? new Date(q.date * 1000) : new Date(q.date);
-      out.push({ date: d.toISOString().slice(0, 10), price: q.close });
+  // Bucket the cache key by day so intraday refreshes within a day share the
+  // result, but the series still rolls forward tomorrow.
+  const cacheKey = `${ys}|${range}|${period2}`;
+  return cached("chart", cacheKey, async () => {
+    const period1 = new Date(Date.now() - cfg.days * 86400000).toISOString().slice(0, 10);
+    try {
+      const res = await yf.chart(ys, { period1, period2, interval: cfg.interval, return: "array" });
+      type RawChart = { quotes?: Array<{ date?: string | number; close?: number | null }> };
+      const quotes = (res as unknown as RawChart).quotes ?? [];
+      const out: ChartPoint[] = [];
+      for (const q of quotes) {
+        if (q.close == null || q.date == null) continue;
+        const d = typeof q.date === "number" ? new Date(q.date * 1000) : new Date(q.date);
+        out.push({ date: d.toISOString().slice(0, 10), price: q.close });
+      }
+      return out;
+    } catch {
+      return [];
     }
-    return out;
-  } catch {
-    return [];
-  }
+  });
+}
+
+/**
+ * Arbitrary-window weekly history, used by the demo seed. Shares the same
+ * cache/limiter as the rest of the Yahoo access so a demo burst cannot starve
+ * real quote traffic or trip 429s.
+ */
+export async function fetchHistory(
+  symbol: string,
+  period1: string,
+  period2: string,
+  interval: "1d" | "1wk" | "1mo" = "1wk"
+): Promise<Array<{ date: string; close: number }>> {
+  return cached("chart", `${symbol}|${interval}|${period1}|${period2}`, async () => {
+    try {
+      const res = await yf.chart(toYahooSymbol(symbol), { period1, period2, interval, return: "array" });
+      type RawChart = { quotes?: Array<{ date?: string | number | Date; close?: number | null }> };
+      const quotes = (res as unknown as RawChart).quotes ?? [];
+      const out: Array<{ date: string; close: number }> = [];
+      for (const q of quotes) {
+        if (q.close == null || q.date == null) continue;
+        out.push({ date: new Date(q.date).toISOString().slice(0, 10), close: q.close });
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  });
 }
 
 const EXCHANGE_MAP: Record<string, string> = {
@@ -122,23 +161,25 @@ const EXCHANGE_MAP: Record<string, string> = {
 export async function searchSymbols(query: string) {
   const q = query.trim();
   if (!q) return [];
-  try {
-    const res = (await yf.search(q)) as unknown as { quotes?: YahooSearchQuote[] };
-    const quotes = res.quotes ?? [];
-    const arr = Array.isArray(quotes) ? quotes : [];
-    return arr
-      .slice(0, 8)
-      .map((item: YahooSearchQuote) => {
-        const symbol = item.symbol ?? "";
-        const name = item.longname ?? item.shortname ?? item.longName ?? item.shortName ?? symbol;
-        const rawExchange = item.exchange ?? item.exchDisp ?? "";
-        const exchDisp = item.exchDisp ?? item.exchange ?? "";
-        const type = item.quoteType ?? item.quotedType ?? "";
-        const normExchange = EXCHANGE_MAP[String(rawExchange).toUpperCase()] ?? rawExchange;
-        return { symbol, name, exchange: normExchange, rawExchange, exchDisp, type, longname: name };
-      })
-      .filter((r) => r.symbol);
-  } catch {
-    return [];
-  }
+  return cached("search", q.toLowerCase(), async () => {
+    try {
+      const res = (await yf.search(q)) as unknown as { quotes?: YahooSearchQuote[] };
+      const quotes = res.quotes ?? [];
+      const arr = Array.isArray(quotes) ? quotes : [];
+      return arr
+        .slice(0, 8)
+        .map((item: YahooSearchQuote) => {
+          const symbol = item.symbol ?? "";
+          const name = item.longname ?? item.shortname ?? item.longName ?? item.shortName ?? symbol;
+          const rawExchange = item.exchange ?? item.exchDisp ?? "";
+          const exchDisp = item.exchDisp ?? item.exchange ?? "";
+          const type = item.quoteType ?? item.quotedType ?? "";
+          const normExchange = EXCHANGE_MAP[String(rawExchange).toUpperCase()] ?? rawExchange;
+          return { symbol, name, exchange: normExchange, rawExchange, exchDisp, type, longname: name };
+        })
+        .filter((r) => r.symbol);
+    } catch {
+      return [];
+    }
+  });
 }

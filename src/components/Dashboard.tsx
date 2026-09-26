@@ -1,10 +1,10 @@
 "use client";
-import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings } from "@/lib/store";
+import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings } from "@/lib/store";
 import type { Holding, Portfolio, Snapshot } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, ReferenceDot } from "recharts";
-import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase, FolderPlus } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
 import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
 import { StockDetail } from "@/components/StockDetail";
@@ -20,7 +20,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 
 import { PALETTE, portfolioTint } from "@/lib/colors";
-import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate } from "@/lib/format";
+import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, chartDateLabel, gbpAxisFormatter, paddedDomain, numericValues } from "@/lib/format";
+import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
 const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
 const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d399", GIA: "#f472b6" };
 const RANGE_COUNT: Record<string, number> = { "1M": 4, "3M": 13, "1Y": 52, MAX: 999 };
@@ -35,10 +36,11 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady } = useAccounts();
 
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
-  const { portfolios, create, remove, upsertHolding, deleteHolding, refresh: refreshPortfolios, ready: portfoliosReady } = usePortfolios();
+  const { portfolios, create, remove, upsertHolding, deleteHolding, moveHolding, refresh: refreshPortfolios, ready: portfoliosReady } = usePortfolios();
   const { holdings: allHoldingsList, refresh: refreshAllHoldings } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
   const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings);
+  const { settings } = useSettings();
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tradeHolding, setTradeHolding] = useState<Holding | null>(null);
@@ -50,7 +52,28 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const [showHolding, setShowHolding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isManual, setIsManual] = useState(false);
+  // Default chart range comes from user settings; once the viewer picks a
+  // range manually we stop following the preference for this visit.
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
+  const rangeTouched = useRef(false);
+  useEffect(() => {
+    if (rangeTouched.current) return;
+    setRange(settings.defaultRange);
+  }, [settings.defaultRange]);
+  const pickRange = useCallback((r: "1M" | "3M" | "1Y" | "MAX") => {
+    rangeTouched.current = true;
+    setRange(r);
+  }, []);
+  // Overview chart series filters — toggle a series out to compare the rest on a tighter scale.
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(() => new Set());
+  const toggleSeries = useCallback((key: string) => {
+    setHiddenSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
   const [allocMode, setAllocMode] = useState<"holding" | "account">("holding");
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,10 +107,9 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
 
   const openTrade = (h: Holding, type: "buy" | "sell") => { setTradeHolding(h); setTradeType(type); setShowTrade(true); };
   const handleTrade = async (data: { shares: number; price: number; date: string }) => {
-    const pid = tradeHolding?.portfolioId ?? activeId;
-    if (!pid || !tradeHolding) { toast({ title: "Cannot trade", description: "Direct stocks live outside portfolios — add them to a portfolio to record trades", variant: "error" }); return; }
+    if (!tradeHolding) { toast({ title: "Cannot trade", description: "No holding selected", variant: "error" }); return; }
     try {
-      await createTx({ portfolioId: pid, holdingId: tradeHolding.id, type: tradeType, shares: data.shares, price: data.price, date: data.date });
+      await createTx({ portfolioId: tradeHolding.portfolioId ?? null, holdingId: tradeHolding.id, type: tradeType, shares: data.shares, price: data.price, date: data.date });
       await refreshPortfolios();
       await refreshTx();
       await refreshAllHoldings();
@@ -111,25 +133,23 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     return snapshots.slice(-n);
   }, [snapshots, range]);
 
-  const chartData = useMemo(() => {
+  const chartData = useMemo<ChartRow[]>(() => {
     const n = RANGE_COUNT[range];
     const activeSeries = active ? ((byPortfolio[active.id]?.data ?? []) as Snapshot[]) : [];
     if (active) {
       const trimmed = activeSeries.length > n ? activeSeries.slice(-n) : activeSeries;
       if (trimmed.length === 0) {
-        const today = new Date().toISOString().split("T")[0].slice(5);
-        return [{ date: today, total: active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0) }] as ChartRow[];
+        return [{ date: chartDateLabel(todayISODate()), total: active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0) }] as ChartRow[];
       }
-      return trimmed.map((s) => ({ date: s.date.slice(5), total: s.value }));
+      return trimmed.map((s) => ({ date: chartDateLabel(s.date), total: s.value }));
     }
     if (filteredSnapshots.length === 0) {
-      const today = new Date().toISOString().split("T")[0].slice(5);
-      return [{ date: today, total: totalValue }] as ChartRow[];
+      return [{ date: chartDateLabel(todayISODate()), total: totalValue }] as ChartRow[];
     }
     const byPort = byPortfolio;
     const dates = filteredSnapshots.map((s) => s.date);
     return dates.map((d) => {
-      const row: ChartRow = { date: d.slice(5), total: filteredSnapshots.find((s) => s.date === d)?.value ?? 0 };
+      const row: ChartRow = { date: chartDateLabel(d), total: filteredSnapshots.find((s) => s.date === d)?.value ?? 0 };
       for (const [, info] of Object.entries(byPort)) {
         const v = info.data.find((x: Snapshot) => x.date === d)?.value;
         if (v != null) row[info.name] = v;
@@ -143,13 +163,59 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     const map = new Map(chartData.map((d) => [d.date, d.total]));
     return displayTx
       .map((t) => {
-        const mmdd = t.date.slice(5);
-        const y = map.get(mmdd);
+        const key = chartDateLabel(t.date);
+        const y = map.get(key);
         if (y == null) return null;
-        return { x: mmdd, y, type: t.type, symbol: t.symbol, date: t.date, shares: t.shares, price: t.price };
+        return { x: key, y, type: t.type, symbol: t.symbol, date: t.date, shares: t.shares, price: t.price };
       })
       .filter((x): x is ChartDot => x !== null);
   }, [displayTx, chartData]);
+
+  const chartZoom = useChartZoom(chartData);
+  const axisValues = useMemo(() => numericValues(chartZoom.visible), [chartZoom.visible]);
+  const axisFmt = useMemo(() => gbpAxisFormatter(axisValues), [axisValues]);
+  const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
+
+  // Trade markers honour the user's "Show trade markers on charts" preference.
+  const shownDots = useMemo(() => (settings.showTradeMarkers ? chartDots : []), [settings.showTradeMarkers, chartDots]);
+  // Markers outside the zoomed period would land outside the X domain, so filter them too.
+  const visibleDots = useMemo(() => {
+    const dates = new Set(chartZoom.visible.map((d) => d.date));
+    return shownDots.filter((d) => dates.has(d.x));
+  }, [shownDots, chartZoom.visible]);
+
+  const overviewSeries = useMemo(
+    () =>
+      Object.entries(byPortfolio).map(([pid, info]: [string, { name: string; data: Snapshot[] }], i) => {
+        const pf = portfolios.find((p) => p.id === pid);
+        const prov = pf ? providers.find((pr) => pr.id === pf.providerId) : null;
+        const acc = pf ? accounts.find((a) => a.id === pf.accountId) : null;
+        const color = pf?.color || prov?.color || acc?.color || PORTFOLIO_COLORS[info.name] || CHART_COLORS[i % CHART_COLORS.length];
+        return { pid, name: info.name, color };
+      }),
+    [byPortfolio, portfolios, providers, accounts]
+  );
+  const overviewVisibleKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (!hiddenSeries.has("total")) keys.add("total");
+    for (const s of overviewSeries) if (!hiddenSeries.has(s.pid)) keys.add(s.name);
+    return keys;
+  }, [overviewSeries, hiddenSeries]);
+  // Axis values must follow the visible series only — the axis is relative
+  // (not zero-based), so filtered-out series would otherwise skew both the
+  // domain and the tick precision.
+  const overviewAxisValues = useMemo(() => {
+    const vals: number[] = [];
+    for (const row of chartZoom.visible as Array<Record<string, unknown>>) {
+      for (const k of overviewVisibleKeys) {
+        const v = row[k];
+        if (typeof v === "number" && Number.isFinite(v)) vals.push(v);
+      }
+    }
+    return vals;
+  }, [chartZoom.visible, overviewVisibleKeys]);
+  const overviewAxisFmt = useMemo(() => gbpAxisFormatter(overviewAxisValues), [overviewAxisValues]);
+  const overviewYDomain = useMemo(() => paddedDomain(overviewAxisValues), [overviewAxisValues]);
 
   const allocation = useMemo(() => {
     const unique = new Map<string, Holding>();
@@ -299,7 +365,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     else if (r.symbol) fetchQuote(r.symbol);
   };
 
-  const openAdd = () => { const manualDefault = active?.type === "manual"; setIsManual(manualDefault); setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: "GBP" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
+  const openAdd = () => { const manualDefault = active?.type === "manual"; setIsManual(manualDefault); setForm({ symbol: "", name: "", shares: "", avgPrice: "", currentPrice: "", purchaseDate: new Date().toISOString().split("T")[0], exchange: "", currency: settings.currency || "GBP" }); setEditingId(null); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
   const openEdit = (h: Holding) => { const manualDetected = active?.type === "manual" || !isListedSymbol(h.symbol); setIsManual(manualDetected); setForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), currentPrice: String(h.currentPrice), purchaseDate: h.purchaseDate?.split("T")[0] ?? new Date().toISOString().split("T")[0], exchange: h.exchange ?? "", currency: h.currency ?? "GBP" }); setEditingId(h.id); setFormErrors({}); setQuoteInfo(""); setShowSymbolMenu(false); setSymbolResults([]); setShowHolding(true); };
 
   const fetchQuote = async (sym:string)=>{
@@ -372,6 +438,54 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
     setShowWizard(true);
   };
 
+  const [assignHolding, setAssignHolding] = useState<Holding | null>(null);
+  const [assignTarget, setAssignTarget] = useState<string>("__pick__");
+  const [assignName, setAssignName] = useState("");
+  const [assignAccountId, setAssignAccountId] = useState<string>("__none");
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignError, setAssignError] = useState("");
+
+  const openAssign = (h: Holding) => {
+    setAssignHolding(h);
+    setAssignTarget(portfolios.length ? "__pick__" : "__new__");
+    setAssignName("");
+    setAssignAccountId(h.accountId ?? "__none");
+    setAssignError("");
+  };
+  const closeAssign = () => { setAssignHolding(null); setAssignError(""); };
+
+  const confirmAssign = async () => {
+    const h = assignHolding;
+    if (!h) return;
+    if (assignTarget === "__pick__") { setAssignError("Choose a portfolio, or create a new one"); return; }
+    setAssignSaving(true);
+    setAssignError("");
+    try {
+      let pid = assignTarget;
+      let pfName = "";
+      if (assignTarget === "__new__") {
+        const name = assignName.trim();
+        if (name.length < 2) { setAssignError("Portfolio name must be at least 2 characters"); return; }
+        const accountId = assignAccountId === "__none" ? null : assignAccountId;
+        const providerId = accountId && h.providerId && providers.find((pr) => pr.id === h.providerId)?.accountId === accountId ? h.providerId : null;
+        const created = await create(name, isListedSymbol(h.symbol) ? "live" : "manual", accountId, providerId);
+        pid = created.id;
+        pfName = name;
+      } else {
+        pfName = portfolios.find((p) => p.id === pid)?.name ?? "";
+      }
+      await moveHolding(h.id, pid);
+      await refreshPortfolios();
+      await refreshAllHoldings();
+      toast({ title: "Added to portfolio", description: `${h.symbol} → ${pfName}`, variant: "success" });
+      closeAssign();
+    } catch (e: unknown) {
+      toast({ title: "Could not add to portfolio", description: e instanceof Error ? e.message : String(e), variant: "error" });
+    } finally {
+      setAssignSaving(false);
+    }
+  };
+
   const refreshPrices = async()=>{
     const allHs = [...portfolios.flatMap(p=>p.holdings), ...directHoldings];
     if(allHs.length===0) return;
@@ -416,7 +530,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
             shares: Number(extra.shares || 1),
             avgPrice: price,
             currentPrice: price,
-            currency: "GBP",
+            currency: settings.currency || "GBP",
             purchaseDate: todayISODate(),
           }),
         });
@@ -443,18 +557,56 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
             const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
             return (
               <>
-                <StockDetail holding={viewHolding} portfolioId={viewPortfolio?.id ?? null} portfolioName={viewPortfolio?.name ?? prov?.name ?? acc?.name} color={viewColor} onBack={() => setHoldingViewId(null)} onBuy={() => openTrade(viewHolding, "buy")} onSell={() => openTrade(viewHolding, "sell")} />
-                <Dialog open={!!confirmHolding} onOpenChange={(o) => !o && setConfirmHolding(null)}>
-                  <DialogContent className="bg-zinc-900 border-white/10 text-white">
-                    <DialogHeader><DialogTitle>Delete holding</DialogTitle></DialogHeader>
-                    <p className="text-sm text-zinc-400">Delete <span className="text-white font-medium">{confirmHolding?.symbol}</span>? This cannot be undone.</p>
-                    <div className="flex justify-end gap-2 mt-4">
-                      <Button variant="ghost" onClick={() => setConfirmHolding(null)}>Cancel</Button>
-                      <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20" onClick={async () => { if (!confirmHolding) return; await deleteHolding(confirmHolding.id); await refreshAllHoldings(); setConfirmHolding(null); setHoldingViewId(null); toast({ title: "Holding deleted", variant: "success" }); }}>Delete</Button>
+                <StockDetail holding={viewHolding} portfolioId={viewPortfolio?.id ?? null} portfolioName={viewPortfolio?.name ?? prov?.name ?? acc?.name} color={viewColor} onBack={() => setHoldingViewId(null)} onBuy={() => openTrade(viewHolding, "buy")} onSell={() => openTrade(viewHolding, "sell")} onAddToPortfolio={() => openAssign(viewHolding)} />
+          <Dialog open={!!assignHolding} onOpenChange={(o) => { if (!o) closeAssign(); }}>
+            <DialogContent className="bg-zinc-900 border-white/10 text-white sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><FolderPlus className="w-4 h-4" /> Add {assignHolding?.symbol} to a portfolio</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-xs text-zinc-500 bg-white/[0.04] border border-white/10 rounded-lg p-2.5 leading-relaxed">Group this holding with others in a portfolio. Its trades move with it either way.</p>
+                {portfolios.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label>Portfolio</Label>
+                    <Select value={assignTarget} onValueChange={(v) => { setAssignTarget(v ?? "__pick__"); setAssignError(""); }}>
+                      <SelectTrigger className="h-10 bg-white/5 border-white/10">
+                        <span className="flex-1 text-left truncate text-sm">{assignTarget === "__new__" ? "Create a new portfolio…" : assignTarget === "__pick__" ? "Choose a portfolio…" : portfolios.find((p) => p.id === assignTarget)?.name ?? "—"}</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__pick__">Choose a portfolio…</SelectItem>
+                        {portfolios.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                        <SelectItem value="__new__">Create a new portfolio…</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {assignTarget === "__new__" && (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>Name *</Label>
+                      <Input value={assignName} onChange={(e) => setAssignName(e.target.value)} placeholder="e.g. ISA — Growth" autoFocus />
                     </div>
-                  </DialogContent>
-                </Dialog>
-                <TradeDialog key={`t-${tradeHolding?.id ?? "none"}-${showTrade ? 1 : 0}`} open={showTrade} onOpenChange={setShowTrade} holding={tradeHolding} type={tradeType} onSubmit={handleTrade} />
+                    <div className="space-y-1.5">
+                      <Label>Account</Label>
+                      <Select value={assignAccountId} onValueChange={(v) => setAssignAccountId(v ?? "__none")}>
+                        <SelectTrigger className="h-10 bg-white/5 border-white/10"><span className="flex-1 text-left truncate text-sm">{assignAccountId === "__none" ? "No account" : accounts.find((a) => a.id === assignAccountId)?.name ?? "—"}</span></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">No account</SelectItem>
+                          {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-zinc-600">Creates a {isListedSymbol(assignHolding?.symbol ?? "") ? "live" : "manual"} portfolio{assignAccountId === "__none" ? "" : ` under ${accounts.find((a) => a.id === assignAccountId)?.name ?? ""}`}.</p>
+                    </div>
+                  </div>
+                )}
+                {assignError && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{assignError}</p>}
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <Button variant="ghost" onClick={closeAssign} disabled={assignSaving}>Cancel</Button>
+                <Button onClick={() => void confirmAssign()} disabled={assignSaving || assignTarget === "__pick__"}>{assignSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderPlus className="w-4 h-4" />} {assignTarget === "__new__" ? "Create & add" : "Add to portfolio"}</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
               </>
             );
           })() : active ? (
@@ -499,28 +651,30 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                       <CardTitle className="text-white">Performance</CardTitle>
                       <CardDescription>{chartData.length} points • {active.name} {chartDots.length ? `• ${chartDots.length} trades` : ""}</CardDescription>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-1">
                       {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
-                        <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => setRange(r)}>{r}</Button>
+                        <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
                       ))}
+                      {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-[320px]">
+                    <div className="h-[320px] select-none">
                       <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData}>
+                        <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                          <ZoomSelectionArea labels={chartZoom.selectionLabels} />
                           <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                          <YAxis tickFormatter={(v) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
+                          <YAxis domain={yDomain ?? ["auto", "auto"]} tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
                           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
                           {(() => { const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); const col = active.color || prov?.color || acc?.color || "#60a5fa"; return <Area type="monotone" dataKey="total" name={active.name} stroke={col} fill={col} fillOpacity={0.14} strokeWidth={2.5} dot={false} />; })()}
-                          {chartDots.map((d: ChartDot) => (
+                          {visibleDots.map((d: ChartDot) => (
                             <ReferenceDot key={`${d.date}-${d.symbol}-${d.x}`} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
                           ))}
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
-                    {chartDots.length > 0 && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span><span className="text-zinc-600">Trades marked on chart</span></div>}
+                    {shownDots.length > 0 && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span><span className="text-zinc-600">Trades marked on chart</span></div>}
                   </CardContent>
                 </Card>
                 <Card className="xl:col-span-2 glass-card">
@@ -730,46 +884,47 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                   <CardHeader className="flex flex-row items-center justify-between">
                     <div>
                       <CardTitle className="text-white">Value over time</CardTitle>
-                      <CardDescription>Overall + per-portfolio • {chartData.length} points • {range}</CardDescription>
+                      <CardDescription>Overall + per-portfolio • {chartData.length} points • {range}{hiddenSeries.size > 0 ? ` • ${overviewVisibleKeys.size}/${1 + overviewSeries.length} series` : ""}</CardDescription>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-1">
                       {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
-                        <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => setRange(r)}>{r}</Button>
+                        <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
                       ))}
+                      {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-[320px]">
+                    <div className="h-[320px] select-none">
                       <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData}>
+                        <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                          <ZoomSelectionArea labels={chartZoom.selectionLabels} />
                           <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                          <YAxis tickFormatter={(v) => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
+                          <YAxis domain={overviewYDomain ?? ["auto", "auto"]} tickFormatter={overviewAxisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
                           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
-                          <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} />
-                          {Object.entries(byPortfolio).map(([pid, info]: [string, { name: string; data: Snapshot[] }], i) => {
-                            const pf = portfolios.find(p=>p.id===pid);
-                            const prov = pf ? providers.find(pr=> pr.id===pf.providerId) : null;
-                            const acc = pf ? accounts.find(a=> a.id===pf.accountId) : null;
-                            const col = pf?.color || prov?.color || acc?.color || PORTFOLIO_COLORS[info.name] || CHART_COLORS[i % CHART_COLORS.length];
-                            return <Area key={pid} type="monotone" dataKey={info.name} stroke={col} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />;
-                          })}
-                          {chartDots.map((d: ChartDot) => (
+                          {!hiddenSeries.has("total") && <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} />}
+                          {overviewSeries.filter((s) => !hiddenSeries.has(s.pid)).map((s) => (
+                            <Area key={s.pid} type="monotone" dataKey={s.name} stroke={s.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />
+                          ))}
+                          {!hiddenSeries.has("total") && visibleDots.map((d: ChartDot) => (
                             <ReferenceDot key={`${d.date}-${d.symbol}-${d.x}`} x={d.x} y={d.y} r={4} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1} />
                           ))}
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
-                    {chartDots.length > 0 && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span></div>}
-                    <div className="flex flex-wrap gap-3 mt-3 text-xs">
-                      <span className="flex items-center gap-1.5 text-zinc-400"><span className="w-3 h-0.5 bg-white" /> Total</span>
-                      {Object.entries(byPortfolio).map(([pid, info]: [string, { name: string; data: Snapshot[] }], i) => {
-                        const pf = portfolios.find(p=>p.id===pid);
-                        const prov = pf ? providers.find(pr=> pr.id===pf.providerId) : null;
-                        const acc = pf ? accounts.find(a=> a.id===pf.accountId) : null;
-                        const col = pf?.color || prov?.color || acc?.color || CHART_COLORS[i % CHART_COLORS.length];
-                        return <span key={info.name} className="flex items-center gap-1.5 text-zinc-500"><span className="w-3 h-0.5" style={{ background: col }} /> {info.name}</span>;
-                      })}
+                    {shownDots.length > 0 && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span></div>}
+                    <div className="flex flex-wrap gap-1.5 mt-3 text-xs">
+                      <button onClick={() => toggleSeries("total")} title={hiddenSeries.has("total") ? "Show Total" : "Hide Total"} className={`flex items-center gap-1.5 px-2 py-1 rounded-full border transition-colors ${!hiddenSeries.has("total") ? "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10" : "border-white/5 text-zinc-600 hover:text-zinc-400"}`}>
+                        <span className="w-3 h-0.5 rounded-full" style={{ background: "#ffffff", opacity: hiddenSeries.has("total") ? 0.3 : 1 }} /> Total
+                      </button>
+                      {overviewSeries.map((s) => (
+                        <button key={s.pid} onClick={() => toggleSeries(s.pid)} title={hiddenSeries.has(s.pid) ? `Show ${s.name}` : `Hide ${s.name}`} className={`flex items-center gap-1.5 px-2 py-1 rounded-full border transition-colors ${!hiddenSeries.has(s.pid) ? "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10" : "border-white/5 text-zinc-600 hover:text-zinc-400"}`}>
+                          <span className="w-3 h-0.5 rounded-full" style={{ background: s.color, opacity: hiddenSeries.has(s.pid) ? 0.3 : 1 }} /> {s.name}
+                        </button>
+                      ))}
+                      {hiddenSeries.size > 0 && (
+                        <button onClick={() => setHiddenSeries(new Set())} className="px-2 py-1 rounded-full text-zinc-500 hover:text-white underline underline-offset-2">Show all</button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -867,7 +1022,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                                         </div>
                                       </div>
                                       {ps.length===0 ? <p className="text-xs text-zinc-600 px-1">No portfolios in this provider.</p> : (
-                                        <div className="grid md:grid-cols-2 gap-3">
+                                        <div className="card-grid gap-3">
                                           {ps.map((p) => {
                                             const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
                                             const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
@@ -892,7 +1047,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                                       {(directHoldings.filter((h: Holding)=> h.providerId===pr.id).length>0) && (
                                         <div className="mt-3 pt-3 border-t border-white/5">
                                           <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks</div>
-                                          <div className="grid md:grid-cols-2 gap-2">
+                                          <div className="card-grid gap-2">
                                             {directHoldings.filter((h: Holding)=> h.providerId===pr.id).map((h: Holding)=>(
                                               <div key={h.id} onClick={() => setHoldingViewId(h.id)} className="cursor-pointer hover:bg-white/[0.06] flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
                                                 <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
@@ -909,7 +1064,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                                 {direct.length>0 && (
                                   <div>
                                     <div className="text-[10px] tracking-widest uppercase text-zinc-600 mb-2">No provider — direct</div>
-                                    <div className="grid md:grid-cols-2 gap-3">
+                                    <div className="card-grid gap-3">
                                       {direct.map((p) => {
                                         const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
                                         const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
@@ -935,7 +1090,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                                 {(directHoldings.filter((h: Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0) && (
                                   <div className="mt-3 pt-3 border-t border-white/5">
                                     <div className="text-[11px] tracking-widest uppercase text-zinc-600 mb-2">Direct stocks — {acc.name}</div>
-                                    <div className="grid md:grid-cols-2 gap-2">
+                                    <div className="card-grid gap-2">
                                       {directHoldings.filter((h: Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h: Holding)=>(
                                         <div key={h.id} onClick={() => setHoldingViewId(h.id)} className="cursor-pointer hover:bg-white/[0.06] flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
                                           <span className="w-8 h-8 rounded grid place-items-center bg-white/10 text-xs font-bold">{h.symbol.slice(0,3)}</span>
@@ -957,7 +1112,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                             <span className="font-semibold text-zinc-400">Unassigned</span>
                             <span className="text-sm text-zinc-500">{portfolios.filter((p) => !p.accountId && !p.providerId).length} portfolios</span>
                           </div>
-                          <div className="grid md:grid-cols-2 gap-3">
+                          <div className="card-grid gap-3">
                             {portfolios.filter((p) => !p.accountId && !p.providerId).map((p) => {
                               const v = p.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h), 0);
                               const c = p.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h), 0);
@@ -1164,7 +1319,16 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
               <p className="text-sm text-zinc-400">Delete <span className="text-white font-medium">{confirmHolding?.symbol}</span>? This cannot be undone.</p>
               <div className="flex justify-end gap-2 mt-4">
                 <Button variant="ghost" onClick={() => setConfirmHolding(null)}>Cancel</Button>
-                <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20" onClick={async () => { if (!confirmHolding || !active) return; await deleteHolding(confirmHolding.id); setConfirmHolding(null); toast({title:"Holding deleted",variant:"success"}); }}>Delete</Button>
+                <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20" onClick={async () => {
+                  if (!confirmHolding) return;
+                  const id = confirmHolding.id;
+                  const wasViewing = holdingViewId === id;
+                  await deleteHolding(id);
+                  await refreshAllHoldings();
+                  setConfirmHolding(null);
+                  if (wasViewing) setHoldingViewId(null);
+                  toast({ title: "Holding deleted", variant: "success" });
+                }}>Delete</Button>
               </div>
             </DialogContent>
           </Dialog>

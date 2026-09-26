@@ -9,7 +9,7 @@ export type Provider = { id: string; name: string; color: string | null; account
 export type UserSettings = { userId: string; currency: string; dateFormat: string; defaultRange: string; showTradeMarkers: number };
 export type Snapshot = { date: string; value: number };
 export type SnapResponse = { total: Snapshot[]; byPortfolio: Record<string, { name: string; data: Snapshot[] }>; byHolding?: Record<string, { symbol: string; name: string; data: Snapshot[] }> };
-export type Transaction = { id: string; userId?: string; portfolioId: string; holdingId?: string | null; symbol: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date: string; note?: string | null; createdAt: number };
+export type Transaction = { id: string; userId?: string; portfolioId?: string | null; holdingId?: string | null; symbol: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date: string; note?: string | null; createdAt: number };
 
 type AccountPayload = { id: string; name?: string; color?: string | null };
 type ProviderPayload = { id: string; name?: string; color?: string | null; accountId?: string };
@@ -167,11 +167,15 @@ export function usePortfolios() {
     await api(`/api/holdings?id=${encodeURIComponent(holdingId)}`, { method: "DELETE" });
     await refresh();
   };
+  const moveHolding = async (holdingId: string, portfolioId: string) => {
+    await api("/api/holdings", { method: "POST", body: JSON.stringify({ id: holdingId, portfolioId }) });
+    await refresh();
+  };
   const updatePrices = async (prices: Record<string, { price: number; currency: string }>) => {
     await api("/api/holdings", { method: "PATCH", body: JSON.stringify({ symbols: prices }) });
     await refresh();
   };
-  return { portfolios, ready, create, remove, move, setColor, upsertHolding, deleteHolding, updatePrices, refresh, setPortfolios };
+  return { portfolios, ready, create, remove, move, setColor, upsertHolding, deleteHolding, moveHolding, updatePrices, refresh, setPortfolios };
 }
 
 const SNAPSHOT_DEBOUNCE_MS = 2000;
@@ -243,15 +247,16 @@ export function useHoldings() {
   return { holdings, ready, refresh };
 }
 
-export function useTransactions(portfolioId?: string | null, symbol?: string | null) {
+export function useTransactions(portfolioId?: string | null, symbol?: string | null, holdingId?: string | null) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [ready, setReady] = useState(false);
-  const key = `${portfolioId ?? ""}:${symbol ?? ""}`;
+  const key = `${portfolioId ?? ""}:${symbol ?? ""}:${holdingId ?? ""}`;
   const refresh = useCallback(async () => {
     try {
       const qs = new URLSearchParams();
       if (portfolioId) qs.set("portfolioId", portfolioId);
       if (symbol) qs.set("symbol", symbol);
+      if (holdingId) qs.set("holdingId", holdingId);
       const q = qs.toString() ? `?${qs}` : "";
       setTransactions(parseList<Transaction>(await api(`/api/transactions${q}`)));
     } catch {
@@ -271,7 +276,7 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
       cancelled = true;
     };
   }, [refresh]);
-  const create = async (payload: { portfolioId: string; holdingId?: string | null; symbol?: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date?: string; note?: string }) => {
+  const create = async (payload: { portfolioId?: string | null; holdingId?: string | null; symbol?: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date?: string; note?: string }) => {
     await api("/api/transactions", { method: "POST", body: JSON.stringify(payload) });
     await refresh();
   };
@@ -280,4 +285,68 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
     await refresh();
   };
   return { transactions, ready, refresh, create, remove };
+}
+
+export type AppSettings = {
+  currency: string;
+  dateFormat: string;
+  defaultRange: "1M" | "3M" | "1Y" | "MAX";
+  showTradeMarkers: boolean;
+};
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  currency: "GBP",
+  dateFormat: "en-GB",
+  defaultRange: "1Y",
+  showTradeMarkers: true,
+};
+
+const RANGE_KEYS = ["1M", "3M", "1Y", "MAX"] as const;
+
+function normalizeSettings(raw: unknown): AppSettings {
+  const r = (raw ?? {}) as Partial<Record<keyof AppSettings, unknown>>;
+  const range = typeof r.defaultRange === "string" && (RANGE_KEYS as readonly string[]).includes(r.defaultRange)
+    ? (r.defaultRange as AppSettings["defaultRange"])
+    : DEFAULT_SETTINGS.defaultRange;
+  return {
+    currency: typeof r.currency === "string" && r.currency ? r.currency : DEFAULT_SETTINGS.currency,
+    dateFormat: typeof r.dateFormat === "string" && r.dateFormat ? r.dateFormat : DEFAULT_SETTINGS.dateFormat,
+    defaultRange: range,
+    showTradeMarkers: r.showTradeMarkers == null ? DEFAULT_SETTINGS.showTradeMarkers : Number(r.showTradeMarkers) !== 0,
+  };
+}
+
+/**
+ * User preferences, shared across the dashboard. Previously these were written
+ * by /settings but never read anywhere — chart range, trade markers and
+ * currency were all hardcoded. Consumers now subscribe here.
+ */
+export function useSettings() {
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [ready, setReady] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setSettings(normalizeSettings(await api("/api/settings")));
+    } catch {
+      setSettings(DEFAULT_SETTINGS);
+    }
+    setReady(true);
+  }, []);
+  useAsyncInit(refresh);
+
+  const save = useCallback(
+    async (patch: Partial<AppSettings>) => {
+      const body: Record<string, unknown> = {};
+      if (patch.currency !== undefined) body.currency = patch.currency;
+      if (patch.dateFormat !== undefined) body.dateFormat = patch.dateFormat;
+      if (patch.defaultRange !== undefined) body.defaultRange = patch.defaultRange;
+      if (patch.showTradeMarkers !== undefined) body.showTradeMarkers = patch.showTradeMarkers ? 1 : 0;
+      await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
+      await refresh();
+    },
+    [refresh]
+  );
+
+  return { settings, ready, save, refresh, setSettings };
 }

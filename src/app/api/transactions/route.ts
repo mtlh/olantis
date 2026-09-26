@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { holdings, portfolios, transactions } from "@/lib/db/schema";
+import { holdings, portfolios, transactions, providers, accounts } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
 
@@ -23,18 +23,40 @@ export async function GET(req: Request) {
   return Response.json(rows);
 }
 
+async function ownsHolding(db: ReturnType<typeof getDb>, h: typeof holdings.$inferSelect, userId: string) {
+  if (h.userId === userId) return true;
+  if (h.portfolioId) {
+    const p = await db.select({ userId: portfolios.userId }).from(portfolios).where(eq(portfolios.id, h.portfolioId));
+    if (p[0]?.userId === userId) return true;
+  }
+  if (h.providerId) {
+    const pr = await db.select({ userId: providers.userId }).from(providers).where(eq(providers.id, h.providerId));
+    if (pr[0]?.userId === userId) return true;
+  }
+  if (h.accountId) {
+    const a = await db.select({ userId: accounts.userId }).from(accounts).where(eq(accounts.id, h.accountId));
+    if (a[0]?.userId === userId) return true;
+  }
+  return false;
+}
+
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const body = (await req.json()) as { portfolioId?: string; holdingId?: string; symbol?: string; name?: string; type?: string; shares?: number; price?: number; date?: string; note?: string; currency?: string };
-  const { portfolioId, holdingId, symbol, type, shares, price, date, note } = body;
-  if (!portfolioId) return Response.json({ error: "portfolioId required" }, { status: 400 });
+  let body: { portfolioId?: string | null; holdingId?: string; symbol?: string; name?: string; type?: string; shares?: number; price?: number; date?: string; note?: string; currency?: string };
+  try { body = await req.json(); } catch { return Response.json({ error: "invalid body" }, { status: 400 }); }
+  const { holdingId, symbol, type, shares, price, date, note } = body;
   if (!type || !["buy", "sell"].includes(type)) return Response.json({ error: "type must be buy or sell" }, { status: 400 });
-  if (!shares || Number(shares) <= 0) return Response.json({ error: "shares > 0" }, { status: 400 });
-  if (price == null || Number(price) <= 0) return Response.json({ error: "price > 0" }, { status: 400 });
+  // Number.isFinite rejects NaN/Infinity as well as non-numeric input. A plain
+  // `Number(x) <= 0` check passes `"abc"` (NaN) and `"1e400"` (Infinity), both
+  // of which would otherwise be written into the money/quantity columns and
+  // permanently corrupt the holding.
+  const s = Number(shares);
+  const pr = Number(price);
+  if (!Number.isFinite(s) || s <= 0) return Response.json({ error: "shares must be a finite number > 0" }, { status: 400 });
+  if (!Number.isFinite(pr) || pr <= 0) return Response.json({ error: "price must be a finite number > 0" }, { status: 400 });
   const db = getDb();
-  const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
-  if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
+  let portfolioId: string | null = body.portfolioId ?? null;
 
   let holding: typeof holdings.$inferSelect | null = null;
   let targetSymbol = symbol?.toUpperCase()?.trim();
@@ -43,18 +65,22 @@ export async function POST(req: Request) {
   if (holdingId) {
     const hs = await db.select().from(holdings).where(eq(holdings.id, holdingId));
     if (!hs[0]) return Response.json({ error: "holding not found" }, { status: 404 });
-    if (hs[0].portfolioId !== portfolioId) return Response.json({ error: "holding mismatch" }, { status: 400 });
+    if (!(await ownsHolding(db, hs[0], userId))) return Response.json({ error: "forbidden" }, { status: 403 });
+    if (portfolioId && portfolioId !== hs[0].portfolioId) return Response.json({ error: "holding mismatch" }, { status: 400 });
     holding = hs[0];
+    portfolioId = holding.portfolioId;
     targetSymbol = holding.symbol;
     targetName = holding.name;
-  } else {
+  } else if (portfolioId) {
+    const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
+    if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
     if (!targetSymbol) return Response.json({ error: "symbol required" }, { status: 400 });
     const all = await db.select().from(holdings).where(eq(holdings.portfolioId, portfolioId));
     holding = all.find((h) => h.symbol === targetSymbol) ?? null;
+  } else {
+    return Response.json({ error: "holdingId or portfolioId required" }, { status: 400 });
   }
 
-  const s = Number(shares);
-  const pr = Number(price);
   const d = date || new Date().toISOString().split("T")[0];
 
   if (type === "sell") {

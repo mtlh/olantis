@@ -1,21 +1,45 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceDot } from "recharts";
-import { History, ArrowUpRight, ArrowDownRight, Wallet, Plus, Minus } from "lucide-react";
+import { History, ArrowUpRight, ArrowDownRight, Wallet, Plus, Minus, FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useTransactions, type Holding, type Transaction } from "@/lib/store";
-import { fmtGBP, fmtPrice, fmtPct, holdingValueGBP, holdingCostGBP, isListedSymbol, type MoneyHolding } from "@/lib/format";
+import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
+import { fmtGBP, fmtPrice, fmtPct, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, gbpAxisFormatter, priceAxisFormatter, paddedDomain, numericValues, type MoneyHolding } from "@/lib/format";
+import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
 
 type PriceRow = { date: string; price: number };
 
-export function StockDetail({ holding, portfolioId, portfolioName, color, onBack, onBuy, onSell }: { holding: Holding; portfolioId?: string | null; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void }) {
+const RANGE_COUNT: Record<string, number> = { "1M": 40, "3M": 130, "1Y": 366, MAX: 9999 };
+
+export function StockDetail({ holding, portfolioId, portfolioName, color, onBack, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
+  const { settings } = useSettings();
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
+  const rangeTouched = useRef(false);
+  useEffect(() => {
+    if (rangeTouched.current) return;
+    setRange(settings.defaultRange);
+  }, [settings.defaultRange]);
+  const pickRange = useCallback((r: "1M" | "3M" | "1Y" | "MAX") => {
+    rangeTouched.current = true;
+    setRange(r);
+  }, []);
   const isListed = isListedSymbol(holding.symbol);
   const [prices, setPrices] = useState<PriceRow[] | null>(null);
   const [snapSeriesFull, setSnapSeries] = useState<PriceRow[] | null>(null);
-  const { transactions } = useTransactions(portfolioId ?? null, holding.symbol);
+  const { transactions } = useTransactions(portfolioId ?? null, portfolioId ? holding.symbol : null, portfolioId ? null : holding.id);
+
+  // Reset chart state whenever the holding changes — otherwise the previous
+  // symbol's series is shown under the new one until the fetch lands. Done as
+  // render-time state adjustment (React's "derive state from props" pattern)
+  // rather than in an effect, which would cascade an extra render.
+  const [prevHoldingId, setPrevHoldingId] = useState(holding.id);
+  if (prevHoldingId !== holding.id) {
+    setPrevHoldingId(holding.id);
+    setPrices(null);
+    setSnapSeries(null);
+  }
 
   useEffect(() => {
     let cancel = false;
@@ -51,11 +75,13 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
   }, [isListed, holding.symbol, holding.exchange, range]);
 
   const hasValueSeries = (snapSeriesFull?.length ?? 0) >= 2;
-  const rangeCount: Record<string, number> = { "1M": 40, "3M": 130, "1Y": 366, MAX: 9999 };
-  const snapSeries = hasValueSeries ? (snapSeriesFull ?? []).slice(-(rangeCount[range] ?? 366)) : null;
+  const snapSeries = useMemo(
+    () => (hasValueSeries ? (snapSeriesFull ?? []).slice(-(RANGE_COUNT[range] ?? 366)) : null),
+    [hasValueSeries, snapSeriesFull, range]
+  );
   const chartData = useMemo(() => {
-    if (hasValueSeries) return (snapSeries ?? []).map((p) => ({ date: p.date.slice(5), price: p.price }));
-    return (prices ?? []).map((p) => ({ date: p.date.slice(5), price: p.price }));
+    if (hasValueSeries) return (snapSeries ?? []).map((p) => ({ date: chartDateLabel(p.date), price: p.price }));
+    return (prices ?? []).map((p) => ({ date: chartDateLabel(p.date), price: p.price }));
   }, [hasValueSeries, snapSeries, prices]);
   const loading = !hasValueSeries && isListed && prices === null;
 
@@ -64,13 +90,29 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
     const map = new Map(chartData.map((d) => [d.date, d.price]));
     return transactions
       .map((t: Transaction) => {
-        const mmdd = t.date.slice(5);
-        const y = map.get(mmdd);
+        const key = chartDateLabel(t.date);
+        const y = map.get(key);
         if (y == null) return null;
-        return { x: mmdd, y, type: t.type, date: t.date, symbol: t.symbol };
+        return { x: key, y, type: t.type, date: t.date, symbol: t.symbol };
       })
       .filter((x): x is { x: string; y: number; type: "buy" | "sell"; date: string; symbol: string } => x !== null);
   }, [chartData, transactions]);
+
+  const chartZoom = useChartZoom(chartData);
+  const axisValues = useMemo(() => numericValues(chartZoom.visible), [chartZoom.visible]);
+  const axisFmt = useMemo(
+    () => (hasValueSeries ? gbpAxisFormatter(axisValues) : priceAxisFormatter(axisValues, holding.currency)),
+    [hasValueSeries, axisValues, holding.currency]
+  );
+  const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
+
+  // Trade markers honour the user's "Show trade markers on charts" preference.
+  const shownDots = useMemo(() => (settings.showTradeMarkers ? dots : []), [settings.showTradeMarkers, dots]);
+  // Markers outside the zoomed period would land outside the X domain, so filter them too.
+  const visibleDots = useMemo(() => {
+    const dates = new Set(chartZoom.visible.map((d) => d.date));
+    return shownDots.filter((d) => dates.has(d.x));
+  }, [shownDots, chartZoom.visible]);
 
   const val = holdingValueGBP(holding as MoneyHolding);
   const cost = holdingCostGBP(holding as MoneyHolding);
@@ -93,13 +135,14 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
             <p className="text-sm mt-2 text-zinc-500">{holding.name}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {portfolioId && onBuy && onSell ? (
+            {onBuy && onSell && (
               <>
                 <Button variant="outline" className="bg-white/5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10" onClick={onBuy}><Plus className="w-4 h-4" /> Buy</Button>
                 <Button variant="outline" className="bg-white/5 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={onSell}><Minus className="w-4 h-4" /> Sell</Button>
               </>
-            ) : (
-              <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-500 self-center">Buy/Sell needs a portfolio</Badge>
+            )}
+            {!portfolioId && onAddToPortfolio && (
+              <Button variant="outline" size="sm" className="bg-white/5 border-amber-500/30 text-amber-400 hover:bg-amber-500/10 self-center" onClick={onAddToPortfolio} title="Move this holding into a portfolio"><FolderPlus className="w-4 h-4" /> Add to portfolio</Button>
             )}
             <Button variant="outline" className="bg-white/5 border-white/10" onClick={onBack}>← Back{portfolioName ? ` to ${portfolioName}` : ""}</Button>
           </div>
@@ -135,10 +178,11 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
               <CardTitle className="text-white">{hasValueSeries ? "Value over time" : "Performance"}</CardTitle>
               <CardDescription>{hasValueSeries ? "Tracked position value" : "Market price"} • {chartData.length} points • {holding.symbol}{dots.length ? ` • ${dots.length} trades` : ""}</CardDescription>
             </div>
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1">
               {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
-                <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => setRange(r)}>{r}</Button>
+                <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
               ))}
+              {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
             </div>
           </CardHeader>
           <CardContent>
@@ -155,22 +199,23 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
             ) : chartData.length === 0 ? (
               <div className="h-[320px] grid place-items-center text-sm text-zinc-500">No price data available for {holding.symbol}.</div>
             ) : (
-              <div className="h-[320px]">
+              <div className="h-[320px] select-none">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
+                  <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <ZoomSelectionArea labels={chartZoom.selectionLabels} />
                     <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                    <YAxis domain={["auto", "auto"]} tickFormatter={(v) => (hasValueSeries ? `£${(Number(v) / 1000).toFixed(1)}k` : fmtPrice(Number(v), holding.currency).replace(/\.\d+/, ""))} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={70} />
+                    <YAxis domain={yDomain ?? ["auto", "auto"]} tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={70} />
                     <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => (hasValueSeries ? fmtGBP(Number(v)) : fmtPrice(Number(v), holding.currency))} />
                     <Area type="monotone" dataKey="price" name={holding.symbol} stroke={color} fill={color} fillOpacity={0.14} strokeWidth={2.5} dot={false} />
-                    {dots.map((d) => (
+                    {visibleDots.map((d) => (
                       <ReferenceDot key={`${d.date}-${d.symbol}-${d.x}`} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
                     ))}
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             )}
-            {dots.length > 0 && !isManual && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span><span className="text-zinc-600">Trades marked on chart</span></div>}
+            {shownDots.length > 0 && !isManual && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span><span className="text-zinc-600">Trades marked on chart</span></div>}
           </CardContent>
         </Card>
         <Card className="glass-card overflow-hidden">
@@ -179,7 +224,10 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
           </CardHeader>
           <CardContent className="p-0">
             {transactions.length === 0 ? (
-              <div className="p-8 text-center"><p className="text-sm text-zinc-400">No trades for {holding.symbol}</p></div>
+              <div className="p-8 text-center">
+                <p className="text-sm text-zinc-400">No trades for {holding.symbol}</p>
+                <p className="text-xs text-zinc-600 mt-1">Record buys and sells to build your history.</p>
+              </div>
             ) : (
               <div className="divide-y divide-white/5 max-h-[400px] overflow-auto">
                 {transactions.slice(0, 50).map((t) => (

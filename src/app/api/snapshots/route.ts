@@ -1,7 +1,7 @@
 import { getDb } from "@/lib/db";
 import { snapshots, portfolioSnapshots, holdingSnapshots, portfolios, holdings, accounts, providers } from "@/lib/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { getUserId, isDemoUser } from "@/lib/auth";
+import { getUserId } from "@/lib/auth";
 import { todayISODate } from "@/lib/format";
 
 export async function GET(req: Request) {
@@ -50,8 +50,11 @@ function finiteNumber(v: unknown): number | null {
 }
 
 export async function POST(req: Request) {
+  // Demo sessions are per-visitor isolated tenants (see lib/auth.ts), so demo
+  // writes are safe and keep the sandbox interactive. Only the caller's own
+  // rows are ever touched.
   const userId = await getUserId();
-  if (!userId || isDemoUser(userId)) return Response.json({ ok: true, skipped: "demo" });
+  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
   let body: { value?: unknown; date?: unknown; portfolios?: unknown; portfolioId?: unknown; portfolioValue?: unknown; holdings?: unknown };
   try { body = await req.json(); } catch { return Response.json({ error: "invalid body" }, { status: 400 }); }
   const d = typeof body.date === "string" && body.date ? body.date : todayISODate();

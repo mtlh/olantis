@@ -149,3 +149,15 @@ body {
     @apply font-sans;
   }
 }
+
+@layer utilities {
+  /* Auto-filling card grid. Unlike `md:grid-cols-2` this always stretches to
+     fill the row, so a lone card doesn't strand half the container empty and
+     odd counts don't leave a half-width card at the end.
+     `auto-fit` (not `auto-fill`) collapses the empty tracks — with `auto-fill`
+     a single card would sit in one third of the row. */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  }
+}

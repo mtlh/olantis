@@ -30,6 +30,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   const { toast } = useToast();
   const [settings, setSettings] = useState<SettingsState>({ currency: "GBP", defaultRange: "1Y", showTradeMarkers: 1 });
   const [saving, setSaving] = useState<string | null>(null);
+  const [colorTab, setColorTab] = useState<"accounts" | "providers" | "portfolios">("accounts");
 
   useEffect(() => {
     let cancel = false;
@@ -41,7 +42,11 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     const prev = settings;
     const next = { ...settings, ...patch };
     setSettings(next);
-    try { await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }); toast({ title: "Settings saved", variant: "success" }); } catch (e: unknown){ setSettings(prev); toast({title:"Save failed", description: e instanceof Error ? e.message : String(e), variant:"error"}); }
+    try {
+      const res = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      if (!res.ok) throw new Error((await res.text()) || `Save failed (${res.status})`);
+      toast({ title: "Settings saved", variant: "success" });
+    } catch (e: unknown){ setSettings(prev); toast({title:"Save failed", description: e instanceof Error ? e.message : String(e), variant:"error"}); }
   };
 
   const handleAccountColor = async (id: string, color: string | null) => {
@@ -59,7 +64,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
 
   const handleReorder = async (table: string, ids: string[]) => {
     try {
-      await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table, ids }) });
+      const res = await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table, ids }) });
+      if (!res.ok) throw new Error((await res.text()) || `Reorder failed (${res.status})`);
       if (table === "accounts") await refreshAccounts();
       else if (table === "providers") await refreshProviders();
       else if (table === "portfolios") await refreshPortfolios();
@@ -121,10 +127,25 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             <CardTitle className="flex items-center gap-2 text-white"><Palette className="w-5 h-5"/> Color mapping</CardTitle>
             <CardDescription>Assign a base color per account. Providers & portfolios inherit as tints — override anytime. Colors appear in sidebar & charts.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-8">
-            <div>
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Building2 className="w-4 h-4 text-zinc-500"/> Accounts — base colors</h3>
-              {accounts.length===0 ? <p className="text-sm text-zinc-500">No accounts yet. Create one from the sidebar.</p> : (
+          <CardContent className="space-y-5">
+            <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/5 w-fit">
+              {([
+                { key: "accounts" as const, label: "Accounts", icon: Building2, count: accounts.length },
+                { key: "providers" as const, label: "Providers", icon: Briefcase, count: providers.length },
+                { key: "portfolios" as const, label: "Portfolios", icon: Folder, count: portfolios.length },
+              ]).map(({ key, label, icon: Icon, count }) => (
+                <button key={key} onClick={() => setColorTab(key)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${colorTab === key ? "bg-white text-black shadow" : "text-zinc-400 hover:text-white hover:bg-white/5"}`}>
+                  <Icon className="w-3.5 h-3.5" /> {label}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${colorTab === key ? "bg-black/10 text-black/60" : "bg-white/10 text-zinc-500"}`}>{count}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-zinc-500">
+              {colorTab === "accounts" ? "Base colors — providers & portfolios inherit tints from these." : colorTab === "providers" ? "Inherit their account's color as a tint, or override with a fixed color." : "Auto-tint from the parent color, or pin a fixed color."}
+            </p>
+
+            {colorTab === "accounts" && (
+              accounts.length===0 ? <p className="text-sm text-zinc-500">No accounts yet. Create one from the sidebar.</p> : (
                 <div className="space-y-3">
                   {accounts.map((acc, ai) => {
                     const base = acc.color || PALETTE[ai % PALETTE.length].value;
@@ -152,14 +173,11 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     );
                   })}
                 </div>
-              )}
-            </div>
+              )
+            )}
 
-            <div className="h-px bg-white/5" />
-
-            <div>
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Briefcase className="w-4 h-4 text-zinc-500"/> Providers — inherit or override</h3>
-              {providers.length===0 ? <p className="text-sm text-zinc-500">No providers yet. Add one inside an account.</p> : (
+            {colorTab === "providers" && (
+              providers.length===0 ? <p className="text-sm text-zinc-500">No providers yet. Add one inside an account.</p> : (
                 <div className="space-y-3">
                   {providers.map((pr)=>{
                     const acc = accounts.find(a=>a.id===pr.accountId);
@@ -184,14 +202,11 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     );
                   })}
                 </div>
-              )}
-            </div>
+              )
+            )}
 
-            <div className="h-px bg-white/5" />
-
-            <div>
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Folder className="w-4 h-4 text-zinc-500"/> Portfolios — custom or tinted</h3>
-              {portfolios.length===0 ? <p className="text-sm text-zinc-500">No portfolios yet.</p> : (
+            {colorTab === "portfolios" && (
+              portfolios.length===0 ? <p className="text-sm text-zinc-500">No portfolios yet.</p> : (
                 <div className="space-y-3">
                   {portfolios.map((p, pi)=>{
                     const prov = providers.find(pr=> pr.id===p.providerId);
@@ -226,8 +241,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     );
                   })}
                 </div>
-              )}
-            </div>
+              )
+            )}
 
             <div className="flex items-center gap-2 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-400">
               <Palette className="w-4 h-4 shrink-0"/> Colors sync instantly — sidebar dots, provider headers, allocation pie & performance lines all use the same mapping. Auto tints generate lighter/darker variants so portfolios stay distinct but on-brand.
@@ -380,7 +395,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Currency display</Label>
+                <Label>Default currency</Label>
                 <Select value={settings.currency ?? "GBP"} onValueChange={v=> saveSettings({ currency: v })}>
                   <SelectTrigger><span className="flex-1 text-left truncate">{settings.currency ?? "GBP"}</span></SelectTrigger>
                   <SelectContent>
@@ -389,6 +404,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     <SelectItem value="EUR">EUR (€)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-zinc-600">Applied to new holdings and trades. Existing holdings keep the currency they were recorded with.</p>
               </div>
               <div className="space-y-2">
                 <Label>Default chart range</Label>
@@ -401,6 +417,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     <SelectItem value="MAX">MAX</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-zinc-600">Range every chart opens on. You can still switch per chart.</p>
               </div>
               <div className="space-y-2">
                 <Label>Show trade markers on charts</Label>
@@ -411,6 +428,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     <SelectItem value="0">Off</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-zinc-600">Applies to portfolio and single-stock charts.</p>
               </div>
             </CardContent>
           </Card>

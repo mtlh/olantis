@@ -1,14 +1,16 @@
 import { Dashboard } from "@/components/Dashboard";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { DEMO_COOKIE, demoUserId } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
 export default async function DashboardPage() {
   const jar = await cookies();
-  const isDemo = jar.get("olantis_demo")?.value === "1";
+  const demoSession = jar.get(DEMO_COOKIE)?.value;
+  const isDemo = !!demoSession;
   let user: { id: string; email?: string; firstName?: string | null } | null = null;
-  if (isDemo) user = { id: "demo", email: "demo@olantis.local", firstName: "Demo" };
+  if (isDemo) user = { id: demoUserId(demoSession), email: "demo@olantis.local", firstName: "Demo" };
   else {
     try {
       const { withAuth } = await import("@workos-inc/authkit-nextjs");

@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { fetchQuotes, lookupQuote } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
 import { holdings, snapshots, portfolioSnapshots, holdingSnapshots, portfolios } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, notLike, isNull, or } from "drizzle-orm";
 import { toGBP, todayISODate } from "@/lib/format";
 
 const REFRESH_GUARD_SECONDS = 23 * 60 * 60;
@@ -26,7 +26,13 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   const db = getDb();
 
   let symbols = body.symbols ?? [];
-  const targetHoldings: HoldingRow[] = await db.select().from(holdings);
+  // Demo tenants (`demo:*`) carry a predefined dataset and are deliberately
+  // excluded: refreshing them would overwrite the fixed demo prices and burn
+  // Yahoo quota on throwaway sandboxes.
+  const targetHoldings: HoldingRow[] = await db
+    .select()
+    .from(holdings)
+    .where(or(isNull(holdings.userId), notLike(holdings.userId, "demo:%")));
 
   if (!symbols.length) {
     const map = new Map<string, { symbol: string; exchange?: string }>();

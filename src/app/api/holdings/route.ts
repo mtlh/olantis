@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { holdings, portfolios, accounts, providers } from "@/lib/db/schema";
+import { holdings, portfolios, accounts, providers, transactions } from "@/lib/db/schema";
 import { eq, inArray, or } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
 
@@ -45,14 +45,10 @@ export async function POST(req: Request) {
   const body = (await req.json()) as { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol?: string; name?: string; shares?: number; avgPrice?: number; currentPrice?: number; currency?: string; purchaseDate?: string; exchange?: string };
   const { id, portfolioId, providerId, accountId, symbol, name, shares, avgPrice, currentPrice, currency, purchaseDate, exchange } = body;
   const symbolStr = capStr(symbol, 12).toUpperCase().trim();
-  if (!symbolStr) return Response.json({ error: "symbol required" }, { status: 400 });
   const sharesNum = Number(shares);
   const avgPriceNum = Number(avgPrice);
   const currentPriceNum = currentPrice == null ? avgPriceNum : Number(currentPrice);
-  if (!Number.isFinite(sharesNum) || sharesNum <= 0) return Response.json({ error: "shares must be > 0" }, { status: 400 });
-  if (!Number.isFinite(avgPriceNum) || avgPriceNum <= 0) return Response.json({ error: "avgPrice must be > 0" }, { status: 400 });
-  if (!Number.isFinite(currentPriceNum)) return Response.json({ error: "currentPrice must be a finite number" }, { status: 400 });
-  const nameStr = capStr(name, 80).trim() || symbolStr;
+  const nameStr = capStr(name, 80).trim();
   const currencyStr = capStr(currency, 8) || "GBP";
   const exchangeStr = exchange != null ? capStr(exchange, 16) || null : null;
   const db = getDb();
@@ -72,9 +68,42 @@ export async function POST(req: Request) {
       if (a[0] && a[0].userId === userId) allowed = true;
     } else if (h.userId === userId) allowed = true;
     if (!allowed) return Response.json({ error: "forbidden" }, { status: 403 });
-    await db.update(holdings).set({ symbol: symbolStr, name: nameStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, purchaseDate, exchange: exchangeStr }).where(eq(holdings.id, id));
+    const patch: Partial<typeof holdings.$inferInsert> = {};
+    if (symbolStr) {
+      if (!Number.isFinite(sharesNum) || sharesNum <= 0) return Response.json({ error: "shares must be > 0" }, { status: 400 });
+      if (!Number.isFinite(avgPriceNum) || avgPriceNum <= 0) return Response.json({ error: "avgPrice must be > 0" }, { status: 400 });
+      if (!Number.isFinite(currentPriceNum)) return Response.json({ error: "currentPrice must be a finite number" }, { status: 400 });
+      patch.symbol = symbolStr;
+      patch.name = nameStr || symbolStr;
+      patch.shares = sharesNum;
+      patch.avgPrice = avgPriceNum;
+      patch.currentPrice = currentPriceNum;
+      patch.currency = currencyStr;
+      patch.purchaseDate = purchaseDate;
+      patch.exchange = exchangeStr;
+    }
+    if (portfolioId !== undefined && portfolioId !== h.portfolioId) {
+      if (portfolioId) {
+        const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
+        if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
+        patch.portfolioId = portfolioId;
+        patch.accountId = p[0].accountId;
+        patch.providerId = p[0].providerId;
+      } else {
+        patch.portfolioId = null;
+      }
+    }
+    if (Object.keys(patch).length === 0) return Response.json({ error: "nothing to update" }, { status: 400 });
+    await db.update(holdings).set(patch).where(eq(holdings.id, id));
+    if (patch.portfolioId !== undefined) {
+      await db.update(transactions).set({ portfolioId: patch.portfolioId }).where(eq(transactions.holdingId, id));
+    }
     return Response.json({ id });
   }
+  if (!symbolStr) return Response.json({ error: "symbol required" }, { status: 400 });
+  if (!Number.isFinite(sharesNum) || sharesNum <= 0) return Response.json({ error: "shares must be > 0" }, { status: 400 });
+  if (!Number.isFinite(avgPriceNum) || avgPriceNum <= 0) return Response.json({ error: "avgPrice must be > 0" }, { status: 400 });
+  if (!Number.isFinite(currentPriceNum)) return Response.json({ error: "currentPrice must be a finite number" }, { status: 400 });
   const hasPortfolio = !!portfolioId;
   const hasProvider = !!providerId;
   const hasAccount = !!accountId;
@@ -92,7 +121,7 @@ export async function POST(req: Request) {
     if (!a[0] || a[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 404 });
   }
   const nid = crypto.randomUUID();
-  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbolStr, name: nameStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, purchaseDate, exchange: exchangeStr, lastRefreshedAt: null });
+  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbolStr, name: nameStr || symbolStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, purchaseDate, exchange: exchangeStr, lastRefreshedAt: null });
   return Response.json({ id: nid });
 }
 

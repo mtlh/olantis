@@ -1,5 +1,5 @@
 "use client";
-import { Portfolio, Account, Provider, Holding } from "@/lib/store";
+import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import { LayoutDashboard, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -60,6 +60,8 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   const [showDirectHolding, setShowDirectHolding] = useState(false);
   const [directTarget, setDirectTarget] = useState<{ accountId?: string | null; providerId?: string | null } | null>(null);
   const [directForm, setDirectForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", exchange: "", currentPrice: "", currency: "GBP" });
+  const { settings } = useSettings();
+  const blankDirectForm = () => ({ symbol: "", name: "", shares: "", avgPrice: "", exchange: "", currentPrice: "", currency: settings.currency || "GBP" });
   const [editingDirectId, setEditingDirectId] = useState<string | null>(null);
   const [directSaving, setDirectSaving] = useState(false);
   const [directSearchResults, setDirectSearchResults] = useState<SearchResult[]>([]);
@@ -70,6 +72,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
   const [q, setQ] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   const sortByOrder = <T extends { sortOrder?: number | null }>(list: T[]): T[] => [...list].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
 
@@ -184,7 +187,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
       const res = await fetch("/api/holdings", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
       if(!res.ok) throw new Error(await res.text());
       await onRefresh?.();
-      setShowDirectHolding(false); setDirectForm({ symbol:"", name:"", shares:"", avgPrice:"", exchange:"", currentPrice:"", currency:"GBP" }); setDirectSearchResults([]); setEditingDirectId(null);
+      setShowDirectHolding(false); setDirectForm(blankDirectForm()); setDirectSearchResults([]); setEditingDirectId(null);
       toast({title: isEdit ? "Stock updated" : "Stock added", description: directForm.symbol.toUpperCase(), variant:"success"});
     } catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Failed", description:msg, variant:"error"}); } finally{ setDirectSaving(false); }
   };
@@ -237,7 +240,10 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
         <div className="mt-6">
           <div className="flex items-center justify-between px-1 mb-2">
             <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Accounts</span>
-            <Button variant="ghost" size="icon-xs" onClick={() => setShowAccountDialog(true)} aria-label="New account"><Plus className="w-3.5 h-3.5" /></Button>
+            <div className="flex items-center gap-0.5">
+              <Button variant="ghost" size="icon-xs" onClick={() => setEditMode(v => !v)} aria-pressed={editMode} aria-label="Toggle edit mode" title={editMode ? "Hide edit controls" : "Show edit controls"} className={editMode ? "bg-white/10 text-white hover:bg-white/15" : "text-zinc-500 hover:text-zinc-300"}><Pencil className="w-3.5 h-3.5" /></Button>
+              <Button variant="ghost" size="icon-xs" onClick={() => setShowAccountDialog(true)} aria-label="New account"><Plus className="w-3.5 h-3.5" /></Button>
+            </div>
           </div>
 
           {loading ? <div className="space-y-3">{[1,2].map(i=><Skeleton key={i} className="h-20 rounded-xl bg-white/5"/>)}</div>
@@ -260,17 +266,19 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                       <span className="truncate text-sm font-medium text-zinc-200">{acc.name}</span>
                     </div>
                     <span className="text-xs tabular-nums text-zinc-500 pr-1 hidden sm:inline">£{total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                    {editMode && (
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Account actions"><MoreVertical className="w-3.5 h-3.5"/></Button>} />
                       <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-40">
                         <DropdownMenuItem onClick={()=>{ setEditingAccount(acc); setEditAccountName(acc.name); }}><Pencil className="w-3.5 h-3.5"/>Rename account</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>{ setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true); }}><Briefcase className="w-3.5 h-3.5"/>New provider</DropdownMenuItem>
-                        <DropdownMenuItem onClick={()=>{ setDirectTarget({accountId: acc.id}); setDirectForm({symbol:"",name:"",shares:"",avgPrice:"",exchange:"",currentPrice:"",currency:"GBP"}); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
+                        <DropdownMenuItem onClick={()=>{ setDirectTarget({accountId: acc.id}); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>openWizard(acc.id, null)}><Layers className="w-3.5 h-3.5"/>New portfolio</DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-white/10"/>
                         <DropdownMenuItem variant="destructive" onClick={()=> onDeleteAccount?.(acc)}><Trash2 className="w-3.5 h-3.5"/>Delete account</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    )}
                   </div>
                   {isOpen && (
                     <div className="px-3 pb-3 space-y-3">
@@ -288,16 +296,18 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                               <Briefcase className="w-3.5 h-3.5 text-zinc-600 shrink-0"/>
                               <span className="flex-1 truncate text-xs font-medium text-zinc-300">{pr.name}</span>
                               <span className="text-[11px] tabular-nums text-zinc-500">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                              {editMode && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
                                 <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-[220px]">
                                   <DropdownMenuItem onClick={()=>{setEditingProvider(pr); setEditProviderName(pr.name);}}><Pencil className="w-3.5 h-3.5"/>Rename provider</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={()=>{ setDirectTarget({providerId: pr.id, accountId: pr.accountId}); setDirectForm({symbol:"",name:"",shares:"",avgPrice:"",exchange:"",currentPrice:"",currency:"GBP"}); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={()=>{ setDirectTarget({providerId: pr.id, accountId: pr.accountId}); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
                                   <DropdownMenuItem className="whitespace-nowrap" onClick={()=>openWizard(acc.id, pr.id)}><Plus className="w-3.5 h-3.5"/>New portfolio here</DropdownMenuItem>
                                   <DropdownMenuSeparator className="bg-white/10"/>
                                   <DropdownMenuItem variant="destructive" onClick={()=>onDeleteProvider?.(pr)}><Trash2 className="w-3.5 h-3.5"/>Delete provider</DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
+                              )}
                             </div>
                             {isProvOpen && (
                               <div className="px-1 pb-1 space-y-0.5">
@@ -317,6 +327,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                         <span className="truncate text-[11px] font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                                       </Button>
                                       <span className="text-[11px] tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                                      {editMode && (
                                       <DropdownMenu>
                                         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5"><MoreVertical className="w-3 h-3"/></Button>} />
                                         <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
@@ -324,6 +335,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                           <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
                                         </DropdownMenuContent>
                                       </DropdownMenu>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -335,8 +347,12 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                         <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                                         <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
                                         <span className="text-zinc-500">£{holdingValueGBP(h).toFixed(0)}</span>
-                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-white" onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
-                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                                        {editMode && (
+                                        <>
+                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-white" onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
+                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                                        </>
+                                        )}
                                       </div>
                                     ))}
                                   </div>
@@ -365,6 +381,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                   <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full capitalize font-medium" style={active ? { background: isLightColor(selectedBg) ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.18)", color: activeMuted } : {}}>{p.type}</span>
                                 </Button>
                                 <span className="text-xs tabular-nums pr-1 hidden md:inline" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                                {editMode && (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
                                   <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
@@ -372,6 +389,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                                     <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
+                                )}
                               </div>
                             );
                           })}
@@ -385,7 +403,9 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                               <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                               <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
                               <span className="text-zinc-500">£{holdingValueGBP(h).toFixed(0)}</span>
+                              {editMode && (
                               <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -418,6 +438,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                           <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                         </Button>
                         <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                        {editMode && (
                         <DropdownMenu>
                           <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
                           <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
@@ -426,6 +447,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
                             <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        )}
                       </div>
                     );
                   })}
@@ -442,12 +464,15 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, o
 
       </nav>
       <div className="p-3 border-t flex flex-col gap-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-          <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300"><Clock className="w-3.5 h-3.5 text-zinc-500" /> Prices update daily</div>
-          <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">Automated at 06:00 UTC via cron. No manual refresh needed.</p>
-          <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
-            <span className="text-[11px] text-zinc-600">Last refresh</span>
-            <span className="text-[11px] font-medium text-zinc-400">{lastRefresh ? fmtRelative(lastRefresh) : "—"}</span>
+        <div className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-1">
+          <div className="flex items-center gap-2 text-xs">
+            <Clock className="w-3.5 h-3.5 text-zinc-500" />
+            <span className="font-semibold text-zinc-300">Prices update daily</span>
+            <span className="ml-auto text-[11px] text-zinc-500">06:00 UTC</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-600">Last refresh</span>
+            <span className="text-zinc-400 tabular-nums">{lastRefresh ? fmtRelative(lastRefresh) : "—"}</span>
           </div>
         </div>
         <a href="/settings" className={buttonVariants({ variant: "ghost", size: "sm", className: "w-full justify-start gap-2 text-zinc-400 hover:text-white" })}><Settings className="w-4 h-4"/> Settings</a>
