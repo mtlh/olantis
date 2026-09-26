@@ -68,24 +68,24 @@ export function useAccounts() {
     setReady(true);
   }, []);
   useAsyncInit(refresh);
-  const create = async (name: string) => {
+  const create = useCallback(async (name: string) => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) });
     await refresh();
-  };
-  const remove = async (id: string) => {
+  }, [refresh]);
+  const remove = useCallback(async (id: string) => {
     await api(`/api/accounts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
-  };
-  const rename = async (id: string, name: string, color?: string | null) => {
+  }, [refresh]);
+  const rename = useCallback(async (id: string, name: string, color?: string | null) => {
     const payload: AccountPayload = { id, name };
     if (color !== undefined) payload.color = color;
     await api("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
     await refresh();
-  };
-  const setColor = async (id: string, color: string | null) => {
+  }, [refresh]);
+  const setColor = useCallback(async (id: string, color: string | null) => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ id, color }) });
     await refresh();
-  };
+  }, [refresh]);
   return { accounts, ready, error, create, remove, rename, setColor, refresh, setAccounts };
 }
 
@@ -101,25 +101,25 @@ export function useProviders() {
     setReady(true);
   }, []);
   useAsyncInit(refresh);
-  const create = async (name: string, accountId: string, color?: string | null) => {
+  const create = useCallback(async (name: string, accountId: string, color?: string | null) => {
     const r = await api("/api/providers", { method: "POST", body: JSON.stringify({ name, accountId, color: color ?? null }) });
     await refresh();
     return r as { id: string };
-  };
-  const remove = async (id: string) => {
+  }, [refresh]);
+  const remove = useCallback(async (id: string) => {
     await api(`/api/providers?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
-  };
-  const rename = async (id: string, name: string, color?: string | null) => {
+  }, [refresh]);
+  const rename = useCallback(async (id: string, name: string, color?: string | null) => {
     const payload: ProviderPayload = { id, name };
     if (color !== undefined) payload.color = color;
     await api("/api/providers", { method: "POST", body: JSON.stringify(payload) });
     await refresh();
-  };
-  const setColor = async (id: string, color: string | null) => {
+  }, [refresh]);
+  const setColor = useCallback(async (id: string, color: string | null) => {
     await api("/api/providers", { method: "POST", body: JSON.stringify({ id, color }) });
     await refresh();
-  };
+  }, [refresh]);
   return { providers, ready, create, remove, rename, setColor, refresh, setProviders };
 }
 

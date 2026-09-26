@@ -1,11 +1,11 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DEMO_COOKIE, demoUserId } from "@/lib/auth";
-import { Dashboard, type DashboardSection } from "@/components/Dashboard";
+import { Dashboard } from "@/components/Dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
-export async function AuthenticatedDashboardPage({ section }: { section: DashboardSection }) {
+export async function AuthenticatedDashboardLayout() {
   const jar = await cookies();
   const demoSession = jar.get(DEMO_COOKIE)?.value;
   const isDemo = !!demoSession;
@@ -24,7 +24,7 @@ export async function AuthenticatedDashboardPage({ section }: { section: Dashboa
       const requestCookies = await cookies();
       const hasSession = requestCookies.getAll().some((cookie) => cookie.name === "wos-session");
       if (hasSession) {
-          const path = section === "dashboard" ? "/dashboard" : `/${section}`;
+        const path = "/dashboard";
         return (
           <div className="min-h-screen flex items-center justify-center p-6">
             <Card className="glass-card max-w-lg w-full">
@@ -42,5 +42,5 @@ export async function AuthenticatedDashboardPage({ section }: { section: Dashboa
   }
 
   if (!user) redirect("/login");
-  return <Dashboard key={section} isDemo={isDemo} section={section} />;
+  return <Dashboard isDemo={isDemo} />;
 }

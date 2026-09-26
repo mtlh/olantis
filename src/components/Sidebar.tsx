@@ -2,7 +2,8 @@
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
 import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { memo, useState, useMemo, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,9 +19,36 @@ import { fmtRelative, holdingValueGBP, fmtPrice } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
-export function Sidebar({ accounts, providers, portfolios, holdings, activeId, page, onSelect, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+function SidebarPrimaryNav({ activeId, onSelect, onClose }: { activeId: string | null; onSelect: (id: string | null) => void; onClose: () => void }) {
+  const pathname = usePathname();
+  const page = pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : "dashboard";
+
+  return (
+    <>
+      {page === "dashboard" ? (
+        <Button variant={activeId === null ? "secondary" : "ghost"} className="w-full justify-start gap-2.5" onClick={() => { onSelect(null); onClose(); }}>
+          <LayoutDashboard className="w-4 h-4" /> Dashboard
+        </Button>
+      ) : (
+        <Link href="/dashboard" onClick={() => { onSelect(null); onClose(); }} className={buttonVariants({ variant: "ghost", className: "w-full justify-start gap-2.5" })}>
+          <LayoutDashboard className="w-4 h-4" /> Dashboard
+        </Link>
+      )}
+      <Link href="/performance" onClick={onClose} className={buttonVariants({ variant: page === "performance" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
+        <TrendingUp className="w-4 h-4" /> Performance
+      </Link>
+      <Link href="/watchlist" onClick={onClose} className={buttonVariants({ variant: page === "watchlist" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
+        <Eye className="w-4 h-4" /> Watchlist
+      </Link>
+      <Link href="/goals" onClick={onClose} className={buttonVariants({ variant: page === "goals" ? "secondary" : "ghost", className: "w-full justify-start gap-2.5" })}>
+        <Target className="w-4 h-4" /> Goals
+      </Link>
+    </>
+  );
+}
+
+export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, onSelect, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; onSelect: (id: string | null) => void; onSelectHolding?: (h: Holding) => void;
-  page: "dashboard" | "watchlist" | "goals" | "performance";
   onCreateAccount: (name: string) => void | Promise<void>;
   onCreateProvider?: (name: string, accountId: string) => Promise<void>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
@@ -65,6 +93,8 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
   const [mobileOpen, setMobileOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
+
+  const closeMobileMenu = useCallback(() => setMobileOpen(false), []);
 
   const sortByOrder = <T extends { sortOrder?: number | null }>(list: T[]): T[] => [...list].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
 
@@ -219,24 +249,7 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
         <Button variant="ghost" size="icon-xs" className="md:hidden" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
-        {page === "dashboard" ? (
-          <Button variant={activeId === null ? "secondary" : "ghost"} className="w-full justify-start gap-2.5" onClick={() => { onSelect(null); setMobileOpen(false); }}>
-            <LayoutDashboard className="w-4 h-4" /> Dashboard
-          </Button>
-        ) : (
-          <Link href="/dashboard" onClick={() => { onSelect(null); setMobileOpen(false); }} className={buttonVariants({ variant: "ghost", className: "w-full justify-start gap-2.5" })}>
-            <LayoutDashboard className="w-4 h-4" /> Dashboard
-          </Link>
-        )}
-        <Link href="/performance" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "performance" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
-          <TrendingUp className="w-4 h-4" /> Performance
-        </Link>
-        <Link href="/watchlist" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "watchlist" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
-          <Eye className="w-4 h-4" /> Watchlist
-        </Link>
-        <Link href="/goals" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: page === "goals" ? "secondary" : "ghost", className: "w-full justify-start gap-2.5" })}>
-          <Target className="w-4 h-4" /> Goals
-        </Link>
+        <SidebarPrimaryNav activeId={activeId} onSelect={onSelect} onClose={closeMobileMenu} />
 
         <div className="mt-4 relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
@@ -652,4 +665,4 @@ export function Sidebar({ accounts, providers, portfolios, holdings, activeId, p
       )}
     </>
   );
-}
+});

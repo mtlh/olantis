@@ -3,7 +3,7 @@ import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders
 import type { Holding, Portfolio, Snapshot } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceDot } from "recharts";
 import { Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase, FolderPlus, Activity, Target, Trophy, Clock3 } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
@@ -38,7 +38,9 @@ type ChartRow = { date: string; dateISO: string; total: number; [key: string]: s
 
 export type DashboardSection = "dashboard" | "watchlist" | "goals" | "performance";
 
-export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean; section?: DashboardSection }) {
+export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: boolean; section?: DashboardSection }) {
+  const pathname = usePathname();
+  const section = requestedSection ?? (pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : "dashboard");
   const router = useRouter();
   const searchParams = useSearchParams();
   const portfolioFromUrl = searchParams.get("portfolio");
@@ -66,7 +68,12 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   // range manually we stop following the preference for this visit.
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">(section === "performance" ? "MAX" : "1Y");
   const rangeTouched = useRef(false);
+  const rangeSection = useRef(section);
   useEffect(() => {
+    if (rangeSection.current !== section) {
+      rangeSection.current = section;
+      rangeTouched.current = false;
+    }
     if (rangeTouched.current) return;
     setRange(section === "performance" ? "MAX" : settings.defaultRange);
   }, [settings.defaultRange, section]);
@@ -74,7 +81,7 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
     rangeTouched.current = true;
     setRange(r);
   }, []);
-  const [benchmark, setBenchmark] = useState(isDemo && section === "performance" ? "VWRL.L" : "__none__");
+  const [benchmark, setBenchmark] = useState(isDemo ? "VWRL.L" : "__none__");
   const [benchmarkPrices, setBenchmarkPrices] = useState<{ key: string; rows: Array<{ date: string; price: number }> } | null>(null);
   useEffect(() => {
     if (section !== "performance" || benchmark === "__none__") return;
@@ -432,15 +439,15 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
   const handleCreate = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
     try { const r = await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"}); return r; } catch(e: unknown){toast({title:"Failed to create portfolio",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   };
-  const handleCreateAccount = async (name: string) => {
+  const handleCreateAccount = useCallback(async (name: string) => {
     try { await createAccount(name); await refreshProviders(); } catch(e: unknown){ toast({title:"Failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
-  };
-  const handleCreateProvider = async (name: string, accountId: string) => {
+  }, [createAccount, refreshProviders, toast]);
+  const handleCreateProvider = useCallback(async (name: string, accountId: string) => {
     try { await createProvider(name, accountId); toast({title:"Provider created",description:name,variant:"success"});} catch(e: unknown){toast({title:"Failed to create provider",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
-  };
-  const handleRenameAccount = async (id:string,name:string)=>{ await renameAccount(id,name); await refreshPortfolios(); };
-  const handleRenameProvider = async (id:string,name:string)=>{ await renameProvider(id,name); await refreshPortfolios(); };
-  const handleRenamePortfolio = async (id:string,patch: { name?: string; type?: string; accountId?: string | null; providerId?: string | null })=>{ if(patch.accountId!==undefined || patch.providerId!==undefined || patch.name!==undefined || patch.type!==undefined){ const body: PortfolioUpdateBody={id}; if(patch.name!==undefined) body.name=patch.name; if(patch.type!==undefined) body.type=patch.type; if(patch.accountId!==undefined) body.accountId=patch.accountId; if(patch.providerId!==undefined) body.providerId=patch.providerId; await fetch("/api/portfolios",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(async r=>{ if(!r.ok) throw new Error(await r.text()); }); await refreshPortfolios(); } };
+  }, [createProvider, toast]);
+  const handleRenameAccount = useCallback(async (id:string,name:string)=>{ await renameAccount(id,name); await refreshPortfolios(); }, [renameAccount, refreshPortfolios]);
+  const handleRenameProvider = useCallback(async (id:string,name:string)=>{ await renameProvider(id,name); await refreshPortfolios(); }, [renameProvider, refreshPortfolios]);
+  const handleRenamePortfolio = useCallback(async (id:string,patch: { name?: string; type?: string; accountId?: string | null; providerId?: string | null })=>{ if(patch.accountId!==undefined || patch.providerId!==undefined || patch.name!==undefined || patch.type!==undefined){ const body: PortfolioUpdateBody={id}; if(patch.name!==undefined) body.name=patch.name; if(patch.type!==undefined) body.type=patch.type; if(patch.accountId!==undefined) body.accountId=patch.accountId; if(patch.providerId!==undefined) body.providerId=patch.providerId; await fetch("/api/portfolios",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(async r=>{ if(!r.ok) throw new Error(await r.text()); }); await refreshPortfolios(); } }, [refreshPortfolios]);
   const handleRemoveAccount = async (id: string) => {
     try { await removeAccount(id); await refreshProviders(); await refreshPortfolios(); toast({title:"Account deleted",variant:"success"});} catch(e: unknown){toast({title:"Delete failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
   };
@@ -570,11 +577,11 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
     finally{setSaving(false);}
   };
 
-  const openWizard = (accountId: string | null = null, providerId: string | null = null) => {
+  const openWizard = useCallback((accountId: string | null = null, providerId: string | null = null) => {
     setWizardAccountId(accountId);
     setWizardProviderId(providerId);
     setShowWizard(true);
-  };
+  }, []);
 
   const [assignHolding, setAssignHolding] = useState<Holding | null>(null);
   const [assignTarget, setAssignTarget] = useState<string>("__pick__");
@@ -680,17 +687,23 @@ export function Dashboard({ isDemo, section = "dashboard" }: { isDemo?: boolean;
 
   const isLoading = !portfoliosReady;
 
+  const selectPortfolio = useCallback((id: string | null) => {
+    if (id) router.push(`/dashboard?portfolio=${encodeURIComponent(id)}`);
+    else router.replace("/dashboard");
+  }, [router]);
+  const selectHolding = useCallback((h: Holding) => {
+    router.push(`/dashboard?holding=${encodeURIComponent(h.id)}`);
+  }, [router]);
+  const requestDeleteAccount = useCallback((account: (typeof accounts)[number]) => setConfirmAccount(account), [setConfirmAccount]);
+  const requestDeleteProvider = useCallback((provider: (typeof providers)[number]) => setConfirmProvider(provider), [setConfirmProvider]);
+  const requestDeletePortfolio = useCallback((portfolio: Portfolio) => setConfirmPortfolio(portfolio), [setConfirmPortfolio]);
+
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} page={section} onSelect={(id) => {
-        if (id) router.push(`/dashboard?portfolio=${encodeURIComponent(id)}`);
-        else if (section === "dashboard") router.replace("/dashboard");
-      }} onSelectHolding={(h) => {
-        router.push(`/dashboard?holding=${encodeURIComponent(h.id)}`);
-      }} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
-        onDeleteAccount={(a) => setConfirmAccount(a)}
-        onDeleteProvider={(p) => setConfirmProvider(p)}
-        onDeletePortfolio={(p) => setConfirmPortfolio(p)} />
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={selectPortfolio} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+        onDeleteAccount={requestDeleteAccount}
+        onDeleteProvider={requestDeleteProvider}
+        onDeletePortfolio={requestDeletePortfolio} />
       <main className="flex-1 min-w-0 pt-12 md:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
           {(portfoliosError || holdingsError || accountsError) && (
