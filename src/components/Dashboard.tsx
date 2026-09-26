@@ -3,11 +3,13 @@ import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders
 import type { Holding, Portfolio, Snapshot } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, ReferenceDot } from "recharts";
-import { TrendingUp, TrendingDown, Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase, FolderPlus, Activity, Target, Trophy, Clock3 } from "lucide-react";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceDot } from "recharts";
+import { Wallet, Plus, Trash2, Pencil, Search, X, RefreshCw, Download, AlertTriangle, Check, Loader2, ShoppingCart, Minus, History, ArrowDownRight, ArrowUpRight, Briefcase, FolderPlus, Activity, Target, Trophy, Clock3 } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
 import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
-import { StockDetail } from "@/components/StockDetail";
+import { IndividualDashboard } from "@/components/dashboard/IndividualDashboard";
+import { MainDashboard } from "@/components/dashboard/MainDashboard";
+import { PortfolioDashboard } from "@/components/dashboard/PortfolioDashboard";
 import { WatchlistPanel } from "@/components/WatchlistPanel";
 import { GoalPanel } from "@/components/GoalPanel";
 import { Button } from "@/components/ui/button";
@@ -18,19 +20,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 
 import { PALETTE, portfolioTint } from "@/lib/colors";
 import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, chartDateLabel, gbpAxisFormatter, paddedDomain, numericValues, filterByRange } from "@/lib/format";
 import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
+import { AllocationCard, type AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
 const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d399", GIA: "#f472b6" };
 
 type SymbolResult = { symbol: string; name: string; exchange: string; exchDisp?: string; price?: number | null; currency?: string | null; longname?: string; rawExchange?: string; type?: string };
 type ChartDot = { x: string; y: number; type: "buy" | "sell"; symbol: string; date: string; shares: number; price: number };
 type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };
-type AllocationItem = { name: string; value: number; color: string; pct: number };
 type ChartRow = { date: string; total: number; [key: string]: string | number | null };
 
 export function Dashboard({ isDemo }: { isDemo?: boolean }) {
@@ -645,12 +646,17 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
           {showWizard ? (
             <CreatePortfolioWizard open={showWizard} onOpenChange={setShowWizard} accounts={accounts} providers={providers} defaultAccountId={wizardAccountId} defaultProviderId={wizardProviderId}
               onCreate={handleWizardCreate} inline />
-          ) : viewHolding ? (() => {
-            const prov = viewHolding.providerId ? providers.find((pr) => pr.id === viewHolding.providerId) : undefined;
-            const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
-            return (
-              <>
-                <StockDetail holding={viewHolding} portfolioId={viewPortfolio?.id ?? null} portfolioName={viewPortfolio?.name ?? prov?.name ?? acc?.name} color={viewColor} onBack={() => setHoldingViewId(null)} onBuy={() => openTrade(viewHolding, "buy")} onSell={() => openTrade(viewHolding, "sell")} onAddToPortfolio={() => openAssign(viewHolding)} />
+          ) : viewHolding ? (
+            <IndividualDashboard
+              holding={viewHolding}
+              portfolioId={viewPortfolio?.id ?? null}
+              portfolioName={viewPortfolio?.name ?? providers.find((provider) => provider.id === viewHolding.providerId)?.name ?? accounts.find((account) => account.id === viewHolding.accountId)?.name}
+              color={viewColor}
+              onBack={() => setHoldingViewId(null)}
+              onBuy={() => openTrade(viewHolding, "buy")}
+              onSell={() => openTrade(viewHolding, "sell")}
+              onAddToPortfolio={() => openAssign(viewHolding)}
+            >
           <Dialog open={!!assignHolding} onOpenChange={(o) => { if (!o) closeAssign(); }}>
             <DialogContent className="bg-zinc-900 border-white/10 text-white sm:max-w-md">
               <DialogHeader>
@@ -700,43 +706,24 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
               </div>
             </DialogContent>
           </Dialog>
-              </>
-            );
-          })() : active ? (
-            <>
-              <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: (activeBaseColor ?? "#60a5fa") + "40", background: `linear-gradient(to bottom right, ${(activeBaseColor ?? "#60a5fa")}2A, ${(activeBaseColor ?? "#60a5fa")}12)` }}>
-                <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl" style={{ background: (activeBaseColor ?? "#60a5fa") + "26" }} />
-                <div className="relative flex flex-wrap items-start justify-between gap-6">
-                  <div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">{active.name}</h1>
-                      <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-300 capitalize">{active.type}</Badge>
-                      {active.accountId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{accounts.find((a) => a.id === active.accountId)?.name ?? ""}</Badge>}
-                      {active.providerId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-500">{providers.find((p) => p.id === active.providerId)?.name ?? ""}</Badge>}
-                    </div>
-                    <p className="text-sm mt-2 text-zinc-500">{active.holdings.length} holdings • {active.type} • updated {fmtRelative(Math.max(...active.holdings.map((h) => h.lastRefreshedAt ?? 0), 0) || null, settings.dateFormat)}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" className="bg-white/5 border-white/10" onClick={() => setActiveId(null)}>← Overview</Button>
-                    <Button variant="outline" className="bg-white/5 border-white/10" onClick={()=>openEditPortfolio(active)}><Pencil className="w-4 h-4"/> Edit</Button>
-                    <Button onClick={openAdd}><Plus className="w-4 h-4" /> Add holding</Button>
-                    <Button variant="ghost" className="text-zinc-400 hover:text-red-400 hover:bg-red-500/10 border border-white/5" onClick={() => { setConfirmPortfolio(active); setConfirmPortfolioInput(""); }}><Trash2 className="w-4 h-4" /> Delete</Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mt-8">
-                  <div className="p-4 rounded-xl bg-white text-black border-l-4" style={{ borderLeftColor: activeBaseColor ?? "#60a5fa" }}>
-                    <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Value</div>
-                    <div className="text-2xl font-bold mt-1">{fmtGBP(activeValue)}</div>
-                    <div className="text-xs text-zinc-600 mt-1">Cost {fmtGBP(activeCost)}</div>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-                    <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Return</div>
-                    <div className="text-2xl font-bold flex items-center gap-2" style={{ color: activeGain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(activeGain)} <span className="text-sm">{fmtPct(activeGainPct)}</span></div>
-                    <div className="text-xs text-zinc-500 mt-1">All time</div>
-                  </div>
-                </div>
-              </div>
-
+            </IndividualDashboard>
+          ) : active ? (
+            <PortfolioDashboard
+              portfolio={active}
+              accounts={accounts}
+              providers={providers}
+              color={activeBaseColor}
+              dateFormat={settings.dateFormat}
+              value={activeValue}
+              cost={activeCost}
+              gain={activeGain}
+              gainPct={activeGainPct}
+              onBack={() => setActiveId(null)}
+              onEdit={() => openEditPortfolio(active)}
+              onAddHolding={openAdd}
+              onDelete={() => { setConfirmPortfolio(active); setConfirmPortfolioInput(""); }}
+            >
+              <>
               <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
                 <Card className="xl:col-span-3 glass-card">
                   <CardHeader className="flex flex-row items-center justify-between">
@@ -774,40 +761,9 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                     {shownDots.length > 0 && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span><span className="text-zinc-600">Trades marked on chart</span></div>}
                   </CardContent>
                 </Card>
-                <Card className="xl:col-span-2 glass-card">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="text-white">Allocation</CardTitle>
-                    <div className="flex gap-1">
-                      <Button variant={allocMode === "holding" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("holding")}>Holdings</Button>
-                      <Button variant={allocMode === "account" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("account")}>Accounts</Button>
-                      <Button variant={allocMode === "sector" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("sector")}>Sectors</Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {allocation.length === 0 ? <p className="text-sm text-zinc-500 py-10 text-center">No holdings — add one to see allocation</p> : (
-                      <div className="flex gap-4">
-                        <div className="w-40 h-40 shrink-0">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart key={allocMode}>
-                              <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} stroke="none">
-                                {allocation.map((e, i) => <Cell key={`${allocMode}-${e.name}-${i}`} fill={e.color} />)}
-                              </Pie>
-                              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v)=>fmtGBP(Number(v))} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          {allocation.map((a) => (
-                            <div key={`${allocMode}-${a.name}`} className="flex items-center justify-between text-sm">
-                              <span className="flex items-center gap-2 text-zinc-400"><span className="w-2.5 h-2.5 rounded-full" style={{ background: a.color }} />{a.name}</span>
-                              <span className="text-white tabular-nums">{a.pct.toFixed(1)}%</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <div className="xl:col-span-2 min-w-0">
+                  <AllocationCard allocation={allocation} mode={allocMode} onModeChange={setAllocMode} layout="fill" />
+                </div>
               </div>
 
               <Card className="glass-card overflow-hidden">
@@ -930,63 +886,29 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                 </CardContent>
               </Card>
             </>
+            </PortfolioDashboard>
           ) : (
-            <>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <h1 className="text-3xl font-bold tracking-tight text-white">Dashboard</h1>
-                  <p className="text-sm mt-1 text-zinc-500">{accounts.length} accounts • {providers.length} providers • {portfolios.length} portfolios</p>
-                  <p className="text-xs mt-1 text-zinc-600">Last snapshot {filteredSnapshots[filteredSnapshots.length - 1]?.date ?? "—"} • {portfolios.length === 0 && <><span className="mx-1">•</span> <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={async () => { await handleCreate("ISA", "live", accounts[0]?.id ?? null); }}>Create first portfolio</Button></>}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="bg-white/5 border-white/10" onClick={refreshPrices} disabled={refreshing || portfolios.length===0}>
-                    {refreshing ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>} Refresh prices
-                  </Button>
-                  <Button size="sm" onClick={()=>openWizard(null)}><Plus className="w-4 h-4"/> New portfolio</Button>
-                </div>
-              </div>
-
-              {isLoading ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[1,2,3].map(i=> <Card key={i} className="glass-card p-6"><Skeleton className="h-6 w-24 bg-white/10 mb-4"/><Skeleton className="h-8 w-32 bg-white/10"/><Skeleton className="h-4 w-20 bg-white/10 mt-2"/></Card>)}
-                </div>
-              ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="glass-card">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-xs tracking-widest uppercase text-zinc-500 font-semibold">Total value</CardTitle>
-                    <Wallet className="w-4 h-4 text-zinc-500" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold tabular-nums text-white">{fmtGBP(totalValue)}</div>
-                    <p className="text-xs text-zinc-500 mt-1">Cost {fmtGBP(totalCost)}</p>
-                  </CardContent>
-                </Card>
-                <Card className="glass-card">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-xs tracking-widest uppercase text-zinc-500 font-semibold">Total gain</CardTitle>
-                    {totalGain >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold tabular-nums" style={{ color: totalGain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(totalGain)} <span className="text-sm font-medium">{fmtPct(totalGainPct)}</span></div>
-                    <p className="text-xs text-zinc-500 mt-1">All accounts</p>
-                  </CardContent>
-                </Card>
-                <Card className="glass-card">
-                  <CardHeader className="pb-2"><CardTitle className="text-xs tracking-widest uppercase text-zinc-500 font-semibold">Holdings</CardTitle></CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-white">{portfolios.reduce((s, p) => s + p.holdings.length, 0)}</div>
-                    <p className="text-xs text-zinc-500 mt-1">{accounts.length} accounts • {portfolios.length} portfolios</p>
-                  </CardContent>
-                </Card>
-              </div>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <MainDashboard
+              accountsCount={accounts.length}
+              providersCount={providers.length}
+              portfoliosCount={portfolios.length}
+              latestSnapshot={filteredSnapshots[filteredSnapshots.length - 1]?.date ?? "—"}
+              holdingCount={portfolios.reduce((sum, portfolio) => sum + portfolio.holdings.length, 0)}
+              totalValue={totalValue}
+              totalCost={totalCost}
+              totalGain={totalGain}
+              totalGainPct={totalGainPct}
+              isLoading={isLoading}
+              refreshing={refreshing}
+              canRefresh={portfolios.length > 0}
+              onRefresh={() => { void refreshPrices(); }}
+              onNewPortfolio={() => openWizard(null)}
+              onCreateFirstPortfolio={() => { void handleCreate("ISA", "live", accounts[0]?.id ?? null); }}
+            >
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <WatchlistPanel />
                 <GoalPanel currentValue={totalValue} dateFormat={settings.dateFormat} />
               </div>
-
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                 <Card className="xl:col-span-2 glass-card">
                   <CardHeader className="flex flex-row items-center justify-between">
@@ -1041,40 +963,12 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="glass-card">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="text-white">Allocation</CardTitle>
-                    <div className="flex gap-1">
-                      <Button variant={allocMode === "holding" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("holding")}>Holdings</Button>
-                      <Button variant={allocMode === "account" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("account")}>Accounts</Button>
-                      <Button variant={allocMode === "sector" ? "secondary" : "ghost"} size="xs" onClick={() => setAllocMode("sector")}>Sectors</Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {allocation.length === 0 ? <div className="py-10 text-center"><p className="text-sm text-zinc-500">No holdings</p><p className="text-xs text-zinc-600 mt-1">Create a portfolio and add holdings</p><Button size="sm" className="mt-3" onClick={()=>openWizard(null)}><Plus className="w-3.5 h-3.5"/>New portfolio</Button></div> : (
-                      <>
-                        <div className="h-[180px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart key={allocMode}>
-                              <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} stroke="none">
-                                {allocation.map((e, i) => <Cell key={`${allocMode}-${e.name}-${i}`} fill={e.color} />)}
-                              </Pie>
-                              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(v)=>fmtGBP(Number(v))} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="space-y-2 mt-2">
-                          {allocation.slice(0, 6).map((a) => (
-                            <div key={`${allocMode}-${a.name}`} className="flex items-center justify-between text-sm">
-                              <span className="flex items-center gap-2 text-zinc-400"><span className="w-2.5 h-2.5 rounded-full" style={{ background: a.color }} />{a.name}</span>
-                              <span className="text-white tabular-nums">{a.pct.toFixed(1)}%</span>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
+                <AllocationCard
+                  allocation={allocation}
+                  mode={allocMode}
+                  onModeChange={setAllocMode}
+                  emptyContent={<div><p className="text-sm text-zinc-500">No holdings</p><p className="mt-1 text-xs text-zinc-600">Create a portfolio and add holdings</p><Button size="sm" className="mt-3" onClick={() => openWizard(null)}><Plus className="h-3.5 w-3.5" />New portfolio</Button></div>}
+                />
               </div>
 
               {overviewTx.transactions.length > 0 && (
@@ -1175,7 +1069,7 @@ export function Dashboard({ isDemo }: { isDemo?: boolean }) {
                   </Card>
                 </div>
               </section>
-            </>
+            </MainDashboard>
           )}
 
           <Dialog open={showHolding} onOpenChange={setShowHolding}>
