@@ -119,10 +119,10 @@ export function ProviderDashboard({
               <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-300">Provider</Badge>
               <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{accountName}</Badge>
             </div>
-            <p className="mt-2 text-sm text-zinc-500">{portfolios.length} portfolios • {holdingCount} holdings • updated {fmtRelative(latestRefresh, dateFormat)}</p>
+            <p className="mt-2 text-sm text-zinc-500">{portfolios.length} {portfolios.length === 1 ? "portfolio" : "portfolios"} • {holdingCount} {holdingCount === 1 ? "holding" : "holdings"} • updated {fmtRelative(latestRefresh, dateFormat)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="border-white/10 bg-white/5" onClick={onBack}>← Overview</Button>
+            <Button variant="outline" className="border-white/10 bg-white/5" onClick={onBack}>← {accountName}</Button>
             <Button variant="outline" className="border-white/10 bg-white/5" onClick={() => { setEditName(name); setEditOpen(true); }}>Edit</Button>
             <Button onClick={onNewPortfolio}><Plus className="h-4 w-4" /> Add portfolio</Button>
             <Button variant="ghost" className="border border-white/5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>

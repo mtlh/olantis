@@ -40,6 +40,10 @@ export function PortfolioDashboard({
   children,
 }: PortfolioDashboardProps) {
   const accent = color ?? "#60a5fa";
+  const parentName = portfolio.providerId
+    ? providers.find((provider) => provider.id === portfolio.providerId)?.name
+    : portfolio.accountId ? accounts.find((account) => account.id === portfolio.accountId)?.name : null;
+  const backLabel = parentName ?? "Overview";
 
   return (
     <DashboardLevel label={`${portfolio.name} portfolio`}>
@@ -56,7 +60,7 @@ export function PortfolioDashboard({
             <p className="mt-2 text-sm text-zinc-500">{portfolio.holdings.length} holdings • {portfolio.type} • updated {fmtRelative(Math.max(...portfolio.holdings.map((holding) => holding.lastRefreshedAt ?? 0), 0) || null, dateFormat)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="border-white/10 bg-white/5" onClick={onBack}>← Overview</Button>
+            <Button variant="outline" className="border-white/10 bg-white/5" onClick={onBack}>← {backLabel}</Button>
             <Button variant="outline" className="border-white/10 bg-white/5" onClick={onEdit}><Pencil className="h-4 w-4" /> Edit</Button>
             <Button onClick={onAddHolding}><Plus className="h-4 w-4" /> Add holding</Button>
             <Button variant="ghost" className="border border-white/5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>

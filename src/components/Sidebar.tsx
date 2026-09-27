@@ -99,8 +99,8 @@ function SidebarPrimaryNav({ activeId, onSelect, onClose }: { activeId: string |
   );
 }
 
-export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeProviderId, onSelect, onSelectProvider, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
-  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; activeProviderId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
+export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; activeProviderId?: string | null; activeAccountId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectAccount?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
   onCreateAccount: (name: string) => void | Promise<void>;
   onCreateProvider?: (name: string, accountId: string) => Promise<void>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
@@ -338,19 +338,20 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
               const isOpen = expanded[acc.id] ?? true;
               const total = accountTotals(acc.id);
+              const accountActive = activeAccountId === acc.id;
               const accountProviders = providersByAccount.get(acc.id) ?? [];
               const provs = filteredProviders(accountProviders, accountNameMatches);
               const direct = filteredPortfolios(directByAccount.get(acc.id) ?? [], accountNameMatches);
               const accountDirectHoldings = directHoldings.filter((holding) => holding.accountId === acc.id && !holding.providerId && !holding.portfolioId && (accountNameMatches || matchesHolding(holding)));
               const accColor = accColorFor(acc);
               return (
-                <div key={acc.id} className="group overflow-hidden rounded-2xl border shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-[filter] hover:brightness-110" style={{ borderColor: accColor + "42", background: accColor + "10" }}>
-                  <div className="flex items-center gap-1.5 px-2 py-2">
+                <div key={acc.id} className={`group overflow-hidden rounded-2xl border shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-[filter] hover:brightness-110 ${accountActive ? "ring-1 ring-white/10" : ""}`} style={{ borderColor: accountActive ? `${accColor}90` : accColor + "42", background: accountActive ? `${accColor}18` : accColor + "10" }}>
+                  <div className="flex items-center gap-1.5 rounded-md px-2 py-2 transition-colors hover:bg-white/[0.035]">
                     <Button variant="ghost" size="icon-xs" onClick={() => toggle(acc.id)} aria-expanded={isOpen} aria-label={`${isOpen ? "Collapse" : "Expand"} ${acc.name}`} className="shrink-0 text-zinc-500 hover:text-white"><ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? "" : "-rotate-90"}`} /></Button>
-                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <button type="button" aria-pressed={accountActive} onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }} className="flex-1 min-w-0 flex items-center gap-2 text-left">
                       {isOpen ? <FolderOpen className="w-4 h-4 shrink-0" style={{ color: accColor }} /> : <Building2 className="w-4 h-4 text-zinc-500 shrink-0" />}
-                      <span className="truncate text-sm font-semibold text-zinc-200">{acc.name}</span>
-                    </div>
+                      <span className={`truncate text-sm font-semibold ${accountActive ? "text-white" : "text-zinc-200"}`}>{acc.name}</span>
+                    </button>
                     <span className="text-xs tabular-nums font-medium text-zinc-400 pr-1">£{total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
                     {editMode && (
                     <DropdownMenu>
