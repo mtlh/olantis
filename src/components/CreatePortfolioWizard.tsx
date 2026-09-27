@@ -112,7 +112,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
           </Select>
           <p className="text-xs text-zinc-500">{accountId ? filteredProviders.length ? "Providers live inside this account." : "Create providers from the sidebar — e.g. Vanguard, HL, Trading 212." : "Choose an account to see providers."}</p>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
           {[
             { id: "live", title: "Live", desc: "Auto-updated prices", icon: TrendingUp },
             { id: "manual", title: "Manual", desc: "Pensions, cash, custom", icon: Layers },
@@ -155,12 +155,12 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
         <CardDescription>Confirm and create. You can edit everything after.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="grid grid-cols-1 gap-3 text-sm min-[360px]:grid-cols-2">
           <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Name</div><div className="font-medium text-white">{name || "—"}</div></div>
           <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Type</div><div className="font-medium text-white capitalize">{type}</div></div>
           <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Account</div><div className="font-medium text-white">{accountId ? accounts.find((a) => a.id === accountId)?.name ?? "Unassigned" : "Unassigned"}</div></div>
           <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Provider</div><div className="font-medium text-white">{providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? providers.find((p) => p.id === providerId)?.name ?? "—" : "No provider"}</div></div>
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10 col-span-2"><div className="text-xs text-zinc-500">First holding</div><div className="font-medium text-white">{symbol ? `${symbol} — ${shares || 0} shares` : "None (skip)"}</div></div>
+          <div className="p-3 rounded-xl bg-white/5 border border-white/10 min-[360px]:col-span-2"><div className="text-xs text-zinc-500">First holding</div><div className="font-medium text-white">{symbol ? `${symbol} — ${shares || 0} shares` : "None (skip)"}</div></div>
         </div>
       </CardContent>
     </Card>

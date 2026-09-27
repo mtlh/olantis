@@ -295,8 +295,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                           <span className="w-2 h-2 rounded-full shrink-0" style={{ background: acc.color || PALETTE[i % PALETTE.length].value }} />
                           <span className="flex-1 text-sm text-white truncate">{acc.name}</span>
                           <div className="flex gap-0.5">
-                            <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("accounts", sortedAccounts, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                            <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === sortedAccounts.length - 1} onClick={() => moveItem("accounts", sortedAccounts, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                            <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${acc.name} up`} disabled={i === 0} onClick={() => moveItem("accounts", sortedAccounts, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                            <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${acc.name} down`} disabled={i === sortedAccounts.length - 1} onClick={() => moveItem("accounts", sortedAccounts, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
                           </div>
                         </div>
                       ))}
@@ -320,8 +320,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: pr.color || acc.color || PALETTE[0].value }} />
                               <span className="flex-1 text-sm text-white truncate">{pr.name}</span>
                               <div className="flex gap-0.5">
-                                <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("providers", provs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                                <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === provs.length - 1} onClick={() => moveItem("providers", provs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                                <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${pr.name} up`} disabled={i === 0} onClick={() => moveItem("providers", provs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                                <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${pr.name} down`} disabled={i === provs.length - 1} onClick={() => moveItem("providers", provs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
                               </div>
                             </div>
                           ))}
@@ -358,8 +358,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                                         <span className="flex-1 text-sm text-white truncate">{p.name}</span>
                                         <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
                                         <div className="flex gap-0.5">
-                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("portfolios", pfs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === pfs.length - 1} onClick={() => moveItem("portfolios", pfs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} up`} disabled={i === 0} onClick={() => moveItem("portfolios", pfs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} down`} disabled={i === pfs.length - 1} onClick={() => moveItem("portfolios", pfs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
                                         </div>
                                       </div>
                                     ))}
@@ -377,8 +377,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                                       <span className="flex-1 text-sm text-white truncate">{p.name}</span>
                                       <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
                                       <div className="flex gap-0.5">
-                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("portfolios", directPfs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === directPfs.length - 1} onClick={() => moveItem("portfolios", directPfs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} up`} disabled={i === 0} onClick={() => moveItem("portfolios", directPfs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} down`} disabled={i === directPfs.length - 1} onClick={() => moveItem("portfolios", directPfs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
                                       </div>
                                     </div>
                                   ))}
@@ -398,8 +398,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                                 <span className="flex-1 text-sm text-white truncate">{p.name}</span>
                                 <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
                                 <div className="flex gap-0.5">
-                                  <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === 0} onClick={() => moveItem("portfolios", unassignedPortfolios, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                                  <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" disabled={i === unassignedPortfolios.length - 1} onClick={() => moveItem("portfolios", unassignedPortfolios, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
+                                  <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} up`} disabled={i === 0} onClick={() => moveItem("portfolios", unassignedPortfolios, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
+                                  <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} down`} disabled={i === unassignedPortfolios.length - 1} onClick={() => moveItem("portfolios", unassignedPortfolios, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
                                 </div>
                               </div>
                             ))}

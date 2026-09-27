@@ -34,9 +34,9 @@ export function AllocationCard({
 
   return (
     <Card className={`glass-card flex flex-col ${fillsCard ? "h-full min-h-[420px]" : ""}`}>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="text-white">Allocation</CardTitle>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           <Button variant={mode === "holding" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("holding")}>Holdings</Button>
           <Button variant={mode === "account" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("account")}>Accounts</Button>
           <Button variant={mode === "sector" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("sector")}>Sectors</Button>
@@ -48,8 +48,8 @@ export function AllocationCard({
             {emptyContent ?? <p className="text-sm text-zinc-500">{emptyMessage}</p>}
           </div>
         ) : fillsCard ? (
-          <div className="flex min-h-[320px] w-full flex-1 items-center gap-4">
-            <div className="h-full min-h-[300px] w-[44%] min-w-[180px] shrink-0">
+          <div className="flex min-h-[320px] w-full flex-1 flex-col items-stretch gap-3 min-[360px]:flex-row min-[360px]:items-center min-[360px]:gap-4">
+            <div className="mx-auto h-[200px] min-h-[200px] w-full max-w-[240px] shrink-0 min-[360px]:mx-0 min-[360px]:h-full min-[360px]:min-h-[300px] min-[360px]:w-[44%] min-[360px]:min-w-[180px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart key={mode}>
                   <Pie data={allocation} dataKey="value" nameKey="name" innerRadius="54%" outerRadius="82%" stroke="none">
@@ -59,7 +59,7 @@ export function AllocationCard({
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex h-full min-h-[300px] max-h-[360px] min-w-0 flex-1 flex-col justify-evenly overflow-y-auto pr-1">
+            <div className="flex max-h-[360px] min-h-0 min-w-0 flex-1 flex-col justify-evenly overflow-y-auto pr-1 min-[360px]:h-full min-[360px]:min-h-[300px]">
               {allocation.map((item) => (
                 <div key={`${mode}-${item.name}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2 text-sm">
                   <span className="flex min-w-0 items-center gap-2 text-zinc-400">

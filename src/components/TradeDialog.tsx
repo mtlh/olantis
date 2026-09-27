@@ -90,7 +90,7 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5"><Hash className="w-3 h-3" /> Shares *</Label>
               <Input type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} placeholder="e.g. 10" autoFocus />

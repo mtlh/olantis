@@ -98,10 +98,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const sortByOrder = <T extends { sortOrder?: number | null }>(list: T[]): T[] => [...list].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
 
+  const directHoldings = holdings ?? [];
   const unassigned = useMemo(()=> sortByOrder(portfolios.filter(p=> !p.accountId && !p.providerId)), [portfolios]);
-  const filteredAccounts = useMemo(()=> sortByOrder(accounts.filter(a=> !q || a.name.toLowerCase().includes(q.toLowerCase()))), [accounts,q]);
-  const filteredPortfolios = useMemo(() => (list: Portfolio[]) => sortByOrder(list.filter(p=> !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.holdings.some(h=>h.symbol.toLowerCase().includes(q.toLowerCase())))), [q]);
-  const filteredProviders = useMemo(() => (list: Provider[]) => sortByOrder(list.filter(pr=> !q || pr.name.toLowerCase().includes(q.toLowerCase()))), [q]);
 
   const providersByAccount = useMemo(()=>{
     const m = new Map<string, Provider[]>();
@@ -122,7 +120,21 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     return m;
   },[portfolios]);
 
-  const directHoldings = holdings ?? [];
+  const searchTerm = q.trim().toLowerCase();
+  const matchesHolding = (holding: Holding) => holding.symbol.toLowerCase().includes(searchTerm) || holding.name.toLowerCase().includes(searchTerm);
+  const matchesPortfolio = (portfolio: Portfolio) => portfolio.name.toLowerCase().includes(searchTerm) || portfolio.holdings.some(matchesHolding);
+  const matchesProvider = (provider: Provider) => provider.name.toLowerCase().includes(searchTerm)
+    || portfolios.some((portfolio) => portfolio.providerId === provider.id && matchesPortfolio(portfolio))
+    || directHoldings.some((holding) => holding.providerId === provider.id && !holding.portfolioId && matchesHolding(holding));
+  const filteredAccounts = sortByOrder(accounts.filter((account) => {
+    if (!searchTerm || account.name.toLowerCase().includes(searchTerm)) return true;
+    const accountProviderIds = new Set(providers.filter((provider) => provider.accountId === account.id).map((provider) => provider.id));
+    return providers.some((provider) => provider.accountId === account.id && matchesProvider(provider))
+      || portfolios.some((portfolio) => (portfolio.accountId === account.id || (portfolio.providerId && accountProviderIds.has(portfolio.providerId))) && matchesPortfolio(portfolio))
+      || directHoldings.some((holding) => (holding.accountId === account.id || (holding.providerId && accountProviderIds.has(holding.providerId))) && matchesHolding(holding));
+  }));
+  const filteredPortfolios = (list: Portfolio[], showAll = false) => sortByOrder(list.filter((portfolio) => !searchTerm || showAll || matchesPortfolio(portfolio)));
+  const filteredProviders = (list: Provider[], showAll = false) => sortByOrder(list.filter((provider) => !searchTerm || showAll || matchesProvider(provider)));
   const accountIndex = useMemo(() => new Map(accounts.map((a, i) => [a.id, i])), [accounts]);
   const accountTotals = (aid: string) => {
     const direct = directByAccount.get(aid) ?? [];
@@ -246,7 +258,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     <>
       <div className="px-5 py-5 border-b flex items-center justify-between" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         <Logo size={36} />
-        <Button variant="ghost" size="icon-xs" className="md:hidden" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
+        <Button variant="ghost" size="icon-xs" className="xl:hidden" aria-label="Close menu" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
         <SidebarPrimaryNav activeId={activeId} onSelect={onSelect} onClose={closeMobileMenu} />
@@ -254,7 +266,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         <div className="mt-4 relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
           <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search accounts, providers, portfolios…" className="pl-8 h-8 bg-white/[0.04] border-white/10 text-xs"/>
-          {q && <button onClick={()=>setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
+          {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
         </div>
 
         <div className="mt-6">
@@ -271,10 +283,12 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           : (
           <div className="space-y-3">
             {filteredAccounts.map((acc) => {
+              const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
               const isOpen = expanded[acc.id] ?? true;
               const total = accountTotals(acc.id);
-              const provs = filteredProviders(providersByAccount.get(acc.id) ?? []);
-              const direct = filteredPortfolios(directByAccount.get(acc.id) ?? []);
+              const provs = filteredProviders(providersByAccount.get(acc.id) ?? [], accountNameMatches);
+              const direct = filteredPortfolios(directByAccount.get(acc.id) ?? [], accountNameMatches);
+              const accountDirectHoldings = directHoldings.filter((holding) => holding.accountId === acc.id && !holding.providerId && !holding.portfolioId && (accountNameMatches || matchesHolding(holding)));
               const accColor = accColorFor(acc);
               return (
                 <div key={acc.id} className="group overflow-hidden rounded-2xl border shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-[filter] hover:brightness-110" style={{ borderColor: accColor + "42", background: accColor + "10" }}>
@@ -304,7 +318,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                     <div className="px-2.5 pb-2.5 space-y-2.5">
                       {provs.length===0 && direct.length===0 && <div className="p-4 rounded-xl border border-dashed border-white/10 bg-black/20 text-center"><p className="text-sm text-zinc-400">No providers yet</p><p className="text-xs text-zinc-600 mt-1">Add a provider like Vanguard or Trading 212</p><div className="flex gap-2 mt-3"><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>{setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true);}}><Plus className="w-3.5 h-3.5"/> Provider</Button><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3.5 h-3.5"/> Portfolio</Button></div></div>}
                       {provs.map((pr, pi)=>{
-                        const ps = filteredPortfolios(portfoliosByProvider.get(pr.id) ?? []);
+                        const providerNameMatches = accountNameMatches || !searchTerm || pr.name.toLowerCase().includes(searchTerm);
+                        const ps = filteredPortfolios(portfoliosByProvider.get(pr.id) ?? [], providerNameMatches);
+                        const providerDirectHoldings = directHoldings.filter((holding) => holding.providerId === pr.id && !holding.portfolioId && (providerNameMatches || matchesHolding(holding)));
                         const isProvOpen = expandedProv[pr.id] ?? true;
                         const provTotal = providerTotals(pr.id);
                         const provColor = pr.color || portfolioTint(accColorFor(acc), pi);
@@ -318,7 +334,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                               <span className="text-[11px] tabular-nums text-zinc-400">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                               {editMode && (
                               <DropdownMenu>
-                                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
+                                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${pr.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
                                 <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-[220px]">
                                   <DropdownMenuItem onClick={()=>{setEditingProvider(pr); setEditProviderName(pr.name);}}><Pencil className="w-3.5 h-3.5"/>Rename provider</DropdownMenuItem>
                                   <DropdownMenuItem onClick={()=>{ setDirectTarget({providerId: pr.id, accountId: pr.accountId}); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
@@ -348,7 +364,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                                       <span className="text-[11px] tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                                       {editMode && (
                                       <DropdownMenu>
-                                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5"><MoreVertical className="w-3 h-3"/></Button>} />
+                                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5" aria-label={`${p.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
                                         <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
                                           <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
                                           <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
@@ -358,18 +374,18 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                                     </div>
                                   );
                                 })}
-                                {(holdings ?? []).filter((h:Holding)=> h.providerId===pr.id && !h.portfolioId).length>0 && (
+                                {providerDirectHoldings.length>0 && (
                                   <div className="mt-2 pt-2 border-t border-white/5">
                                     <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1 mb-1">Direct stocks</div>
-                                    {(holdings ?? []).filter((h:Holding)=> h.providerId===pr.id && !h.portfolioId).map((h:Holding)=>(
+                                    {providerDirectHoldings.map((h:Holding)=>(
                                       <div key={h.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs ${onSelectHolding?"cursor-pointer hover:bg-white/[0.07]":""}`} onClick={()=> onSelectHolding?.(h)}>
                                         <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                                         <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
                                         <span className="text-zinc-500">£{holdingValueGBP(h, settings.fxRates).toFixed(0)}</span>
                                         {editMode && (
                                         <>
-                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-white" onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
-                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-white" aria-label={`Edit ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
+                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
                                         </>
                                         )}
                                       </div>
@@ -401,7 +417,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                                 <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                                 {editMode && (
                                 <DropdownMenu>
-                                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
+                                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${p.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
                                   <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
                                     <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
                                     <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
@@ -413,16 +429,16 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                           })}
                         </div>
                       )}
-                      {(holdings ?? []).filter((h:Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).length>0 && (
+                      {accountDirectHoldings.length>0 && (
                         <div className="space-y-1 mt-2 pt-2 border-t border-white/5">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct stocks — {acc.name}</div>
-                          {(holdings ?? []).filter((h:Holding)=> h.accountId===acc.id && !h.providerId && !h.portfolioId).map((h:Holding)=>(
+                          {accountDirectHoldings.map((h:Holding)=>(
                             <div key={h.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs ${onSelectHolding?"cursor-pointer hover:bg-white/[0.07]":""}`} onClick={()=> onSelectHolding?.(h)}>
                               <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
                               <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
                               <span className="text-zinc-500">£{holdingValueGBP(h, settings.fxRates).toFixed(0)}</span>
                               {editMode && (
-                              <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                              <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
                               )}
                             </div>
                           ))}
@@ -457,7 +473,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                         <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
                         {editMode && (
                         <DropdownMenu>
-                          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs"><MoreVertical className="w-3 h-3"/></Button>} />
+                          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${p.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
                           <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
                             <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId ?? "__none"); setEditPProvider("__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-white/10"/>
@@ -580,7 +596,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               </div>
             </div>
             <div className="space-y-2"><Label>Name</Label><Input value={directForm.name} onChange={e=>setDirectForm({...directForm, name:e.target.value})} placeholder="Apple Inc" /></div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
               <div className="space-y-2"><Label>Shares *</Label><Input type="number" value={directForm.shares} onChange={e=>setDirectForm({...directForm, shares:e.target.value})} placeholder="10" /></div>
               <div className="space-y-2"><Label>Avg price *</Label><Input type="number" value={directForm.avgPrice} onChange={e=>setDirectForm({...directForm, avgPrice:e.target.value})} placeholder="150" /></div>
             </div>
@@ -653,12 +669,12 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   return (
     <>
-      <Button variant="ghost" size="icon" className="md:hidden fixed top-3 left-3 z-40 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu"><Menu className="w-4 h-4"/></Button>
-      <aside className="hidden md:flex w-[360px] shrink-0 flex-col h-screen sticky top-0 border-r bg-black/40 backdrop-blur-xl" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+      <Button variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu"><Menu className="w-4 h-4"/></Button>
+      <aside className="hidden xl:flex w-[360px] shrink-0 flex-col h-screen sticky top-0 border-r bg-black/40 backdrop-blur-xl" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
         {inner}
       </aside>
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
+        <div className="fixed inset-0 z-50 xl:hidden flex">
           <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
           <div className="w-[85vw] max-w-[380px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{inner}</div>
         </div>

@@ -62,7 +62,7 @@ export function PortfolioDashboard({
             <Button variant="ghost" className="border border-white/5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
           </div>
         </div>
-        <div className="relative mt-8 grid grid-cols-2 gap-4">
+        <div className="relative mt-8 grid grid-cols-1 gap-4 min-[360px]:grid-cols-2">
           <div className="rounded-xl border-l-4 bg-white p-4 text-black" style={{ borderLeftColor: accent }}>
             <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Value</div>
             <div className="mt-1 text-2xl font-bold">{fmtGBP(value)}</div>

@@ -320,7 +320,7 @@ export function WatchlistPanel() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <div className="min-w-[500px]">
+                <div className="min-w-0">
                   <div className="grid grid-cols-[minmax(0,1fr)_auto_36px] gap-3 border-b border-white/[0.06] px-3 pb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
                     <span>Company</span><span className="text-right">Price</span><span />
                   </div>

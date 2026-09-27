@@ -704,7 +704,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
         onDeleteAccount={requestDeleteAccount}
         onDeleteProvider={requestDeleteProvider}
         onDeletePortfolio={requestDeletePortfolio} />
-      <main className="flex-1 min-w-0 pt-12 md:pt-0">
+      <main className="flex-1 min-w-0 pt-12 xl:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
           {(portfoliosError || holdingsError || accountsError) && (
             <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
@@ -858,7 +858,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
                       <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search symbol or name" className="w-44 pl-8 h-8 bg-white/5 border-white/10 text-xs" />
-                      {q && <button onClick={()=>setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"><X className="w-3 h-3"/></button>}
+                      {q && <button onClick={()=>setQ("")} aria-label="Clear holdings search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"><X className="w-3 h-3"/></button>}
                     </div>
                     <Select value={sort} onValueChange={(v) => setSort(v as "value" | "gain" | "symbol")}>
                       <SelectTrigger className="w-28 h-8 bg-white/5 border-white/10 text-xs"><SelectValue /></SelectTrigger>
@@ -1175,7 +1175,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
                   </>
                 ) : (
                   <>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
                       <div className="space-y-1.5 relative">
                         <Label>Symbol *</Label>
                         <div className="flex gap-1.5">
@@ -1226,11 +1226,11 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
                   </>
                 )}
                 <div className="space-y-1.5"><Label>Sector / asset class</Label><Input placeholder="e.g. Technology, Cash, Bonds, Property" maxLength={48} value={form.sector} onChange={(e) => setForm({ ...form, sector: e.target.value })} /><p className="text-xs text-zinc-600">Used to group this position in sector allocation.</p></div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
                   <div className="space-y-1.5"><Label>{effectiveIsManual ? "Amount (£) *" : "Shares *"}</Label><Input type="number" placeholder={effectiveIsManual ? "5000" : "10"} value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })} className={formErrors.shares?"border-red-500/50":""} />{formErrors.shares && <p className="text-xs text-red-400">{formErrors.shares}</p>}{effectiveIsManual && <p className="text-xs text-zinc-600">Tip: use 1 share × price = total for cash</p>}</div>
                   <div className="space-y-1.5"><Label>{effectiveIsManual ? "Price (per unit) *" : "Avg price (cost) *"}</Label><Input type="number" placeholder={effectiveIsManual ? "1.00" : "150.00"} value={form.avgPrice} onChange={(e) => setForm({ ...form, avgPrice: e.target.value })} className={formErrors.avgPrice?"border-red-500/50":""} />{formErrors.avgPrice && <p className="text-xs text-red-400">{formErrors.avgPrice}</p>}</div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
                   <div className="space-y-1.5"><Label>Current price {effectiveIsManual ? "" : <span className="text-zinc-500 font-normal">(live)</span>}</Label>{effectiveIsManual ? <Input type="number" placeholder="1.00" value={form.currentPrice} onChange={(e)=> setForm({...form, currentPrice:e.target.value})} /> : <div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">{form.currentPrice ? `£${Number(form.currentPrice).toFixed(2)}` : "—"}<span className="ml-auto text-xs text-zinc-600">read-only</span></div>}<p className="text-xs text-zinc-600">{effectiveIsManual ? "Keep equal to avg for cash" : "Auto-filled from Yahoo; avg cost is what you paid"}</p></div>
                   <div className="space-y-1.5"><Label>Purchase date</Label><Input type="date" value={form.purchaseDate} max={new Date().toISOString().split("T")[0]} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} className={formErrors.purchaseDate?"border-red-500/50":""} />{formErrors.purchaseDate && <p className="text-xs text-red-400">{formErrors.purchaseDate}</p>}</div>
                 </div>

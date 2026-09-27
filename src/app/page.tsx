@@ -44,7 +44,7 @@ export default async function Home() {
   return (
     <div className="min-h-screen flex flex-col">
       <nav className="sticky top-0 z-40 backdrop-blur-xl bg-black/30 border-b border-white/[0.06]">
-        <div className="flex items-center justify-between px-6 md:px-10 py-4 max-w-6xl mx-auto w-full">
+        <div className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-4 max-w-6xl mx-auto w-full">
           <Link href="/" className="flex items-center gap-3">
             <Logo size={34} />
             <span className="hidden md:inline text-[10px] tracking-widest uppercase text-zinc-600 border border-white/10 px-2 py-0.5 rounded-full">Personal Finance</span>
