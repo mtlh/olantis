@@ -1,13 +1,13 @@
 "use client";
+
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ArrowRight, Check, Wallet, TrendingUp, Layers, Briefcase } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Account, Provider } from "@/lib/store";
+import { ArrowLeft, ArrowRight, Briefcase, Check, Layers, TrendingUp, Wallet } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type Props = {
   open: boolean;
@@ -19,6 +19,22 @@ type Props = {
   onCreate: (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => void | Promise<void>;
   inline?: boolean;
 };
+
+const steps = ["Details", "Holdings", "Review"];
+
+function StepHeading({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
+  return (
+    <div className="flex items-start gap-3.5">
+      <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.045] text-zinc-300">
+        <Icon className="size-[18px]" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 pt-0.5">
+        <h2 className="text-base font-semibold tracking-tight text-white">{title}</h2>
+        <p className="mt-1 text-sm leading-relaxed text-zinc-500">{description}</p>
+      </div>
+    </div>
+  );
+}
 
 export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers = [], defaultAccountId, defaultProviderId, onCreate, inline }: Props) {
   const [step, setStep] = useState(1);
@@ -48,7 +64,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
   }, [accountId, filteredProviders, providerId]);
 
   if (!open) return null;
-  const canNext = step === 1 ? name.trim().length >= 2 : true;
+  const canNext = step !== 1 || name.trim().length >= 2;
 
   const handleCreate = async () => {
     setCreating(true);
@@ -74,177 +90,207 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
     onOpenChange(false);
   };
 
-  const detailsCard = (
-    <Card className="glass-card">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center gap-2"><Wallet className="w-5 h-5" /> Portfolio details</CardTitle>
-        <CardDescription>Account → Provider → Portfolio — you can change these later.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
+  const detailsStep = (
+    <div className="space-y-7">
+      <StepHeading icon={Wallet} title="Portfolio details" description="Choose a name and where this portfolio belongs. You can change these later." />
+
+      <div className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="pname">Portfolio name</Label>
-          <Input id="pname" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Growth, Income, ISA Wrapper" autoFocus className="h-11 text-base" />
-          <p className="text-xs text-zinc-500">2–32 characters. Lives inside its provider.</p>
+          <Input
+            id="pname"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Growth, Income, ISA Wrapper"
+            autoFocus
+            maxLength={32}
+            className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600 focus-visible:border-white/25 focus-visible:ring-white/10"
+          />
+          <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+            <span>2–32 characters. Lives inside its provider.</span>
+            <span aria-live="polite" className="tabular-nums">{name.length}/32</span>
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label>Account (top level)</Label>
-          <Select value={accountId ?? "__none"} onValueChange={(v) => setAccountId(v === "__none" ? null : v)}>
-            <SelectTrigger className="h-11">
-              <span className="flex-1 text-left truncate">{accountId ? accounts.find((a) => a.id === accountId)?.name ?? "—" : "No account (unassigned)"}</span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none">No account (unassigned)</SelectItem>
-              {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-zinc-500">Top-level folder. e.g. Household, Personal, Joint.</p>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="portfolio-account">Account</Label>
+            <Select value={accountId ?? "__none"} onValueChange={(v) => setAccountId(v === "__none" ? null : v)}>
+              <SelectTrigger id="portfolio-account" className="h-11 w-full rounded-xl border-white/[.12] bg-black/20 px-3.5">
+                <span className="flex-1 truncate text-left">{accountId ? accounts.find((a) => a.id === accountId)?.name ?? "—" : "No account (unassigned)"}</span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">No account (unassigned)</SelectItem>
+                {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs leading-relaxed text-zinc-500">A top-level folder, like Personal or Joint.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="portfolio-provider" className="flex items-center gap-1.5"><Briefcase className="size-3.5" /> Provider <span className="font-normal text-zinc-500">(optional)</span></Label>
+            <Select value={providerId ?? "__none"} onValueChange={(v) => setProviderId(v === "__none" ? null : v)} disabled={!accountId}>
+              <SelectTrigger id="portfolio-provider" className="h-11 w-full rounded-xl border-white/[.12] bg-black/20 px-3.5">
+                <span className="flex-1 truncate text-left">{providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? "—" : accountId ? (filteredProviders.length ? "No provider (direct)" : "No providers yet") : "Select an account first"}</span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">No provider — direct under account</SelectItem>
+                {filteredProviders.map((pr) => <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs leading-relaxed text-zinc-500">{accountId ? filteredProviders.length ? "Providers live inside this account." : "Add providers like Vanguard or Trading 212 from the sidebar." : "Choose an account to see its providers."}</p>
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label className="flex items-center gap-1.5"><Briefcase className="w-3.5 h-3.5" /> Provider</Label>
-          <Select value={providerId ?? "__none"} onValueChange={(v) => setProviderId(v === "__none" ? null : v)} disabled={!accountId}>
-            <SelectTrigger className="h-11">
-              <span className="flex-1 text-left truncate">{providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? "—" : accountId ? (filteredProviders.length ? "No provider (direct)" : "No providers yet") : "Select account first"}</span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none">No provider — direct under account</SelectItem>
-              {filteredProviders.map((pr) => <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-zinc-500">{accountId ? filteredProviders.length ? "Providers live inside this account." : "Create providers from the sidebar — e.g. Vanguard, HL, Trading 212." : "Choose an account to see providers."}</p>
-        </div>
-        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
-          {[
-            { id: "live", title: "Live", desc: "Auto-updated prices", icon: TrendingUp },
-            { id: "manual", title: "Manual", desc: "Pensions, cash, custom", icon: Layers },
-          ].map((o) => (
-            <button
-              key={o.id}
-              onClick={() => setType(o.id as "live" | "manual")}
-              className={`p-4 rounded-xl border text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 ${type === o.id ? "bg-white text-black border-white" : "bg-white/[0.04] border-white/10 hover:bg-white/[0.06] hover:border-white/15 text-white"}`}
-            >
-              <o.icon className={`w-5 h-5 mb-2 ${type === o.id ? "text-black" : "text-zinc-400"}`} />
-              <div className="font-medium text-sm">{o.title}</div>
-              <div className={`text-xs ${type === o.id ? "text-black/60" : "text-zinc-500"}`}>{o.desc}</div>
-            </button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+
+        <fieldset className="space-y-2.5">
+          <legend className="text-sm font-medium text-zinc-200">Portfolio type</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[
+              { id: "live", title: "Live portfolio", desc: "Market prices update automatically", icon: TrendingUp },
+              { id: "manual", title: "Manual portfolio", desc: "For pensions, cash, and custom assets", icon: Layers },
+            ].map((option) => {
+              const selected = type === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setType(option.id as "live" | "manual")}
+                  className={`group flex min-h-[88px] items-center gap-3.5 rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${selected ? "border-white/25 bg-white/[.075] shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" : "border-white/[.09] bg-white/[.025] hover:border-white/[.16] hover:bg-white/[.045]"}`}
+                >
+                  <span className={`grid size-10 shrink-0 place-items-center rounded-lg border transition-colors ${selected ? "border-white/15 bg-white text-zinc-950" : "border-white/[.08] bg-black/20 text-zinc-400 group-hover:text-zinc-200"}`}>
+                    <option.icon className="size-[18px]" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-white">{option.title}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-zinc-500">{option.desc}</span>
+                  </span>
+                  <span className={`grid size-[18px] shrink-0 place-items-center rounded-full border ${selected ? "border-white bg-white text-zinc-950" : "border-white/20 text-transparent"}`}>
+                    {selected && <Check className="size-3" aria-hidden="true" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+      </div>
+    </div>
   );
 
-  const holdingsCard = (
-    <Card className="glass-card">
-      <CardHeader>
-        <CardTitle className="text-white">Add first holding <span className="text-zinc-500 font-normal text-sm">(optional)</span></CardTitle>
-        <CardDescription>Skip now — you can add holdings later from the dashboard.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2"><Label>Symbol</Label><Input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="AAPL, VWRP" /></div>
-          <div className="space-y-2"><Label>Shares</Label><Input type="number" value={shares} onChange={(e) => setShares(e.target.value)} placeholder="10" /></div>
+  const holdingsStep = (
+    <div className="space-y-7">
+      <StepHeading icon={Layers} title="Add your first holding" description="Start with one asset, or skip this and add holdings from your dashboard later." />
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="holding-symbol">Symbol <span className="font-normal text-zinc-500">(optional)</span></Label>
+            <Input id="holding-symbol" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="e.g. AAPL, VWRP" className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="holding-shares">Shares</Label>
+            <Input id="holding-shares" type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} placeholder="e.g. 10" className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600" />
+          </div>
         </div>
-        <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-400">Tip: Live portfolios fetch current prices on refresh.</div>
-      </CardContent>
-    </Card>
+        <div className="flex items-start gap-3 rounded-xl border border-white/[.08] bg-white/[.025] p-4">
+          <TrendingUp className="mt-0.5 size-4 shrink-0 text-zinc-400" aria-hidden="true" />
+          <p className="text-xs leading-relaxed text-zinc-400">Live portfolios fetch current prices when refreshed. You can add or edit holdings at any time.</p>
+        </div>
+      </div>
+    </div>
   );
 
-  const reviewCard = (
-    <Card className="glass-card">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center gap-2"><Check className="w-5 h-5 text-emerald-400" /> Review</CardTitle>
-        <CardDescription>Confirm and create. You can edit everything after.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 gap-3 text-sm min-[360px]:grid-cols-2">
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Name</div><div className="font-medium text-white">{name || "—"}</div></div>
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Type</div><div className="font-medium text-white capitalize">{type}</div></div>
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Account</div><div className="font-medium text-white">{accountId ? accounts.find((a) => a.id === accountId)?.name ?? "Unassigned" : "Unassigned"}</div></div>
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10"><div className="text-xs text-zinc-500">Provider</div><div className="font-medium text-white">{providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? providers.find((p) => p.id === providerId)?.name ?? "—" : "No provider"}</div></div>
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10 min-[360px]:col-span-2"><div className="text-xs text-zinc-500">First holding</div><div className="font-medium text-white">{symbol ? `${symbol} — ${shares || 0} shares` : "None (skip)"}</div></div>
-        </div>
-      </CardContent>
-    </Card>
+  const reviewStep = (
+    <div className="space-y-7">
+      <StepHeading icon={Check} title="Review your portfolio" description="Everything look right? You can update these details at any time." />
+      <dl className="grid gap-3 sm:grid-cols-2">
+        {[
+          { label: "Portfolio name", value: name || "—" },
+          { label: "Type", value: type === "live" ? "Live portfolio" : "Manual portfolio" },
+          { label: "Account", value: accountId ? accounts.find((a) => a.id === accountId)?.name ?? "Unassigned" : "Unassigned" },
+          { label: "Provider", value: providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? providers.find((p) => p.id === providerId)?.name ?? "—" : "No provider" },
+          { label: "First holding", value: symbol ? `${symbol.toUpperCase()} · ${shares || 0} shares` : "None — add later" },
+        ].map((item, index) => (
+          <div key={item.label} className={`min-w-0 rounded-xl border border-white/[.08] bg-white/[.025] px-4 py-3.5 ${index === 4 ? "sm:col-span-2" : ""}`}>
+            <dt className="text-xs text-zinc-500">{item.label}</dt>
+            <dd className="mt-1.5 truncate text-sm font-medium text-zinc-100">{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 
   const stepper = (
-    <div className="flex items-center gap-2 text-xs text-zinc-500">
-      <span className={`px-2.5 py-1 rounded-full border ${step >= 1 ? "bg-white text-black border-white" : "border-white/10"}`}>1 Details</span>
-      <span className="flex-1 h-px bg-white/10" />
-      <span className={`px-2.5 py-1 rounded-full border ${step >= 2 ? "bg-white text-black border-white" : "border-white/10"}`}>2 Holdings</span>
-      <span className="flex-1 h-px bg-white/10" />
-      <span className={`px-2.5 py-1 rounded-full border ${step >= 3 ? "bg-white text-black border-white" : "border-white/10"}`}>3 Review</span>
-    </div>
-  );
-
-  const footer = (bg: string) => (
-    <div className={`p-4 border-t border-white/10 flex items-center justify-between ${bg}`}>
-      <Button variant="ghost" onClick={() => (step > 1 ? setStep(step - 1) : close())} className="gap-2">
-        <ArrowLeft className="w-4 h-4" /> {step === 1 ? "Cancel" : "Back"}
-      </Button>
-      <div className="flex gap-2">
-        {step < 3 ? (
-          <Button onClick={() => setStep(step + 1)} disabled={!canNext} className="gap-2 min-w-28">
-            Next <ArrowRight className="w-4 h-4" />
-          </Button>
-        ) : (
-          <Button onClick={() => void handleCreate()} disabled={!canNext || creating} className="gap-2 min-w-28">
-            <Check className="w-4 h-4" /> {creating ? "Creating…" : "Create portfolio"}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-
-  const errorBanner = error ? <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</p> : null;
-
-  if (inline) {
-    return (
-      <div className="w-full max-w-2xl mx-auto my-8 rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-white text-black grid place-items-center font-bold text-sm">O</div>
-            <span className="font-semibold text-white">New portfolio</span>
-            <Badge variant="outline" className="border-white/10 text-zinc-400">Step {step} of 3</Badge>
+    <div className="grid grid-cols-3 gap-3" aria-label="Portfolio setup progress" role="list">
+      {steps.map((label, index) => {
+        const itemStep = index + 1;
+        const current = step === itemStep;
+        const complete = step > itemStep;
+        return (
+          <div key={label} role="listitem" aria-current={current ? "step" : undefined}>
+            <div className={`h-1 rounded-full ${current || complete ? "bg-white" : "bg-white/[.08]"}`} />
+            <div className={`mt-2.5 flex items-center gap-2 text-xs font-medium ${current || complete ? "text-zinc-100" : "text-zinc-600"}`}>
+              <span className={`grid size-5 shrink-0 place-items-center rounded-full border text-[10px] ${current ? "border-white bg-white text-zinc-950" : complete ? "border-white/20 bg-white/[.08] text-white" : "border-white/10 text-zinc-600"}`}>
+                {complete ? <Check className="size-3" aria-hidden="true" /> : itemStep}
+              </span>
+              <span>{label}</span>
+            </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={close}>Cancel</Button>
-        </div>
-        <div className="h-1 bg-white/5">
-          <div className="h-full bg-white transition-all duration-500" style={{ width: `${(step / 3) * 100}%` }} />
-        </div>
-        <div className="p-6 space-y-6">
-          {stepper}
-          {errorBanner}
-          {step === 1 && detailsCard}
-          {step === 2 && holdingsCard}
-          {step === 3 && reviewCard}
-        </div>
-        {footer("bg-zinc-950")}
-      </div>
-    );
-  }
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      <div className="flex items-center justify-between px-6 md:px-10 py-5 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white text-black grid place-items-center font-bold text-sm">O</div>
-          <span className="font-semibold text-white">New portfolio</span>
-          <Badge variant="outline" className="border-white/10 text-zinc-400">Step {step} of 3</Badge>
-        </div>
-        <Button variant="ghost" size="sm" onClick={close}>Cancel</Button>
-      </div>
-      <div className="h-1 bg-white/5">
-        <div className="h-full bg-white transition-all duration-500" style={{ width: `${(step / 3) * 100}%` }} />
-      </div>
-      <div className="flex-1 overflow-auto p-6 md:p-10 flex justify-center">
-        <div className="w-full max-w-2xl space-y-6">
-          {stepper}
-          {errorBanner}
-          {step === 1 && detailsCard}
-          {step === 2 && holdingsCard}
-          {step === 3 && reviewCard}
-        </div>
-      </div>
-      {footer("bg-black")}
+        );
+      })}
     </div>
   );
+
+  const errorBanner = error ? <p role="alert" className="rounded-xl border border-red-500/20 bg-red-500/[.08] px-3.5 py-3 text-sm text-red-300">{error}</p> : null;
+  const content = step === 1 ? detailsStep : step === 2 ? holdingsStep : reviewStep;
+
+  const wizard = (
+    <section className="overflow-hidden rounded-2xl border border-white/[.09] bg-[#0b0b0d]/85 shadow-[0_24px_80px_rgba(0,0,0,.42)] backdrop-blur-xl">
+      <div className="border-b border-white/[.07] px-5 py-5 sm:px-7">
+        {stepper}
+      </div>
+
+      <div className="space-y-6 px-5 py-6 sm:px-7 sm:py-7">
+        {errorBanner}
+        {content}
+      </div>
+
+      <div className="flex min-h-[76px] items-center justify-between gap-4 border-t border-white/[.07] bg-white/[.012] px-4 py-3.5 sm:px-7">
+        <div className="min-w-0">
+          {step > 1 ? (
+            <Button variant="ghost" onClick={() => setStep(step - 1)} className="-ml-2 gap-2 text-zinc-400 hover:text-white">
+              <ArrowLeft className="size-4" /> Back
+            </Button>
+          ) : (
+            <p className="hidden text-xs text-zinc-600 sm:block">Your details can be changed later.</p>
+          )}
+        </div>
+        <Button
+          onClick={() => step < 3 ? setStep(step + 1) : void handleCreate()}
+          disabled={!canNext || (step === 3 && creating)}
+          className="h-10 gap-2 rounded-xl bg-white px-4 font-medium text-black shadow-[0_4px_18px_rgba(255,255,255,.08)] hover:bg-zinc-200 disabled:bg-white/10 disabled:text-zinc-500"
+        >
+          {step === 3 ? (creating ? "Creating…" : "Create portfolio") : "Continue"}
+          {step === 3 ? <Check className="size-4" /> : <ArrowRight className="size-4" />}
+        </Button>
+      </div>
+    </section>
+  );
+
+  const page = (
+    <main className="relative mx-auto w-full max-w-3xl py-2 sm:py-6">
+      <div className="pointer-events-none absolute -top-16 left-1/3 -z-10 h-48 w-2/3 rounded-full bg-white/[.025] blur-3xl" />
+      <header className="mb-5 flex items-end justify-between gap-4 sm:mb-6">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-zinc-500">Portfolio setup</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-[28px]">Create a portfolio</h1>
+          <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-zinc-500">Set up a home for your investments, savings, or pension.</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={close} className="mb-0.5 shrink-0 text-zinc-400 hover:text-white">Cancel</Button>
+      </header>
+      {wizard}
+    </main>
+  );
+
+  if (inline) return <div className="mx-auto my-3 w-full px-0 sm:my-5">{page}</div>;
+  return <div className="flex min-h-dvh items-start justify-center px-4 py-8 sm:items-center sm:px-6 sm:py-12">{page}</div>;
 }
