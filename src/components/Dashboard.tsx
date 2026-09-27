@@ -544,6 +544,15 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const activeCost = active ? active.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h, settings.fxRates), 0) : totalCost;
   const activeGain = activeValue - activeCost;
   const activeGainPct = activeCost ? (activeGain / activeCost) * 100 : 0;
+  const portfolioChartColor = useMemo(() => {
+    const values = chartZoom.visible
+      .map((row) => row.total)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    const first = values[0];
+    const last = values.at(-1);
+    const isUp = first == null || last == null || first === last ? activeGain >= 0 : last > first;
+    return isUp ? "#34d399" : "#f87171";
+  }, [chartZoom.visible, activeGain]);
 
   const filteredHoldings = useMemo(() => {
     if (!active) return [];
@@ -835,7 +844,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
                           <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
                           <YAxis domain={yDomain ?? ["auto", "auto"]} tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
                           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => fmtGBP(Number(v))} />
-                          {(() => { const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); const col = active.color || prov?.color || acc?.color || "#60a5fa"; return <Area type="monotone" dataKey="total" name={active.name} stroke={col} fill={col} fillOpacity={0.14} strokeWidth={2.5} dot={false} />; })()}
+                          <Area type="monotone" dataKey="total" name={active.name} stroke={portfolioChartColor} fill={portfolioChartColor} fillOpacity={0.14} strokeWidth={2.5} dot={false} />
                           {visibleDots.map((d: ChartDot) => (
                             <ReferenceDot key={`${d.date}-${d.symbol}-${d.x}`} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
                           ))}
