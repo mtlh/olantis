@@ -43,8 +43,8 @@ export function PortfolioDashboard({
 
   return (
     <DashboardLevel label={`${portfolio.name} portfolio`}>
-      <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: `${accent}40`, background: `linear-gradient(to bottom right, ${accent}2A, ${accent}12)` }}>
-        <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full blur-3xl" style={{ background: `${accent}26` }} />
+      <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)`, background: `linear-gradient(to bottom right, color-mix(in srgb, ${accent} 16.5%, transparent), color-mix(in srgb, ${accent} 7%, transparent))` }}>
+        <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full blur-3xl" style={{ background: `color-mix(in srgb, ${accent} 15%, transparent)` }} />
         <div className="relative flex flex-wrap items-start justify-between gap-6">
           <div>
             <div className="flex flex-wrap items-center gap-3">

@@ -11,6 +11,7 @@ import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
 import { IndividualDashboard } from "@/components/dashboard/IndividualDashboard";
 import { MainDashboard } from "@/components/dashboard/MainDashboard";
 import { PortfolioDashboard } from "@/components/dashboard/PortfolioDashboard";
+import { ProviderDashboard } from "@/components/dashboard/ProviderDashboard";
 import { WatchlistPanel } from "@/components/WatchlistPanel";
 import { GoalPanel } from "@/components/GoalPanel";
 import { PerformanceChart, type PerformanceChartRow } from "@/components/dashboard/PerformanceChart";
@@ -29,6 +30,12 @@ import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP,
 import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
 import { AllocationCard, type AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
+
+function getSortOrderIndex(items: Array<{ id: string; sortOrder?: number | null }>, id: string) {
+  return [...items]
+    .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999))
+    .findIndex((item) => item.id === id);
+}
 const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d399", GIA: "#f472b6" };
 
 type SymbolResult = { symbol: string; name: string; exchange: string; exchDisp?: string; price?: number | null; currency?: string | null; longname?: string; rawExchange?: string; type?: string };
@@ -44,6 +51,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const router = useRouter();
   const searchParams = useSearchParams();
   const portfolioFromUrl = searchParams.get("portfolio");
+  const providerFromUrl = searchParams.get("provider");
   const holdingFromUrl = searchParams.get("holding");
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
@@ -52,7 +60,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const { holdings: allHoldingsList, refresh: refreshAllHoldings, error: holdingsError } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
   const { settings } = useSettings();
-  const { snapshots, byPortfolio } = useSnapshots(portfolios, directHoldings, settings.fxRates);
+  const { snapshots, byPortfolio, byHolding } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
   const activeId = portfolioFromUrl;
   const [tradeHolding, setTradeHolding] = useState<Holding | null>(null);
@@ -106,6 +114,70 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
+  const activeProvider = useMemo(() => providers.find((provider) => provider.id === providerFromUrl) ?? null, [providers, providerFromUrl]);
+  const providerPortfolios = useMemo(() => activeProvider ? portfolios.filter((portfolio) => portfolio.providerId === activeProvider.id) : [], [activeProvider, portfolios]);
+  const providerDirectHoldings = useMemo(() => activeProvider ? directHoldings.filter((holding) => holding.providerId === activeProvider.id) : [], [activeProvider, directHoldings]);
+  const providerHoldings = useMemo(() => [...providerPortfolios.flatMap((portfolio) => portfolio.holdings), ...providerDirectHoldings], [providerPortfolios, providerDirectHoldings]);
+  const providerValue = useMemo(() => providerHoldings.reduce((sum, holding) => sum + holdingValueGBP(holding, settings.fxRates), 0), [providerHoldings, settings.fxRates]);
+  const providerCost = useMemo(() => providerHoldings.reduce((sum, holding) => sum + holdingCostGBP(holding, settings.fxRates), 0), [providerHoldings, settings.fxRates]);
+  const providerGain = providerValue - providerCost;
+  const providerGainPct = providerCost ? (providerGain / providerCost) * 100 : 0;
+  const providerLatestRefresh = providerHoldings.reduce<number | null>((latest, holding) => {
+    const refreshedAt = holding.lastRefreshedAt;
+    return refreshedAt && (!latest || refreshedAt > latest) ? refreshedAt : latest;
+  }, null);
+  const providerColor = useMemo(() => {
+    if (!activeProvider) return null;
+    if (activeProvider.color) return activeProvider.color;
+    const account = accounts.find((item) => item.id === activeProvider.accountId);
+    const accountIndex = accounts.findIndex((item) => item.id === activeProvider.accountId);
+    const accountColor = account?.color || PALETTE[(accountIndex < 0 ? 0 : accountIndex) % PALETTE.length].value;
+    const providerIndex = getSortOrderIndex(providers.filter((item) => item.accountId === activeProvider.accountId), activeProvider.id);
+    return portfolioTint(accountColor, Math.max(0, providerIndex));
+  }, [activeProvider, accounts, providers]);
+  const providerHistory = useMemo(() => {
+    if (!activeProvider) return [] as Snapshot[];
+    const histories = [
+      ...providerPortfolios.map((portfolio) => byPortfolio[portfolio.id]?.data ?? []),
+      ...providerDirectHoldings.map((holding) => byHolding?.[holding.id]?.data ?? []),
+    ].filter((history) => history.length > 0);
+    const dates = [...new Set(histories.flatMap((history) => history.map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
+    const combined = dates.map((date) => ({
+      date,
+      value: histories.reduce((sum, history) => {
+        const latest = [...history].reverse().find((point) => point.date <= date);
+        return sum + (latest?.value ?? 0);
+      }, 0),
+    }));
+    if (!combined.length) return [{ date: todayISODate(), value: providerValue }];
+    const today = todayISODate();
+    if (combined.at(-1)?.date !== today && combined.at(-1)!.date < today) combined.push({ date: today, value: providerValue });
+    return combined;
+  }, [activeProvider, byHolding, byPortfolio, providerDirectHoldings, providerPortfolios, providerValue]);
+  const providerAllocation = useMemo(() => {
+    if (!providerValue) return [] as AllocationItem[];
+    const bySymbol = new Map<string, number>();
+    for (const holding of providerHoldings) bySymbol.set(holding.symbol, (bySymbol.get(holding.symbol) ?? 0) + holdingValueGBP(holding, settings.fxRates));
+    return [...bySymbol.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value], index) => ({ name, value, color: portfolioTint(providerColor, index), pct: (value / providerValue) * 100 }));
+  }, [providerHoldings, providerValue, providerColor, settings.fxRates]);
+  const providerPortfolioSummaries = useMemo(() => providerPortfolios.map((portfolio) => {
+    const providerPortfolioIndex = getSortOrderIndex(providerPortfolios, portfolio.id);
+    return {
+      id: portfolio.id,
+      name: portfolio.name,
+      color: portfolio.color || portfolioTint(providerColor, Math.max(0, providerPortfolioIndex)),
+      value: portfolio.holdings.reduce((sum, holding) => sum + holdingValueGBP(holding, settings.fxRates), 0),
+      holdingsCount: portfolio.holdings.length,
+    };
+  }), [providerPortfolios, providerColor, settings.fxRates]);
+  const providerDirectHoldingSummaries = useMemo(() => providerDirectHoldings.map((holding) => ({
+    id: holding.id,
+    symbol: holding.symbol,
+    name: holding.name,
+    value: holdingValueGBP(holding, settings.fxRates),
+  })), [providerDirectHoldings, settings.fxRates]);
   const holdingViewId = holdingFromUrl;
   const viewHolding = useMemo(() => {
     if (!holdingViewId) return null;
@@ -122,13 +194,44 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
     return pf?.color || prov?.color || acc?.color || "#60a5fa";
   }, [viewHolding, viewPortfolio, providers, accounts]);
-  const activeBaseColor = useMemo(()=>{ if(!active) return null; const prov = providers.find(pr=> pr.id===active.providerId); const acc = accounts.find(a=> a.id===active.accountId); return active.color || prov?.color || acc?.color || "#60a5fa"; }, [active, providers, accounts]);
+  const activeBaseColor = useMemo(() => {
+    if (!active) return null;
+    if (active.color) return active.color;
+
+    const provider = providers.find((item) => item.id === active.providerId);
+    const accountId = provider?.accountId ?? active.accountId;
+    const account = accounts.find((item) => item.id === accountId);
+    const accountIndex = accounts.findIndex((item) => item.id === accountId);
+    const accountColor = account?.color || PALETTE[(accountIndex < 0 ? 0 : accountIndex) % PALETTE.length].value;
+
+    if (active.providerId) {
+      const providerIndex = getSortOrderIndex(providers.filter((item) => item.accountId === accountId), active.providerId);
+      const providerColor = provider?.color || portfolioTint(accountColor, Math.max(0, providerIndex));
+      const portfolioIndex = getSortOrderIndex(portfolios.filter((item) => item.providerId === active.providerId), active.id);
+      return portfolioTint(providerColor, Math.max(0, portfolioIndex));
+    }
+
+    if (active.accountId) {
+      const portfolioIndex = getSortOrderIndex(portfolios.filter((item) => item.accountId === active.accountId && !item.providerId), active.id);
+      return portfolioTint(accountColor, Math.max(0, portfolioIndex));
+    }
+
+    const portfolioIndex = getSortOrderIndex(portfolios.filter((item) => !item.accountId && !item.providerId), active.id);
+    return portfolioTint(null, Math.max(0, portfolioIndex));
+  }, [active, accounts, portfolios, providers]);
   const overviewTx = useTransactions(null);
   const { create: createTx, refresh: refreshTx, remove: removeTx } = overviewTx;
-  const displayTx = useMemo(
-    () => (activeId ? overviewTx.transactions.filter((t) => t.portfolioId === activeId) : overviewTx.transactions),
-    [activeId, overviewTx.transactions]
-  );
+  const displayTx = useMemo(() => {
+    if (activeId) return overviewTx.transactions.filter((transaction) => transaction.portfolioId === activeId);
+    if (activeProvider) {
+      const portfolioIds = new Set(providerPortfolios.map((portfolio) => portfolio.id));
+      const holdingIds = new Set(providerHoldings.map((holding) => holding.id));
+      return overviewTx.transactions.filter((transaction) => transaction.portfolioId
+        ? portfolioIds.has(transaction.portfolioId)
+        : transaction.holdingId ? holdingIds.has(transaction.holdingId) : false);
+    }
+    return overviewTx.transactions;
+  }, [activeId, activeProvider, overviewTx.transactions, providerHoldings, providerPortfolios]);
   const transactions = displayTx;
 
   const openTrade = (h: Holding, type: "buy" | "sell") => { setTradeHolding(h); setTradeType(type); setShowTrade(true); };
@@ -219,6 +322,14 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
 
   const chartData = useMemo<ChartRow[]>(() => {
     const activeSeries = active ? ((byPortfolio[active.id]?.data ?? []) as Snapshot[]) : [];
+    if (activeProvider) {
+      const trimmed = filterByRange(providerHistory, range);
+      if (!trimmed.length) {
+        const dateISO = todayISODate();
+        return [{ date: chartDateLabel(dateISO), dateISO, total: providerValue }];
+      }
+      return trimmed.map((snapshot) => ({ date: chartDateLabel(snapshot.date), dateISO: snapshot.date, total: snapshot.value }));
+    }
     if (active) {
       const trimmed = filterByRange(activeSeries, range);
       if (trimmed.length === 0) {
@@ -241,7 +352,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
       }
       return row;
     });
-  }, [filteredSnapshots, byPortfolio, totalValue, active, range, settings.fxRates]);
+  }, [filteredSnapshots, byPortfolio, totalValue, active, activeProvider, providerHistory, providerValue, range, settings.fxRates]);
 
   const chartDots = useMemo(() => {
     if (!chartData.length) return [];
@@ -700,6 +811,9 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     if (id) router.push(`/dashboard?portfolio=${encodeURIComponent(id)}`);
     else router.replace("/dashboard");
   }, [router]);
+  const selectProvider = useCallback((id: string) => {
+    router.push(`/dashboard?provider=${encodeURIComponent(id)}`);
+  }, [router]);
   const selectHolding = useCallback((h: Holding) => {
     router.push(`/dashboard?holding=${encodeURIComponent(h.id)}`);
   }, [router]);
@@ -709,7 +823,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} onSelect={selectPortfolio} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeProviderId={activeProvider?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={requestDeleteAccount}
         onDeleteProvider={requestDeleteProvider}
         onDeletePortfolio={requestDeletePortfolio} />
@@ -804,6 +918,32 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
             </DialogContent>
           </Dialog>
             </IndividualDashboard>
+          ) : activeProvider ? (
+            <ProviderDashboard
+              name={activeProvider.name}
+              accountName={accounts.find((account) => account.id === activeProvider.accountId)?.name ?? "Account"}
+              color={providerColor ?? "#60a5fa"}
+              dateFormat={settings.dateFormat}
+              portfolios={providerPortfolioSummaries}
+              directHoldings={providerDirectHoldingSummaries}
+              history={providerHistory}
+              allocation={providerAllocation}
+              holdingCount={providerHoldings.length}
+              latestRefresh={providerLatestRefresh}
+              value={providerValue}
+              cost={providerCost}
+              gain={providerGain}
+              gainPct={providerGainPct}
+              onBack={() => router.replace("/dashboard")}
+              onRename={(name) => handleRenameProvider(activeProvider.id, name)}
+              onNewPortfolio={() => openWizard(activeProvider.accountId, activeProvider.id)}
+              onDelete={() => { setConfirmProvider(activeProvider); setConfirmProviderInput(""); }}
+              onOpenPortfolio={selectPortfolio}
+              onOpenHolding={(id) => {
+                const holding = allHoldingsList.find((item) => item.id === id);
+                if (holding) selectHolding(holding);
+              }}
+            />
           ) : active ? (
             <PortfolioDashboard
               portfolio={active}
@@ -1326,7 +1466,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <Button variant="ghost" onClick={() => setConfirmProvider(null)}>Cancel</Button>
-                <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 border border-red-500/20" disabled={confirmProviderInput !== confirmProvider?.name} onClick={async () => { if (!confirmProvider) return; await handleRemoveProvider(confirmProvider.id); setConfirmProvider(null); }}>Delete provider</Button>
+                <Button variant="ghost" className="bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 border border-red-500/20" disabled={confirmProviderInput !== confirmProvider?.name} onClick={async () => { if (!confirmProvider) return; const deletedId = confirmProvider.id; await handleRemoveProvider(deletedId); if (providerFromUrl === deletedId) router.replace("/dashboard"); setConfirmProvider(null); }}>Delete provider</Button>
               </div>
             </DialogContent>
           </Dialog>

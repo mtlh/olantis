@@ -18,6 +18,8 @@ type AllocationCardProps = {
   mode: "holding" | "account" | "sector";
   onModeChange: (mode: "holding" | "account" | "sector") => void;
   layout?: "fill" | "stacked";
+  showModeSelector?: boolean;
+  compactChart?: boolean;
   emptyMessage?: string;
   emptyContent?: ReactNode;
 };
@@ -27,6 +29,8 @@ export function AllocationCard({
   mode,
   onModeChange,
   layout = "stacked",
+  showModeSelector = true,
+  compactChart = false,
   emptyMessage = "No holdings — add one to see allocation",
   emptyContent,
 }: AllocationCardProps) {
@@ -36,11 +40,13 @@ export function AllocationCard({
     <Card className={`glass-card flex flex-col ${fillsCard ? "h-full min-h-[420px]" : ""}`}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="text-white">Allocation</CardTitle>
-        <div className="flex flex-wrap gap-1">
-          <Button variant={mode === "holding" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("holding")}>Holdings</Button>
-          <Button variant={mode === "account" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("account")}>Accounts</Button>
-          <Button variant={mode === "sector" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("sector")}>Sectors</Button>
-        </div>
+        {showModeSelector && (
+          <div className="flex flex-wrap gap-1">
+            <Button variant={mode === "holding" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("holding")}>Holdings</Button>
+            <Button variant={mode === "account" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("account")}>Accounts</Button>
+            <Button variant={mode === "sector" ? "secondary" : "ghost"} size="xs" onClick={() => onModeChange("sector")}>Sectors</Button>
+          </div>
+        )}
       </CardHeader>
       <CardContent className={`flex-1 min-h-0 ${fillsCard ? "flex" : ""}`}>
         {allocation.length === 0 ? (
@@ -49,7 +55,7 @@ export function AllocationCard({
           </div>
         ) : fillsCard ? (
           <div className="flex min-h-[320px] w-full flex-1 flex-col items-stretch gap-3 min-[360px]:flex-row min-[360px]:items-center min-[360px]:gap-4">
-            <div className="mx-auto h-[200px] min-h-[200px] w-full max-w-[240px] shrink-0 min-[360px]:mx-0 min-[360px]:h-full min-[360px]:min-h-[300px] min-[360px]:w-[44%] min-[360px]:min-w-[180px]">
+            <div className={`mx-auto h-[200px] min-h-[200px] w-full max-w-[240px] shrink-0 min-[360px]:mx-0 min-[360px]:h-full min-[360px]:min-h-[300px] ${compactChart ? "min-[360px]:w-[38%] min-[360px]:min-w-[140px]" : "min-[360px]:w-[44%] min-[360px]:min-w-[180px]"}`}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart key={mode}>
                   <Pie data={allocation} dataKey="value" nameKey="name" innerRadius="54%" outerRadius="82%" stroke="none">
