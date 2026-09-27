@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, userSettings } from "@/lib/db/schema";
+import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";
 import { eq, and, like, lt } from "drizzle-orm";
 import {
   DEMO_COOKIE,
@@ -146,6 +146,40 @@ function marketFactor(idx: number, n: number): number {
 
 async function seedDemo(userId: string) {
   const db = getDb();
+  const [existingGoals, existingWatchlist] = await Promise.all([
+    db.select({ id: goals.id }).from(goals).where(eq(goals.userId, userId)),
+    db.select({ symbol: watchlistItems.symbol }).from(watchlistItems).where(eq(watchlistItems.userId, userId)),
+  ]);
+
+  if (existingGoals.length === 0) {
+    const targetDate = new Date();
+    targetDate.setUTCFullYear(targetDate.getUTCFullYear() + 2);
+    await db.insert(goals).values({
+      id: crypto.randomUUID(),
+      userId,
+      name: "Build a £50,000 portfolio",
+      targetValue: 50000,
+      targetDate: targetDate.toISOString().slice(0, 10),
+      createdAt: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  const existingSymbols = new Set(existingWatchlist.map((item) => item.symbol));
+  const demoWatchlist = [
+    { symbol: "MSFT", name: "Microsoft Corporation", exchange: "NASDAQ", currency: "USD" },
+    { symbol: "AMZN", name: "Amazon.com, Inc.", exchange: "NASDAQ", currency: "USD" },
+    { symbol: "GOOGL", name: "Alphabet Inc.", exchange: "NASDAQ", currency: "USD" },
+    { symbol: "TSLA", name: "Tesla, Inc.", exchange: "NASDAQ", currency: "USD" },
+  ].filter((item) => !existingSymbols.has(item.symbol));
+  if (demoWatchlist.length > 0) {
+    await db.insert(watchlistItems).values(demoWatchlist.map((item) => ({
+      id: crypto.randomUUID(),
+      userId,
+      ...item,
+      createdAt: Math.floor(Date.now() / 1000),
+    }))).onConflictDoNothing();
+  }
+
   const existing = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
   if (existing.length > 0) return;
 
