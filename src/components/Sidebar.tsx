@@ -2,7 +2,7 @@
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
 import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
-import { memo, useState, useMemo, useEffect, useCallback, useSyncExternalStore } from "react";
+import { memo, useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -144,10 +144,57 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [expandedPortfolio, setExpandedPortfolio] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
 
   const closeMobileMenu = useCallback(() => setMobileOpen(false), []);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const menu = mobileMenuRef.current;
+    const trigger = mobileMenuTriggerRef.current;
+    const getFocusableItems = () => Array.from(
+      menu?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((element) => element.getClientRects().length > 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Let any form dialog opened from the menu handle its own Escape and Tab keys.
+      if (document.querySelector('[data-slot="dialog-content"]')) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const focusableItems = getFocusableItems();
+      const first = focusableItems[0];
+      const last = focusableItems.at(-1);
+      const activeElement = document.activeElement;
+
+      if (!first || !last) {
+        event.preventDefault();
+        menu?.focus();
+      } else if (event.shiftKey && (activeElement === first || !menu?.contains(activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (activeElement === last || !menu?.contains(activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    menu?.querySelector<HTMLElement>('[aria-label="Close menu"]')?.focus();
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      trigger?.focus();
+    };
+  }, [mobileOpen]);
 
   const sortByOrder = <T extends { sortOrder?: number | null }>(list: T[]): T[] => [...list].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
 
@@ -367,7 +414,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     <>
       <div className="px-5 py-5 border-b flex items-center justify-between" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         <Logo size={36} />
-        <Button variant="ghost" size="icon-xs" className="xl:hidden" aria-label="Close menu" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
+        <Button variant="ghost" size="icon" className="xl:hidden !size-11" aria-label="Close menu" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
         <SidebarPrimaryNav activeId={activeId} onSelect={onSelect} onClose={closeMobileMenu} />
@@ -716,12 +763,12 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   return (
     <>
-      <Button variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu"><Menu className="w-4 h-4"/></Button>
+      <Button ref={mobileMenuTriggerRef} variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 !size-11 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu" aria-expanded={mobileOpen}><Menu className="w-4 h-4"/></Button>
       <aside className="hidden xl:flex w-[360px] shrink-0 flex-col h-screen sticky top-0 border-r bg-black/40 backdrop-blur-xl" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
         {inner}
       </aside>
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 xl:hidden flex">
+        <div ref={mobileMenuRef} className="fixed inset-0 z-50 xl:hidden flex" role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1}>
           <div className="w-[85vw] max-w-[380px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{inner}</div>
           <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
         </div>
