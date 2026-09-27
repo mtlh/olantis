@@ -309,8 +309,8 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     const benchmarkHistory = benchmarkPrices?.key === `${benchmark}:MAX`
       ? [...benchmarkPrices.rows].filter((point) => Number.isFinite(point.price) && point.price > 0).sort((a, b) => a.date.localeCompare(b.date))
       : [];
-    const portfolioStart = totalHistory[0]?.date ?? orderedDates[0];
-    const benchmarkBase = [...benchmarkHistory].reverse().find((point) => point.date <= portfolioStart) ?? benchmarkHistory[0];
+    const userDataStart = orderedDates[0];
+    const benchmarkBase = [...benchmarkHistory].reverse().find((point) => point.date <= userDataStart) ?? benchmarkHistory.find((point) => point.date >= userDataStart);
 
     return orderedDates.map((date) => {
       const row: PerformanceChartRow = { date: chartDateLabel(date), dateISO: date };
@@ -320,7 +320,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
         const value = percentAt(history, date);
         if (value != null) row[id] = value;
       }
-      if (benchmarkBase && date >= benchmarkBase.date) {
+      if (benchmarkBase && date >= userDataStart && date >= benchmarkBase.date) {
         let latestPrice: number | undefined;
         for (const point of benchmarkHistory) {
           if (point.date > date) break;
