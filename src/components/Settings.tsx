@@ -138,7 +138,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="sticky top-0 z-30 backdrop-blur-xl bg-black/40 border-b border-white/5">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/dashboard" className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 grid place-items-center hover:bg-white/10"><ArrowLeft className="w-4 h-4"/></Link>
             <div><h1 className="text-lg font-semibold tracking-tight">Settings</h1><p className="text-xs text-zinc-500">Manage colors, preferences & data</p></div>
@@ -147,13 +147,18 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-        <Card className="glass-card border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02]">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white"><Palette className="w-5 h-5"/> Color mapping</CardTitle>
-            <CardDescription>Assign a base color per account. Providers & portfolios inherit as tints — override anytime. Colors appear in sidebar & charts.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
+        <div className="max-w-5xl mx-auto px-6 py-5 space-y-4">
+        <Card className="glass-card border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-0 gap-0">
+          <details className="group">
+            <summary className="flex list-none cursor-pointer items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-white"><Palette className="w-4 h-4"/> Color mapping <span className="text-xs font-normal text-zinc-500">{accounts.length} accounts · {providers.length} providers · {portfolios.length} portfolios</span></div>
+                <p className="mt-1 text-xs text-zinc-500">Assign colors for accounts, providers and portfolios.</p>
+              </div>
+              <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-white/5 px-4 py-4">
+          <CardContent className="space-y-5 p-0">
             <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/5 w-fit">
               {([
                 { key: "accounts" as const, label: "Accounts", icon: Building2, count: accounts.length },
@@ -273,14 +278,21 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               <Palette className="w-4 h-4 shrink-0"/> Colors sync instantly — sidebar dots, provider headers, allocation pie & performance lines all use the same mapping. Auto tints generate lighter/darker variants so portfolios stay distinct but on-brand.
             </div>
           </CardContent>
+            </div>
+          </details>
         </Card>
 
-        <Card className="glass-card border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02]">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white"><ArrowUpDown className="w-5 h-5"/> Sidebar order</CardTitle>
-            <CardDescription>Choose the display order for accounts, providers and portfolios in the sidebar.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <Card className="glass-card border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-0 gap-0">
+          <details className="group">
+            <summary className="flex list-none cursor-pointer items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-white"><ArrowUpDown className="w-4 h-4"/> Sidebar order <span className="text-xs font-normal text-zinc-500">{sortedAccounts.length + providers.length + portfolios.length} items</span></div>
+                <p className="mt-1 text-xs text-zinc-500">Choose the display order for accounts, providers and portfolios.</p>
+              </div>
+              <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-white/5 px-4 py-4">
+          <CardContent className="space-y-5 p-0">
             {sortedAccounts.length === 0 && providers.length === 0 && portfolios.length === 0 ? (
               <p className="text-sm text-zinc-500">Nothing to reorder yet.</p>
             ) : (
@@ -411,6 +423,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               </>
             )}
           </CardContent>
+            </div>
+          </details>
         </Card>
 
         <div className="grid md:grid-cols-2 gap-6">
@@ -418,8 +432,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-white"><Clock className="w-4 h-4"/> Preferences</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
+            <CardContent className="grid gap-x-4 gap-y-3 md:grid-cols-2">
+              <div className="space-y-1.5">
                 <Label>Default currency</Label>
                 <Select value={settings.currency ?? "GBP"} onValueChange={v=> saveSettings({ currency: v })}>
                   <SelectTrigger><span className="flex-1 text-left truncate">{settings.currency ?? "GBP"}</span></SelectTrigger>
@@ -431,14 +445,14 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 </Select>
                 <p className="text-xs text-zinc-600">Applied to new holdings and trades. Existing holdings keep the currency they were recorded with.</p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Date format</Label>
                 <Select value={settings.dateFormat ?? "en-GB"} onValueChange={v=> saveSettings({ dateFormat: v })}>
                   <SelectTrigger><span className="flex-1 text-left truncate">{settings.dateFormat ?? "en-GB"}</span></SelectTrigger>
                   <SelectContent><SelectItem value="en-GB">Day / month / year</SelectItem><SelectItem value="en-US">Month / day / year</SelectItem><SelectItem value="de-DE">Day.month.year</SelectItem><SelectItem value="fr-FR">Day / month / year (French)</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Default chart range</Label>
                 <Select value={settings.defaultRange ?? "1Y"} onValueChange={v=> saveSettings({ defaultRange: v })}>
                   <SelectTrigger><span className="flex-1 text-left truncate">{settings.defaultRange ?? "1Y"}</span></SelectTrigger>
@@ -451,7 +465,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 </Select>
                 <p className="text-xs text-zinc-600">Range every chart opens on. You can still switch per chart.</p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Show trade markers on charts</Label>
                 <Select value={String(settings.showTradeMarkers ?? 1)} onValueChange={v=> saveSettings({ showTradeMarkers: Number(v) })}>
                   <SelectTrigger><span className="flex-1 text-left truncate">{Number(settings.showTradeMarkers ?? 1) ? "On" : "Off"}</span></SelectTrigger>
@@ -470,10 +484,15 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               <CardTitle className="flex items-center gap-2 text-white"><Shield className="w-4 h-4"/> Data & privacy</CardTitle>
               <CardDescription>Export, import & danger zone.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2">
               <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" onClick={exportAll}><Download className="w-4 h-4"/> Export all as JSON</Button>
-              <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <Label htmlFor="import-portfolio">Import CSV into portfolio</Label>
+              <details className="group rounded-xl border border-white/10 bg-white/[0.03]">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm text-zinc-200 [&::-webkit-details-marker]:hidden">
+                  <span className="flex items-center gap-2"><Upload className="w-3.5 h-3.5 text-zinc-500"/> Import CSV into portfolio</span>
+                  <ChevronDown className="w-4 h-4 text-zinc-500 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-2 border-t border-white/5 p-3">
+                <Label htmlFor="import-portfolio" className="sr-only">Import CSV into portfolio</Label>
                 <Select value={importPortfolioId} onValueChange={(value) => setImportPortfolioId(value ?? "")}>
                   <SelectTrigger id="import-portfolio"><span className="flex-1 text-left truncate">{portfolios.find((p) => p.id === importPortfolioId)?.name ?? "Choose portfolio"}</span></SelectTrigger>
                   <SelectContent>{portfolios.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
@@ -528,34 +547,45 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 />
                 <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" disabled={importing || !importPortfolioId} onClick={() => document.getElementById("import-csv")?.click()}><Upload className="w-4 h-4"/>{importing ? "Importing…" : "Import holdings or buy/sell CSV"}</Button>
                 <p className="text-xs text-zinc-600">Holdings: Symbol, Name, Shares, AvgPrice, CurrentPrice, Currency. Trades: Symbol, Type, Shares, Price, Date.</p>
-              </div>
+                </div>
+              </details>
               {/* eslint-disable-next-line @next/next/no-location-assign-relative-destination */}
               <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" onClick={()=> { window.location.href="/api/demo"; }} disabled={isDemo}><Upload className="w-4 h-4"/> Load demo data</Button>
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-                <div className="text-sm font-medium text-red-300 flex items-center gap-2"><Trash2 className="w-4 h-4"/> Danger zone</div>
-                <p className="text-xs text-red-300/70 mt-1">Delete all portfolios and holdings. Accounts & providers remain. Cannot be undone.</p>
+              <details className="group rounded-xl border border-red-500/20 bg-red-500/[0.06]">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium text-red-300 [&::-webkit-details-marker]:hidden">
+                  <span className="flex items-center gap-2"><Trash2 className="w-4 h-4"/> Danger zone</span>
+                  <ChevronDown className="w-4 h-4 text-red-300/60 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="border-t border-red-500/15 p-3">
+                <p className="text-xs text-red-300/70">Delete all portfolios and holdings. Accounts & providers remain. Cannot be undone.</p>
                 <Button variant="ghost" size="sm" className="mt-2 bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/20" onClick={async()=>{
                   if(!confirm("Delete ALL portfolios?")) return;
                   for(const p of portfolios){ await fetch(`/api/portfolios?id=${p.id}`, { method:"DELETE" }); }
                   location.reload();
                 }}><Trash2 className="w-3.5 h-3.5"/> Delete all portfolios</Button>
-              </div>
+                </div>
+              </details>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="glass-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white"><ImageIcon className="w-4 h-4"/> Theme</CardTitle>
-            <CardDescription>Black glass + grey cards. Color is reserved only for data — your mapping above.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
+        <Card className="glass-card p-0 gap-0">
+          <details className="group">
+            <summary className="flex list-none cursor-pointer items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-white"><ImageIcon className="w-4 h-4"/> Theme palette <span className="text-xs font-normal text-zinc-500">{PALETTE.length} data colors</span></div>
+                <p className="mt-1 text-xs text-zinc-500">Black glass with neutral cards; color is reserved for data.</p>
+              </div>
+              <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+            </summary>
+            <CardContent className="flex flex-wrap gap-2 border-t border-white/5 py-3">
             {PALETTE.map(c=> (
               <div key={c.value} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs">
                 <span className="w-3 h-3 rounded-full" style={{ background: c.value }} /> {c.label}
               </div>
             ))}
           </CardContent>
+          </details>
         </Card>
 
         <div className="text-center text-xs text-zinc-600">
