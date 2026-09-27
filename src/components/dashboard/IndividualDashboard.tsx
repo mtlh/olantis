@@ -6,6 +6,7 @@ import type { Holding } from "@/lib/store";
 type IndividualDashboardProps = {
   holding: Holding;
   portfolioId: string | null;
+  portfolioValue: number;
   portfolioName?: string;
   color: string;
   onBack: () => void;
@@ -18,6 +19,7 @@ type IndividualDashboardProps = {
 export function IndividualDashboard({
   holding,
   portfolioId,
+  portfolioValue,
   portfolioName,
   color,
   onBack,
@@ -31,6 +33,7 @@ export function IndividualDashboard({
       <StockDetail
         holding={holding}
         portfolioId={portfolioId}
+        portfolioValue={portfolioValue}
         portfolioName={portfolioName}
         color={color}
         onBack={onBack}

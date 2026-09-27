@@ -16,6 +16,7 @@ type PortfolioDashboardProps = {
   cost: number;
   gain: number;
   gainPct: number;
+  staleCount: number;
   onBack: () => void;
   onEdit: () => void;
   onAddHolding: () => void;
@@ -33,6 +34,7 @@ export function PortfolioDashboard({
   cost,
   gain,
   gainPct,
+  staleCount,
   onBack,
   onEdit,
   onAddHolding,
@@ -57,7 +59,7 @@ export function PortfolioDashboard({
               {portfolio.accountId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{accounts.find((account) => account.id === portfolio.accountId)?.name ?? ""}</Badge>}
               {portfolio.providerId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-500">{providers.find((provider) => provider.id === portfolio.providerId)?.name ?? ""}</Badge>}
             </div>
-            <p className="mt-2 text-sm text-zinc-500">{portfolio.holdings.length} holdings • {portfolio.type} • updated {fmtRelative(Math.max(...portfolio.holdings.map((holding) => holding.lastRefreshedAt ?? 0), 0) || null, dateFormat)}</p>
+            <p className="mt-2 text-sm text-zinc-500">{portfolio.holdings.length} holdings • {portfolio.type} • prices updated {fmtRelative(Math.max(...portfolio.holdings.map((holding) => holding.lastRefreshedAt ?? 0), 0) || null, dateFormat)} • {staleCount} stale / unverified</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" className="border-white/10 bg-white/5" onClick={onBack}>← {backLabel}</Button>
@@ -73,9 +75,9 @@ export function PortfolioDashboard({
             <div className="mt-1 text-xs text-zinc-600">Cost {fmtGBP(cost)}</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Return</div>
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Unrealized gain</div>
             <div className="flex items-center gap-2 text-2xl font-bold" style={{ color: gain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(gain)} <span className="text-sm">{fmtPct(gainPct)}</span></div>
-            <div className="mt-1 text-xs text-zinc-500">All time</div>
+            <div className="mt-1 text-xs text-zinc-500">Current positions only</div>
           </div>
         </div>
       </div>

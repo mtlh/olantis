@@ -14,13 +14,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import type { Snapshot } from "@/lib/store";
-import { chartDateLabel, filterByRange, fmtGBP, fmtPct, fmtRelative, gbpAxisFormatter, numericValues, paddedDomain, todayISODate } from "@/lib/format";
+import { chartDateLabel, filterByRange, fmtGBP, fmtPct, fmtRelative, gbpAxisFormatter, numericValues, paddedDomain, todayISODate, valueChangeOverRange } from "@/lib/format";
 
 type ProviderPortfolioSummary = {
   id: string;
   name: string;
   color: string;
   value: number;
+  gain: number;
   holdingsCount: number;
 };
 
@@ -29,6 +30,7 @@ type ProviderHoldingSummary = {
   symbol: string;
   name: string;
   value: number;
+  gain: number;
 };
 
 type ProviderDashboardProps = {
@@ -42,6 +44,7 @@ type ProviderDashboardProps = {
   allocation: AllocationItem[];
   holdingCount: number;
   latestRefresh: number | null;
+  staleCount: number;
   value: number;
   cost: number;
   gain: number;
@@ -67,6 +70,7 @@ export function ProviderDashboard({
   allocation,
   holdingCount,
   latestRefresh,
+  staleCount,
   value,
   cost,
   gain,
@@ -89,6 +93,7 @@ export function ProviderDashboard({
     return rows.map((row) => ({ date: chartDateLabel(row.date), dateISO: row.date, total: row.value }));
   }, [history, range, value]);
   const chartZoom = useChartZoom(chartData);
+  const periodChange = useMemo(() => valueChangeOverRange(history, range, value), [history, range, value]);
   const axisValues = useMemo(() => numericValues(chartZoom.visible), [chartZoom.visible]);
   const axisFmt = useMemo(() => gbpAxisFormatter(axisValues), [axisValues]);
   const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
@@ -119,7 +124,7 @@ export function ProviderDashboard({
               <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-300">Provider</Badge>
               <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{accountName}</Badge>
             </div>
-            <p className="mt-2 text-sm text-zinc-500">{portfolios.length} {portfolios.length === 1 ? "portfolio" : "portfolios"} • {holdingCount} {holdingCount === 1 ? "holding" : "holdings"} • updated {fmtRelative(latestRefresh, dateFormat)}</p>
+            <p className="mt-2 text-sm text-zinc-500">{portfolios.length} {portfolios.length === 1 ? "portfolio" : "portfolios"} • {holdingCount} {holdingCount === 1 ? "holding" : "holdings"} • prices updated {fmtRelative(latestRefresh, dateFormat)} • {staleCount} stale / unverified</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" className="border-white/10 bg-white/5" onClick={onBack}>← {accountName}</Button>
@@ -128,16 +133,23 @@ export function ProviderDashboard({
             <Button variant="ghost" className="border border-white/5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
           </div>
         </div>
-        <div className="relative mt-8 grid grid-cols-1 gap-4 min-[360px]:grid-cols-2">
+        <div className="relative mt-8 grid grid-cols-1 gap-4 min-[520px]:grid-cols-3">
           <div className="rounded-xl border-l-4 bg-white p-4 text-black" style={{ borderLeftColor: color }}>
             <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Value</div>
             <div className="mt-1 text-2xl font-bold">{fmtGBP(value)}</div>
             <div className="mt-1 text-xs text-zinc-600">Cost {fmtGBP(cost)}</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Return</div>
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Unrealized gain</div>
             <div className="flex items-center gap-2 text-2xl font-bold" style={{ color: gain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(gain)} <span className="text-sm">{fmtPct(gainPct)}</span></div>
-            <div className="mt-1 text-xs text-zinc-500">All time</div>
+            <div className="mt-1 text-xs text-zinc-500">Current positions only</div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Value change · {range}</div>
+            {periodChange ? <>
+              <div className="mt-1 text-2xl font-bold tabular-nums" style={{ color: periodChange.amount >= 0 ? "#34d399" : "#f87171" }}>{periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))} <span className="text-sm">{periodChange.percent == null ? "" : fmtPct(periodChange.percent)}</span></div>
+              <div className="mt-1 text-xs text-zinc-500">Since {periodChange.fromDate} · trades can affect value</div>
+            </> : <div className="mt-1 text-sm text-zinc-500">More history needed</div>}
           </div>
         </div>
       </div>
@@ -191,7 +203,7 @@ export function ProviderDashboard({
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: portfolio.color }} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-white">{portfolio.name}</span>
-                    <span className="block text-xs text-zinc-500">{portfolio.holdingsCount} holdings</span>
+                    <span className="block text-xs text-zinc-500">{portfolio.holdingsCount} holdings • {value > 0 ? `${(portfolio.value / value * 100).toFixed(1)}% of provider` : "0% of provider"} • unrealized {fmtGBP(portfolio.gain)}</span>
                   </span>
                   <span className="text-sm font-medium tabular-nums text-white">{fmtGBP(portfolio.value)}</span>
                 </button>
@@ -201,7 +213,7 @@ export function ProviderDashboard({
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-[10px] font-bold text-zinc-300">{holding.symbol.slice(0, 3)}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-white">{holding.symbol}</span>
-                    <span className="block truncate text-xs text-zinc-500">Direct holding • {holding.name}</span>
+                    <span className="block truncate text-xs text-zinc-500">Direct holding • {holding.name} • {value > 0 ? `${(holding.value / value * 100).toFixed(1)}% of provider` : "0% of provider"} • unrealized {fmtGBP(holding.gain)}</span>
                   </span>
                   <span className="text-sm font-medium tabular-nums text-white">{fmtGBP(holding.value)}</span>
                 </button>

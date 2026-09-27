@@ -34,6 +34,39 @@ export function filterByRange<T extends { date: string }>(rows: T[], range: stri
   return rows.filter((row) => row.date >= cutoff);
 }
 
+export type ValueChange = {
+  amount: number;
+  percent: number | null;
+  fromDate: string;
+  baselineValue: number;
+};
+
+/** Compare today's value with the latest saved value at or before the range start. */
+export function valueChangeOverRange(
+  rows: Array<{ date: string; value: number }>,
+  range: string,
+  currentValue: number,
+): ValueChange | null {
+  const ordered = rows
+    .filter((row) => Number.isFinite(row.value))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (!ordered.length || !Number.isFinite(currentValue)) return null;
+
+  const days = range === "1M" ? 31 : range === "3M" ? 92 : range === "1Y" ? 365 : null;
+  const cutoff = days == null
+    ? ordered[0].date
+    : new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const baseline = [...ordered].reverse().find((row) => row.date <= cutoff) ?? ordered[0];
+  const amount = currentValue - baseline.value;
+
+  return {
+    amount,
+    percent: baseline.value > 0 ? (amount / baseline.value) * 100 : null,
+    fromDate: baseline.date,
+    baselineValue: baseline.value,
+  };
+}
+
 export function fmtGBP(n: number): string {
   if (!Number.isFinite(n)) return "—";
   // Below £100 show pence — otherwise small balances all render as "£0".

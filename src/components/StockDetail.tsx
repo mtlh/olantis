@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
-import { fmtGBP, fmtPrice, fmtPct, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, gbpAxisFormatter, priceAxisFormatter, paddedDomain, numericValues, filterByRange, type MoneyHolding } from "@/lib/format";
+import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, gbpAxisFormatter, priceAxisFormatter, paddedDomain, numericValues, filterByRange, type MoneyHolding } from "@/lib/format";
 import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
 
 type PriceRow = { date: string; price: number };
 
-export function StockDetail({ holding, portfolioId, portfolioName, color, onBack, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
+export function StockDetail({ holding, portfolioId, portfolioValue, portfolioName, color, onBack, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioValue: number; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
   const { settings } = useSettings();
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
   const rangeTouched = useRef(false);
@@ -116,6 +116,10 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
   const cost = holdingCostGBP(holding as MoneyHolding, settings.fxRates);
   const gain = val - cost;
   const pct = cost ? (gain / cost) * 100 : 0;
+  const weightPct = portfolioValue > 0 ? (val / portfolioValue) * 100 : null;
+  const latestMarketMove = prices && prices.length > 1 && prices.at(-2)!.price > 0
+    ? { amount: prices.at(-1)!.price - prices.at(-2)!.price, percent: ((prices.at(-1)!.price / prices.at(-2)!.price) - 1) * 100, date: prices.at(-1)!.date }
+    : null;
   const isManual = !isListed;
 
   return (
@@ -145,16 +149,16 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
             <Button variant="outline" className="bg-white/5 border-white/10" onClick={onBack}>← Back{portfolioName ? ` to ${portfolioName}` : ""}</Button>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+        <div className="grid grid-cols-2 gap-4 mt-8 md:grid-cols-3 2xl:grid-cols-5">
           <div className="p-4 rounded-xl bg-white text-black border-l-4" style={{ borderLeftColor: color }}>
             <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Value</div>
             <div className="text-2xl font-bold mt-1">{fmtGBP(val)}</div>
             <div className="text-xs text-zinc-600 mt-1">Cost {fmtGBP(cost)}</div>
           </div>
           <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Return</div>
+            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Unrealized gain</div>
             <div className="text-2xl font-bold flex items-center gap-2" style={{ color: gain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(gain)} <span className="text-sm">{fmtPct(pct)}</span></div>
-            <div className="text-xs text-zinc-500 mt-1">All time</div>
+            <div className="text-xs text-zinc-500 mt-1">Current position only</div>
           </div>
           <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
             <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Shares</div>
@@ -164,7 +168,19 @@ export function StockDetail({ holding, portfolioId, portfolioName, color, onBack
           <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
             <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Price</div>
             <div className="text-2xl font-bold text-white">{fmtPrice(holding.currentPrice, holding.currency)}</div>
-            <div className="text-xs text-zinc-500 mt-1">{holding.currency}</div>
+            <div className="text-xs text-zinc-500 mt-1">{holding.currency} · updated {fmtRelative(holding.lastRefreshedAt, settings.dateFormat)}</div>
+          </div>
+          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
+            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Parent weight</div>
+            <div className="text-2xl font-bold text-white">{weightPct == null ? "—" : `${weightPct.toFixed(1)}%`}</div>
+            <div className="text-xs text-zinc-500 mt-1">{portfolioName ?? "Total tracked"} · {fmtGBP(portfolioValue)}</div>
+          </div>
+          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
+            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Latest market move</div>
+            {latestMarketMove ? <>
+              <div className="text-2xl font-bold" style={{ color: latestMarketMove.amount >= 0 ? "#34d399" : "#f87171" }}>{latestMarketMove.amount >= 0 ? "+" : "−"}{fmtPrice(Math.abs(latestMarketMove.amount), holding.currency)}</div>
+              <div className="text-xs text-zinc-500 mt-1">{fmtPct(latestMarketMove.percent)} · {latestMarketMove.date}</div>
+            </> : <div className="text-sm text-zinc-500 mt-1">No recent quote history</div>}
           </div>
         </div>
       </div>

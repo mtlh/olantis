@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { filterByRange, holdingCostGBP, holdingValueGBP, toGBP } from "../src/lib/format.ts";
+import { filterByRange, holdingCostGBP, holdingValueGBP, toGBP, valueChangeOverRange } from "../src/lib/format.ts";
 
 test("converts supported quoted currencies into GBP", () => {
   assert.equal(toGBP(125, "GBX"), 1.25);
@@ -24,4 +24,22 @@ test("range filtering uses calendar age rather than snapshot count", () => {
   assert.deepEqual(filterByRange(rows, "3M").map((row) => row.value), [1, 20, 45]);
   assert.deepEqual(filterByRange(rows, "1Y").map((row) => row.value), [1, 20, 45, 100]);
   assert.equal(filterByRange(rows, "MAX").length, 5);
+});
+
+test("period value change uses the last saved value at or before the range start", () => {
+  const today = new Date();
+  const iso = (daysAgo: number) => new Date(today.getTime() - daysAgo * 86400000).toISOString().slice(0, 10);
+  const rows = [
+    { date: iso(400), value: 10 },
+    { date: iso(100), value: 20 },
+    { date: iso(40), value: 30 },
+    { date: iso(10), value: 40 },
+  ];
+  assert.deepEqual(valueChangeOverRange(rows, "1M", 50), {
+    amount: 20,
+    percent: (20 / 30) * 100,
+    fromDate: iso(40),
+    baselineValue: 30,
+  });
+  assert.equal(valueChangeOverRange([], "1M", 50), null);
 });

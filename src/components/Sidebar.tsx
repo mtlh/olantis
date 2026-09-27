@@ -15,7 +15,7 @@ import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PALETTE, portfolioTint } from "@/lib/colors";
-import { fmtRelative, holdingValueGBP, fmtPrice } from "@/lib/format";
+import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
@@ -99,8 +99,8 @@ function SidebarPrimaryNav({ activeId, onSelect, onClose }: { activeId: string |
   );
 }
 
-export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
-  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; activeProviderId?: string | null; activeAccountId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectAccount?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
+export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; activeHoldingId?: string | null; activeProviderId?: string | null; activeAccountId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectAccount?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
   onCreateAccount: (name: string) => void | Promise<void>;
   onCreateProvider?: (name: string, accountId: string) => Promise<void>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
@@ -141,6 +141,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [directQuery, setDirectQuery] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [expandedProv, setExpandedProv] = useState<Record<string, boolean>>({});
+  const [expandedPortfolio, setExpandedPortfolio] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -206,8 +207,64 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const toggle = (id: string) => setExpanded((e) => ({ ...e, [id]: !(e[id] ?? true) }));
   const toggleProv = (id: string) => setExpandedProv((e)=> ({...e, [id]: !(e[id] ?? true)}));
+  const togglePortfolio = (id: string) => setExpandedPortfolio((e) => ({ ...e, [id]: !e[id] }));
   const openWizard = (accountId: string | null = null, providerId: string | null = null) => { onOpenWizard(accountId, providerId); setMobileOpen(false); };
   const validateName = (n: string) => n.trim().length >= 2 ? "" : "Min 2 characters";
+
+  const renderPortfolioItem = (portfolio: Portfolio, color: string) => {
+    const total = portfolio.holdings.reduce((sum, holding) => sum + holdingValueGBP(holding, settings.fxRates), 0);
+    const holdingsInValueOrder = [...portfolio.holdings].sort((a, b) => holdingValueGBP(b, settings.fxRates) - holdingValueGBP(a, settings.fxRates));
+    const isActive = activeId === portfolio.id;
+    const selectedHolding = holdingsInValueOrder.some((holding) => holding.id === activeHoldingId);
+    const searchMatchesHolding = !!searchTerm && holdingsInValueOrder.some(matchesHolding);
+    const isOpen = expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding || searchMatchesHolding);
+    return (
+      <div key={portfolio.id} className={`overflow-hidden rounded-lg border border-transparent transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`} style={isActive ? { borderColor: `color-mix(in srgb, ${color} 44%, transparent)` } : undefined}>
+        <div className="flex items-center gap-1 px-1 py-0.5">
+          <Button variant="ghost" size="icon-xs" className="h-6 w-6 shrink-0 text-zinc-500 hover:text-white" onClick={() => togglePortfolio(portfolio.id)} aria-label={`${isOpen ? "Collapse" : "Expand"} ${portfolio.name}`} aria-expanded={isOpen}>
+            <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? "" : "-rotate-90"}`} />
+          </Button>
+          <Button variant="ghost" size="sm" aria-pressed={isActive} className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 hover:bg-transparent" style={isActive ? { color: "#fff" } : undefined} onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}>
+            <Layers className="h-3.5 w-3.5 shrink-0" style={{ color }} />
+            <span className="truncate text-xs font-medium">{portfolio.name}</span>
+            <span className="ml-auto rounded-full bg-white/[0.05] px-1.5 py-0.5 text-[9px] font-medium capitalize text-zinc-500">{portfolio.type}</span>
+          </Button>
+          <span className="shrink-0 pr-1 text-xs tabular-nums text-zinc-400">{fmtGBP(total)}</span>
+          {editMode && (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`}><MoreVertical className="h-3 w-3" /></Button>} />
+              <DropdownMenuContent className="border-white/10 bg-zinc-900 text-white">
+                <DropdownMenuItem onClick={() => { setEditingPortfolio(portfolio); setEditPName(portfolio.name); setEditPType(portfolio.type); setEditPAccount(portfolio.accountId ?? "__none"); setEditPProvider(portfolio.providerId ?? "__none"); }}><Pencil className="h-3 w-3" />Edit</DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={() => onDeletePortfolio?.(portfolio)}><Trash2 className="h-3 w-3" />Delete</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+        {isOpen && (
+          <div className="ml-8 border-l border-white/[0.08] pb-1 pl-2">
+            {holdingsInValueOrder.length ? holdingsInValueOrder.map((holding) => {
+              const holdingValue = holdingValueGBP(holding, settings.fxRates);
+              const allocation = total > 0 ? holdingValue / total * 100 : 0;
+              const isHoldingActive = holding.id === activeHoldingId;
+              return (
+                <button key={holding.id} type="button" onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-white/[0.06] text-[9px] font-semibold text-zinc-300">{holding.symbol.slice(0, 3)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
+                    <span className="block truncate text-[10px] text-zinc-600">{holding.name}</span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-[11px] font-medium tabular-nums text-zinc-300">{allocation.toFixed(1)}%</span>
+                    <span className="block text-[9px] tabular-nums text-zinc-600">{fmtGBP(holdingValue)}</span>
+                  </span>
+                </button>
+              );
+            }) : <p className="px-2 py-2 text-[10px] text-zinc-600">No holdings in this portfolio.</p>}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const handleCreateAccount = async () => {
     const err = validateName(accountName);
@@ -404,30 +461,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                               <div className="ml-3 border-l border-white/[0.08] pb-1 pl-2 space-y-1">
                                 {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
                                 {ps.map((p)=>{
-                                  const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h, settings.fxRates),0);
-                                  const active=activeId===p.id;
                                   const portfolioIndex = providerPortfolios.findIndex((item) => item.id === p.id);
                                   const baseColor = p.color || portfolioTint(provColor, Math.max(0, portfolioIndex));
-                                  const activeText = "#fff";
-                                  const activeMuted = "rgba(255,255,255,0.62)";
-                                  return (
-                                    <div key={p.id} className={`group relative flex items-center gap-1 rounded-md border-l-2 border-transparent px-1 py-0.5 transition-colors before:absolute before:-left-2 before:top-1/2 before:w-2 before:border-t before:border-white/[0.1] before:content-[''] ${active ? "bg-white/[0.07] text-white" : "text-zinc-300 hover:bg-white/[0.045]"}`} style={active ? { borderLeftColor: baseColor, color: activeText } : {}}>
-                                      <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-2 h-7 ${active?"hover:bg-white/[0.04]":"hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
-                                        <Layers className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
-                                        <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
-                                      </Button>
-                                      <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
-                                      {editMode && (
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5" aria-label={`${p.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
-                                        <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                                          <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
-                                          <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                      )}
-                                    </div>
-                                  );
+                                  return renderPortfolioItem(p, baseColor);
                                 })}
                                 {providerDirectHoldings.length>0 && (
                                   <div className="mt-2 pt-2 border-t border-white/5">
@@ -456,31 +492,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                         <div className="space-y-1">
                           <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct portfolios</div>
                           {direct.map((p)=>{
-                            const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h, settings.fxRates),0);
-                            const active=activeId===p.id;
                             const portfolioIndex = (directByAccount.get(acc.id) ?? []).findIndex((item) => item.id === p.id);
                             const baseColor = p.color || portfolioTint(accColorFor(acc), Math.max(0, portfolioIndex));
-                            const activeText = "#fff";
-                            const activeMuted = "rgba(255,255,255,0.62)";
-                            return (
-                              <div key={p.id} className={`group flex items-center gap-1 rounded-md border-l-2 border-transparent px-1 py-0.5 transition-colors ${active ? "bg-white/[0.07] text-white" : "text-zinc-300 hover:bg-white/[0.045]"}`} style={active ? { borderLeftColor: baseColor, color: activeText } : {}}>
-                                <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-white/[0.04]" : "hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
-                                  <Layers className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
-                                  <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
-                                  <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize" style={active ? { background: "rgba(255,255,255,0.12)", color: activeMuted } : {}}>{p.type}</span>
-                                </Button>
-                                <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
-                                {editMode && (
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${p.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
-                                  <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                                    <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId??"__none"); setEditPProvider(p.providerId??"__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
-                                    <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                                )}
-                              </div>
-                            );
+                            return renderPortfolioItem(p, baseColor);
                           })}
                         </div>
                       )}
@@ -513,31 +527,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 </div>
                 <div className="px-1.5 pb-1.5 space-y-1">
                   {filteredPortfolios(unassigned).map((p) => {
-                    const val = p.holdings.reduce((s, h:Holding) => s + holdingValueGBP(h, settings.fxRates), 0);
-                    const active = activeId === p.id;
                     const portfolioIndex = unassigned.findIndex((item) => item.id === p.id);
                     const baseColor = p.color || PALETTE[Math.max(0, portfolioIndex) % PALETTE.length].value;
-                    const activeText = "#fff";
-                    const activeMuted = "rgba(255,255,255,0.62)";
-                    return (
-                      <div key={p.id} className={`group flex items-center gap-1 rounded-lg border p-1 transition-colors ${active ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]" : "bg-white/[0.035] text-zinc-300 border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12]"}`} style={active ? { background: "rgba(255,255,255,0.08)", borderColor: `color-mix(in srgb, ${baseColor} 44%, transparent)`, color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
-                        <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-white/[0.04]" : "hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
-                          <Layers className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
-                          <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
-                        </Button>
-                        <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
-                        {editMode && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${p.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
-                            <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white">
-                              <DropdownMenuItem onClick={()=>{ setEditingPortfolio(p); setEditPName(p.name); setEditPType(p.type); setEditPAccount(p.accountId ?? "__none"); setEditPProvider("__none"); }}><Pencil className="w-3 h-3"/>Edit</DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-white/10"/>
-                              <DropdownMenuItem variant="destructive" onClick={()=> onDeletePortfolio?.(p)}><Trash2 className="w-3 h-3"/>Delete</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    );
+                    return renderPortfolioItem(p, baseColor);
                   })}
                 </div>
               </div>

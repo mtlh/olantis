@@ -40,6 +40,27 @@ export function PerformanceChart({
     if (benchmark !== "__none__" && !hiddenSeries.has("benchmark")) keys.add("benchmark");
     return keys;
   }, [series, hiddenSeries, benchmark]);
+  const periodSummary = useMemo(() => {
+    const candidates = [
+      { key: "total", name: "Total portfolio" },
+      ...series.map(({ key, name }) => ({ key, name })),
+      ...(benchmark !== "__none__" ? [{ key: "benchmark", name: benchmark === "VWRL.L" ? "VWRL" : benchmark === "^FTSE" ? "FTSE 100" : benchmark === "^GSPC" ? "S&P 500" : benchmark }] : []),
+    ];
+    return candidates.map(({ key, name }) => {
+      const points = data.flatMap((row) => typeof row[key] === "number" && Number.isFinite(row[key]) ? [{ value: row[key] as number }] : []);
+      if (points.length < 2) return { key, name, periodChange: null as number | null, maxDrawdown: null as number | null };
+      const baseline = 100 + points[0].value;
+      const periodChange = baseline > 0 ? ((100 + points.at(-1)!.value) / baseline - 1) * 100 : null;
+      let peak = baseline;
+      let maxDrawdown = 0;
+      for (const point of points) {
+        const indexedValue = 100 + point.value;
+        peak = Math.max(peak, indexedValue);
+        if (peak > 0) maxDrawdown = Math.min(maxDrawdown, (indexedValue / peak - 1) * 100);
+      }
+      return { key, name, periodChange, maxDrawdown };
+    });
+  }, [data, series, benchmark]);
   const axisValues = useMemo(() => {
     const values: number[] = [0];
     for (const row of chartZoom.visible) {
@@ -64,14 +85,14 @@ export function PerformanceChart({
     <section aria-label="Portfolio performance" className="flex min-h-[calc(100vh-7rem)] flex-col gap-5">
       <header>
         <h1 className="text-3xl font-bold tracking-tight text-white">Performance</h1>
-        <p className="mt-1 text-sm text-zinc-500">Compare how your portfolios have changed since their first snapshot.</p>
+        <p className="mt-1 text-sm text-zinc-500">Compare portfolio value movement with selected benchmarks. Figures are not adjusted for contributions, withdrawals, or trading activity.</p>
       </header>
 
       <Card className="glass-card flex min-h-[480px] flex-1 flex-col overflow-hidden">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="text-white">Change over time</CardTitle>
-            <CardDescription>{data.length} points · percentage change since first snapshot</CardDescription>
+            <CardDescription>{data.length} points · indexed to each series’ first saved observation</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-1">
             <Select value={benchmark} onValueChange={(value) => onBenchmarkChange(value ?? "__none__")}>
@@ -129,6 +150,23 @@ export function PerformanceChart({
                 ))}
                 {hiddenSeries.size > 0 && <button onClick={() => setHiddenSeries(new Set())} className="px-2 py-1 text-zinc-500 underline underline-offset-2 hover:text-white">Show all</button>}
               </div>
+              <div className="mt-6 overflow-x-auto rounded-xl border border-white/[0.06]">
+                <table className="w-full min-w-[520px] text-sm">
+                  <thead className="bg-white/[0.025] text-left text-[10px] uppercase tracking-wider text-zinc-500">
+                    <tr><th className="px-4 py-3 font-medium">Series</th><th className="px-4 py-3 text-right font-medium">Change · {range}</th><th className="px-4 py-3 text-right font-medium">Largest pullback</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.05]">
+                    {periodSummary.map((item) => (
+                      <tr key={item.key}>
+                        <td className="px-4 py-3 text-zinc-300">{item.name}</td>
+                        <td className="px-4 py-3 text-right tabular-nums" style={{ color: item.periodChange == null ? "#71717a" : item.periodChange >= 0 ? "#34d399" : "#f87171" }}>{item.periodChange == null ? "—" : fmtPct(item.periodChange)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums text-zinc-400">{item.maxDrawdown == null ? "—" : fmtPct(item.maxDrawdown)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-zinc-600">Portfolio figures show value movement, not a flow-adjusted investment return. “Largest pullback” is based on saved observations. Benchmarks use price data and may exclude dividends.</p>
             </>
           )}
         </CardContent>
