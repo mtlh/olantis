@@ -2,7 +2,7 @@
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
 import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
-import { memo, useState, useMemo, useEffect, useCallback } from "react";
+import { memo, useState, useMemo, useEffect, useCallback, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,9 +19,48 @@ import { fmtRelative, holdingValueGBP, fmtPrice } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
+const SIDEBAR_MORE_NAV_STORAGE_KEY = "olantis-sidebar-more-nav-open";
+const SIDEBAR_MORE_NAV_CHANGE_EVENT = "olantis-sidebar-more-nav-change";
+let moreNavOpenFallback: boolean | null = null;
+
+function isSecondaryNavPage(page: string) {
+  return page === "watchlist" || page === "goals";
+}
+
+function getMoreNavOpen(page: string) {
+  try {
+    const savedState = localStorage.getItem(SIDEBAR_MORE_NAV_STORAGE_KEY);
+    if (savedState !== null) return savedState === "true";
+  } catch {
+    return moreNavOpenFallback ?? isSecondaryNavPage(page);
+  }
+  return moreNavOpenFallback ?? isSecondaryNavPage(page);
+}
+
+function subscribeToMoreNav(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(SIDEBAR_MORE_NAV_CHANGE_EVENT, onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(SIDEBAR_MORE_NAV_CHANGE_EVENT, onStoreChange);
+  };
+}
+
 function SidebarPrimaryNav({ activeId, onSelect, onClose }: { activeId: string | null; onSelect: (id: string | null) => void; onClose: () => void }) {
   const pathname = usePathname();
   const page = pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : "dashboard";
+  const moreNavOpen = useSyncExternalStore(subscribeToMoreNav, () => getMoreNavOpen(page), () => false);
+
+  const toggleMoreNav = () => {
+    const nextOpen = !moreNavOpen;
+    moreNavOpenFallback = nextOpen;
+    try {
+      localStorage.setItem(SIDEBAR_MORE_NAV_STORAGE_KEY, String(nextOpen));
+    } catch {
+      // The navigation remains usable when storage is unavailable.
+    }
+    window.dispatchEvent(new Event(SIDEBAR_MORE_NAV_CHANGE_EVENT));
+  };
 
   return (
     <>
@@ -37,12 +76,25 @@ function SidebarPrimaryNav({ activeId, onSelect, onClose }: { activeId: string |
       <Link href="/performance" onClick={onClose} className={buttonVariants({ variant: page === "performance" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
         <TrendingUp className="w-4 h-4" /> Performance
       </Link>
-      <Link href="/watchlist" onClick={onClose} className={buttonVariants({ variant: page === "watchlist" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
-        <Eye className="w-4 h-4" /> Watchlist
-      </Link>
-      <Link href="/goals" onClick={onClose} className={buttonVariants({ variant: page === "goals" ? "secondary" : "ghost", className: "w-full justify-start gap-2.5" })}>
-        <Target className="w-4 h-4" /> Goals
-      </Link>
+      <Button
+        type="button"
+        variant="ghost"
+        className="mt-1 w-full justify-between gap-2.5"
+        aria-expanded={moreNavOpen}
+        aria-controls="sidebar-more-nav"
+        onClick={toggleMoreNav}
+      >
+        <span>More</span>
+        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${moreNavOpen ? "" : "-rotate-90"}`} />
+      </Button>
+      <div id="sidebar-more-nav" hidden={!moreNavOpen}>
+        <Link href="/watchlist" onClick={onClose} className={buttonVariants({ variant: page === "watchlist" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
+          <Eye className="w-4 h-4" /> Watchlist
+        </Link>
+        <Link href="/goals" onClick={onClose} className={buttonVariants({ variant: page === "goals" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
+          <Target className="w-4 h-4" /> Goals
+        </Link>
+      </div>
     </>
   );
 }
