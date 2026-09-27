@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' file: data:;"
+    />
+    <title>Olantis</title>
+    <link rel="stylesheet" href="shell.css" />
+    <script src="shell.js" defer></script>
+  </head>
+  <body>
+    <header class="titlebar" aria-label="Olantis desktop controls">
+      <div class="brand drag-region">
+        <img id="brand-icon" alt="" />
+        <span class="brand-name">Olantis</span>
+        <span class="brand-separator"></span>
+        <span class="brand-context">PORTFOLIO DESKTOP</span>
+      </div>
+
+      <nav class="page-controls" aria-label="Page controls">
+        <button class="tool-button" id="back-button" aria-label="Go back" title="Go back">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 4 3 9l5 5M4 9h8a5 5 0 0 1 5 5" /></svg>
+        </button>
+        <button class="tool-button" id="reload-button" aria-label="Refresh Olantis" title="Refresh">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 0 0-10-3L4 7M4 4v3h3M4 12a6 6 0 0 0 10 3l2-2m0 3v-3h-3" /></svg>
+        </button>
+        <span class="connection-indicator"><i></i> Secure workspace</span>
+      </nav>
+
+      <div class="window-controls" aria-label="Window controls">
+        <button class="window-button" id="minimize-button" aria-label="Minimize" title="Minimize">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8" /></svg>
+        </button>
+        <button class="window-button" id="maximize-button" aria-label="Maximize" title="Maximize">
+          <svg class="maximize-icon" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.25" y="2.25" width="7.5" height="7.5" rx=".5" /></svg>
+        </button>
+        <button class="window-button close-button" id="close-button" aria-label="Close" title="Close">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6m0-6L3 9" /></svg>
+        </button>
+      </div>
+    </header>
+  </body>
+</html>

@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Olantis
 
-## Getting Started
+Your portfolios, beautifully simple.
 
-First, run the development server:
+Olantis is a portfolio dashboard built with Next.js and backed by Neon Postgres. The Electron desktop app in this repository opens the same deployed application at `https://olantis.vercel.app`, so desktop and web share the same routes, sign-in, demo experience, API, and user data. Its frameless desktop window has an integrated draggable toolbar, page navigation controls, window buttons, and the Olantis app icon.
+
+## Requirements
+
+- Node.js 24+
+- npm
+- A local `.env.local` for running the Next.js app (see the project setup notes in `AGENTS.md`)
+
+## Run the web app
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Run the Electron app locally
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run electron:dev
+```
 
-## Learn More
+This starts the local Next.js server on port 3000, waits for it to become ready, then opens it in Electron. Close the Electron window to stop the development server. The desktop app uses the same `.env.local` and backend as the web app; local WorkOS redirect URLs should point to `http://localhost:3000/callback`.
 
-To learn more about Next.js, take a look at the following resources:
+Try the full unauthenticated flow with **Try demo**. To test WorkOS sign-in, configure valid local WorkOS and database environment variables first. Electron keeps its own persistent session, separate from your regular browser.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+For a no-interaction local launch check, run `npm run electron:smoke`. It starts the same local Next.js server, opens the Electron window, checks that the Olantis landing page rendered, and exits with a pass/fail code.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Build desktop installers
 
-## Deploy on Vercel
+```bash
+npm run electron:pack  # unpacked app for a quick local packaging check
+npm run electron:dist  # installer for the current operating system
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Installers are written to `release/` (Windows NSIS, macOS DMG/ZIP, Linux AppImage/DEB). The installed app opens the production Olantis site by default. Set `OLANTIS_ELECTRON_URL` only when launching Electron manually to point it at another deployment.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Publish desktop installers
+
+Push a `desktop-v*` tag (for example, `desktop-v0.1.0`) to run the GitHub Actions workflow in `.github/workflows/electron-release.yml`. It builds Windows, macOS, and Linux installers and attaches them to a GitHub Release. The release app points to the same production web deployment, so web updates are reflected in desktop without shipping another installer.
+
+## Checks
+
+```bash
+npm test
+npm run lint
+npm run typecheck
+npm run build
+```

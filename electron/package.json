@@ -1,0 +1,9 @@
+{
+  "name": "olantis-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Olantis portfolio dashboard for desktop",
+  "author": "Olantis",
+  "main": "main.cjs",
+  "dependencies": {}
+}

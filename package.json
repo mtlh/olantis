@@ -2,13 +2,19 @@
   "name": "olantis",
   "version": "0.1.0",
   "private": true,
+  "description": "Olantis personal finance portfolio dashboard",
+  "author": "Olantis",
   "scripts": {
     "dev": "next dev",
+    "electron:dev": "node scripts/electron-dev.mjs",
+    "electron:smoke": "node scripts/electron-dev.mjs --smoke-test",
+    "electron:pack": "electron-builder --dir --publish never",
+    "electron:dist": "electron-builder --publish never",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/format.test.mts",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/format.test.mts tests/electron-policy.test.cjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
@@ -36,9 +42,40 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.10",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.olantis.desktop",
+    "productName": "Olantis",
+    "asar": true,
+    "beforeBuild": "scripts/electron-no-deps.cjs",
+    "extraResources": [
+      {
+        "from": "public/brand/mark-512.png",
+        "to": "brand-mark.png"
+      }
+    ],
+    "directories": {
+      "app": "electron",
+      "output": "release"
+    },
+    "win": {
+      "icon": "public/brand/mark-512.png",
+      "target": ["nsis"]
+    },
+    "mac": {
+      "icon": "public/brand/mark-512.png",
+      "target": ["dmg", "zip"]
+    },
+    "linux": {
+      "icon": "public/brand/mark-512.png",
+      "category": "Finance",
+      "target": ["AppImage", "deb"]
+    }
   }
 }
