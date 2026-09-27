@@ -2,8 +2,8 @@ name: Desktop release
 
 on:
   push:
-    tags:
-      - "desktop-v*"
+    branches:
+      - master
 
 permissions:
   contents: write
@@ -45,5 +45,7 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: desktop-${{ github.run_number }}-${{ github.sha }}
+          name: Olantis Desktop ${{ github.run_number }}
           files: release-assets/*
           generate_release_notes: true

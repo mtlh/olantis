@@ -42,7 +42,7 @@ Installers are written to `release/` (Windows NSIS, macOS DMG/ZIP, Linux AppImag
 
 ## Publish desktop installers
 
-Push a `desktop-v*` tag (for example, `desktop-v0.1.0`) to run the GitHub Actions workflow in `.github/workflows/electron-release.yml`. It builds Windows, macOS, and Linux installers and attaches them to a GitHub Release. The release app points to the same production web deployment, so web updates are reflected in desktop without shipping another installer.
+Every push to `master` runs the GitHub Actions workflow in `.github/workflows/electron-release.yml`. It builds Windows, macOS, and Linux installers and publishes them in a uniquely tagged GitHub Release. The release app points to the same production web deployment, so web updates are reflected in desktop without shipping another installer.
 
 ## Checks
 
