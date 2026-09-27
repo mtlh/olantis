@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 
-import { PALETTE, portfolioTint } from "@/lib/colors";
+import { portfolioTint, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
 import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, chartDateLabel, gbpAxisFormatter, paddedDomain, numericValues, filterByRange, valueChangeOverRange } from "@/lib/format";
 import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
 import { AllocationCard, type AllocationItem } from "@/components/dashboard/shared/AllocationCard";
@@ -39,8 +39,6 @@ function sortByOrder<T extends { sortOrder?: number | null }>(items: T[]) {
 function getSortOrderIndex(items: Array<{ id: string; sortOrder?: number | null }>, id: string) {
   return sortByOrder(items).findIndex((item) => item.id === id);
 }
-const PORTFOLIO_COLORS: Record<string, string> = { ISA: "#60a5fa", SIPP: "#34d399", GIA: "#f472b6" };
-
 type SymbolResult = { symbol: string; name: string; exchange: string; exchDisp?: string; price?: number | null; currency?: string | null; longname?: string; rawExchange?: string; type?: string };
 type ChartDot = { x: string; y: number; type: "buy" | "sell"; symbol: string; date: string; shares: number; price: number };
 type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };
@@ -153,8 +151,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   }, null);
   const accountColor = useMemo(() => {
     if (!activeAccount) return null;
-    const accountIndex = accounts.findIndex((account) => account.id === activeAccount.id);
-    return activeAccount.color || PALETTE[(accountIndex < 0 ? 0 : accountIndex) % PALETTE.length].value;
+    return resolveAccountColor(activeAccount, accounts);
   }, [activeAccount, accounts]);
   const accountHistory = useMemo(() => {
     if (!activeAccount) return [] as Snapshot[];
@@ -226,12 +223,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   }, null);
   const providerColor = useMemo(() => {
     if (!activeProvider) return null;
-    if (activeProvider.color) return activeProvider.color;
-    const account = accounts.find((item) => item.id === activeProvider.accountId);
-    const accountIndex = accounts.findIndex((item) => item.id === activeProvider.accountId);
-    const accountColor = account?.color || PALETTE[(accountIndex < 0 ? 0 : accountIndex) % PALETTE.length].value;
-    const providerIndex = getSortOrderIndex(providers.filter((item) => item.accountId === activeProvider.accountId), activeProvider.id);
-    return portfolioTint(accountColor, Math.max(0, providerIndex));
+    return resolveProviderColor(activeProvider, providers, accounts);
   }, [activeProvider, accounts, providers]);
   const providerHistory = useMemo(() => {
     if (!activeProvider) return [] as Snapshot[];
@@ -293,8 +285,10 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     const pf = viewPortfolio;
     const prov = viewHolding.providerId ? providers.find((pr) => pr.id === viewHolding.providerId) : undefined;
     const acc = viewHolding.accountId ? accounts.find((a) => a.id === viewHolding.accountId) : undefined;
-    return pf?.color || prov?.color || acc?.color || "#60a5fa";
-  }, [viewHolding, viewPortfolio, providers, accounts]);
+    if (pf) return resolvePortfolioColor(pf, portfolios, providers, accounts);
+    if (prov) return resolveProviderColor(prov, providers, accounts);
+    return acc ? resolveAccountColor(acc, accounts) : "#60a5fa";
+  }, [viewHolding, viewPortfolio, portfolios, providers, accounts]);
   const holdingScopeValue = useMemo(() => {
     if (!viewHolding) return 0;
     let scope: Holding[];
@@ -315,28 +309,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   }, [viewHolding, viewPortfolio, allHoldingsList, portfolios, providers, settings.fxRates]);
   const activeBaseColor = useMemo(() => {
     if (!active) return null;
-    if (active.color) return active.color;
-
-    const provider = providers.find((item) => item.id === active.providerId);
-    const accountId = provider?.accountId ?? active.accountId;
-    const account = accounts.find((item) => item.id === accountId);
-    const accountIndex = accounts.findIndex((item) => item.id === accountId);
-    const accountColor = account?.color || PALETTE[(accountIndex < 0 ? 0 : accountIndex) % PALETTE.length].value;
-
-    if (active.providerId) {
-      const providerIndex = getSortOrderIndex(providers.filter((item) => item.accountId === accountId), active.providerId);
-      const providerColor = provider?.color || portfolioTint(accountColor, Math.max(0, providerIndex));
-      const portfolioIndex = getSortOrderIndex(portfolios.filter((item) => item.providerId === active.providerId), active.id);
-      return portfolioTint(providerColor, Math.max(0, portfolioIndex));
-    }
-
-    if (active.accountId) {
-      const portfolioIndex = getSortOrderIndex(portfolios.filter((item) => item.accountId === active.accountId && !item.providerId), active.id);
-      return portfolioTint(accountColor, Math.max(0, portfolioIndex));
-    }
-
-    const portfolioIndex = getSortOrderIndex(portfolios.filter((item) => !item.accountId && !item.providerId), active.id);
-    return portfolioTint(null, Math.max(0, portfolioIndex));
+    return resolvePortfolioColor(active, portfolios, providers, accounts);
   }, [active, accounts, portfolios, providers]);
   const overviewTx = useTransactions(null);
   const { create: createTx, refresh: refreshTx, remove: removeTx } = overviewTx;
@@ -562,9 +535,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     () =>
       Object.entries(byPortfolio).map(([pid, info]: [string, { name: string; data: Snapshot[] }], i) => {
         const pf = portfolios.find((p) => p.id === pid);
-        const prov = pf ? providers.find((pr) => pr.id === pf.providerId) : null;
-        const acc = pf ? accounts.find((a) => a.id === pf.accountId) : null;
-        const color = pf?.color || prov?.color || acc?.color || PORTFOLIO_COLORS[info.name] || CHART_COLORS[i % CHART_COLORS.length];
+        const color = pf ? resolvePortfolioColor(pf, portfolios, providers, accounts) : CHART_COLORS[i % CHART_COLORS.length];
         return { pid, name: info.name, color };
       }),
     [byPortfolio, portfolios, providers, accounts]
@@ -688,7 +659,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
         const acc = accounts[i];
         const v = byAccount.get(acc.id) ?? 0;
         if (v <= 0) continue;
-        out.push({ name: acc.name, value: v, color: acc.color || PALETTE[i % PALETTE.length].value, pct: (v / total) * 100 });
+        out.push({ name: acc.name, value: v, color: resolveAccountColor(acc, accounts), pct: (v / total) * 100 });
       }
       if (unassignedVal > 0) out.push({ name: "Unassigned", value: unassignedVal, color: "#71717a", pct: (unassignedVal / total) * 100 });
       return out.sort((a, b) => b.value - a.value);
@@ -705,16 +676,20 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     for (const h of holdings) {
       const v = holdingValueGBP(h, settings.fxRates);
       const parent = parentByHolding.get(h.id);
-      let base: string | null = parent?.color || null;
-      if (!base && h.providerId) base = providers.find((pr) => pr.id === h.providerId)?.color ?? null;
-      if (!base && h.accountId) base = accounts.find((a) => a.id === h.accountId)?.color ?? null;
+      let base: string | null = parent ? resolvePortfolioColor(parent, portfolios, providers, accounts) : null;
+      if (!base && h.providerId) {
+        const provider = providers.find((pr) => pr.id === h.providerId);
+        if (provider) base = resolveProviderColor(provider, providers, accounts);
+      }
+      if (!base && h.accountId) {
+        const account = accounts.find((a) => a.id === h.accountId);
+        if (account) base = resolveAccountColor(account, accounts);
+      }
       const prev = bySymbol.get(h.symbol);
       if (prev) prev.value += v;
       else bySymbol.set(h.symbol, { value: v, colorBase: base });
     }
-    const activeBase = active
-      ? (active.color || providers.find((pr) => pr.id === active.providerId)?.color || accounts.find((a) => a.id === active.accountId)?.color || CHART_COLORS[0])
-      : null;
+    const activeBase = active ? activeBaseColor ?? CHART_COLORS[0] : null;
     return [...bySymbol.entries()]
       .sort((a, b) => b[1].value - a[1].value)
       .map(([symbol, info], i) => ({
@@ -723,7 +698,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
         color: portfolioTint(active ? activeBase : info.colorBase, i),
         pct: (info.value / total) * 100,
       }));
-  }, [active, portfolios, allocMode, accounts, providers, directHoldings, settings]);
+  }, [active, activeBaseColor, portfolios, allocMode, accounts, providers, directHoldings, settings]);
 
   const handleCreate = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
     try { const r = await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"}); return r; } catch(e: unknown){toast({title:"Failed to create portfolio",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
@@ -833,15 +808,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const activeCost = active ? active.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h, settings.fxRates), 0) : totalCost;
   const activeGain = activeValue - activeCost;
   const activeGainPct = activeCost ? (activeGain / activeCost) * 100 : 0;
-  const portfolioChartColor = useMemo(() => {
-    const values = chartZoom.visible
-      .map((row) => row.total)
-      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-    const first = values[0];
-    const last = values.at(-1);
-    const isUp = first == null || last == null || first === last ? activeGain >= 0 : last > first;
-    return isUp ? "#34d399" : "#f87171";
-  }, [chartZoom.visible, activeGain]);
+  const portfolioChartColor = activeBaseColor ?? "#60a5fa";
 
   const filteredHoldings = useMemo(() => {
     if (!active) return [];

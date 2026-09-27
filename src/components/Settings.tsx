@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { ArrowLeft, Palette, Building2, Briefcase, Folder, Trash2, Download, Upload, Shield, Clock, Image as ImageIcon, Sparkles, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
-import { PALETTE, tintColor, portfolioTint } from "@/lib/colors";
+import { PALETTE, tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
 
 interface SettingsState {
   currency: string | null;
@@ -173,8 +173,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             {colorTab === "accounts" && (
               accounts.length===0 ? <p className="text-sm text-zinc-500">No accounts yet. Create one from the sidebar.</p> : (
                 <div className="space-y-3">
-                  {accounts.map((acc, ai) => {
-                    const base = acc.color || PALETTE[ai % PALETTE.length].value;
+                  {accounts.map((acc) => {
+                    const base = resolveAccountColor(acc, accounts);
                     return (
                       <div key={acc.id} className="p-4 rounded-xl border border-white/5 bg-white/[0.03] flex flex-col gap-3">
                         <div className="flex items-center justify-between">
@@ -207,7 +207,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 <div className="space-y-3">
                   {providers.map((pr)=>{
                     const acc = accounts.find(a=>a.id===pr.accountId);
-                    const base = pr.color || acc?.color || PALETTE[0].value;
+                    const base = resolveProviderColor(pr, providers, accounts);
                     return (
                       <div key={pr.id} className="p-4 rounded-xl border border-white/5 bg-black/20 flex flex-col gap-3">
                         <div className="flex items-center justify-between">
@@ -234,12 +234,11 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             {colorTab === "portfolios" && (
               portfolios.length===0 ? <p className="text-sm text-zinc-500">No portfolios yet.</p> : (
                 <div className="space-y-3">
-                  {portfolios.map((p, pi)=>{
+                  {portfolios.map((p)=>{
                     const prov = providers.find(pr=> pr.id===p.providerId);
                     const acc = accounts.find(a=>a.id===p.accountId) ?? (prov ? accounts.find(a=>a.id===prov.accountId) : null);
-                    const base = p.color || prov?.color || acc?.color || PALETTE[pi % PALETTE.length].value;
                     const inherited = !p.color;
-                    const tinted = inherited ? portfolioTint(prov?.color || acc?.color || null, pi) : base;
+                    const tinted = resolvePortfolioColor(p, portfolios, providers, accounts);
                     return (
                       <div key={p.id} className="p-4 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col gap-3">
                         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -259,7 +258,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                         <div className="flex items-center gap-2 text-xs text-zinc-600">
                           <span className="w-16">Preview:</span>
                           <div className="h-2 flex-1 rounded-full overflow-hidden flex">
-                            {[0,0.18,-0.18].map((t,i)=> <div key={i} className="flex-1" style={{ background: tintColor(base, t) }} />)}
+                            {[0,0.18,-0.18].map((t,i)=> <div key={i} className="flex-1" style={{ background: tintColor(tinted, t) }} />)}
                           </div>
                           <span className="hidden sm:inline">Used in sidebar & charts</span>
                         </div>

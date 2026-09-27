@@ -35,3 +35,62 @@ export function portfolioTint(base: string | null | undefined, index: number) {
   if (!base) return PALETTE[index % PALETTE.length].value;
   return tintColor(base, TINT_STEPS[index % TINT_STEPS.length]);
 }
+
+type ColorItem = { id: string; color: string | null; sortOrder?: number | null };
+type ColorAccount = ColorItem;
+type ColorProvider = ColorItem & { accountId: string };
+type ColorPortfolio = ColorItem & { accountId: string | null; providerId: string | null };
+
+function orderedIndex<T extends ColorItem>(items: readonly T[], id: string) {
+  const index = [...items]
+    .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999))
+    .findIndex((item) => item.id === id);
+  return Math.max(0, index);
+}
+
+export function resolveAccountColor(account: ColorAccount, accounts: readonly ColorAccount[]) {
+  const index = accounts.findIndex((item) => item.id === account.id);
+  return account.color || PALETTE[(index < 0 ? 0 : index) % PALETTE.length].value;
+}
+
+export function resolveProviderColor(
+  provider: ColorProvider,
+  providers: readonly ColorProvider[],
+  accounts: readonly ColorAccount[],
+) {
+  if (provider.color) return provider.color;
+  const account = accounts.find((item) => item.id === provider.accountId);
+  const accountColor = account ? resolveAccountColor(account, accounts) : PALETTE[0].value;
+  const siblings = providers.filter((item) => item.accountId === provider.accountId);
+  return portfolioTint(accountColor, orderedIndex(siblings, provider.id));
+}
+
+export function resolvePortfolioColor(
+  portfolio: ColorPortfolio,
+  portfolios: readonly ColorPortfolio[],
+  providers: readonly ColorProvider[],
+  accounts: readonly ColorAccount[],
+) {
+  if (portfolio.color) return portfolio.color;
+
+  const provider = portfolio.providerId
+    ? providers.find((item) => item.id === portfolio.providerId)
+    : undefined;
+  if (provider) {
+    const providerColor = resolveProviderColor(provider, providers, accounts);
+    const siblings = portfolios.filter((item) => item.providerId === provider.id);
+    return portfolioTint(providerColor, orderedIndex(siblings, portfolio.id));
+  }
+
+  const account = portfolio.accountId
+    ? accounts.find((item) => item.id === portfolio.accountId)
+    : undefined;
+  if (account) {
+    const accountColor = resolveAccountColor(account, accounts);
+    const siblings = portfolios.filter((item) => item.accountId === account.id && !item.providerId);
+    return portfolioTint(accountColor, orderedIndex(siblings, portfolio.id));
+  }
+
+  const unassigned = portfolios.filter((item) => !item.accountId && !item.providerId);
+  return portfolioTint(null, orderedIndex(unassigned, portfolio.id));
+}
