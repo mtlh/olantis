@@ -1,7 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
-import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useCallback, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -347,7 +347,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                   <div className="flex items-center gap-1.5 px-2 py-2">
                     <Button variant="ghost" size="icon-xs" onClick={() => toggle(acc.id)} aria-expanded={isOpen} aria-label={`${isOpen ? "Collapse" : "Expand"} ${acc.name}`} className="shrink-0 text-zinc-500 hover:text-white"><ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? "" : "-rotate-90"}`} /></Button>
                     <div className="flex-1 min-w-0 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full shrink-0 ring-2 ring-white/[0.04]" style={{ background: accColor }} />
                       {isOpen ? <FolderOpen className="w-4 h-4 shrink-0" style={{ color: accColor }} /> : <Building2 className="w-4 h-4 text-zinc-500 shrink-0" />}
                       <span className="truncate text-sm font-semibold text-zinc-200">{acc.name}</span>
                     </div>
@@ -377,13 +376,12 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                         const provTotal = providerTotals(pr.id);
                         const provColor = pr.color || portfolioTint(accColorFor(acc), pi);
                         return (
-                          <div key={pr.id} className="overflow-hidden rounded-xl border transition-[filter] hover:brightness-110" style={{ borderColor: provColor + "32", background: provColor + "0A" }}>
-                            <div className="flex items-center gap-1.5 px-1.5 py-1.5">
+                          <div key={pr.id} className="group">
+                            <div className="flex items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/[0.035]">
                               <Button variant="ghost" size="icon-xs" onClick={()=>toggleProv(pr.id)} aria-expanded={isProvOpen} aria-label={`${isProvOpen ? "Collapse" : "Expand"} ${pr.name}`} className="shrink-0 text-zinc-500 hover:text-white"><ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isProvOpen ? "" : "-rotate-90"}`} /></Button>
-                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: provColor }} />
                               <Briefcase className="w-3.5 h-3.5 text-zinc-500 shrink-0"/>
                               <span className="flex-1 truncate text-xs font-semibold text-zinc-300">{pr.name}</span>
-                              <span className="text-[11px] tabular-nums text-zinc-400">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                              <span className="text-xs tabular-nums text-zinc-400">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                               {editMode && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${pr.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
@@ -398,7 +396,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                               )}
                             </div>
                             {isProvOpen && (
-                              <div className="px-1.5 pb-1.5 space-y-1">
+                              <div className="ml-3 border-l border-white/[0.08] pb-1 pl-2 space-y-1">
                                 {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
                                 {ps.map((p, pIdx)=>{
                                   const val=p.holdings.reduce((s,h:Holding)=>s+holdingValueGBP(h, settings.fxRates),0);
@@ -407,13 +405,12 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                                   const activeText = "#fff";
                                   const activeMuted = "rgba(255,255,255,0.62)";
                                   return (
-                                    <div key={p.id} className={`group flex items-center gap-1 rounded-lg border p-1 transition-colors ${active?"shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]":"bg-white/[0.035] text-zinc-300 border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12]"}`} style={active ? { background: "rgba(255,255,255,0.08)", borderColor: baseColor + "70", color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
-                                      <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-1.5 h-7 ${active?"hover:bg-white/[0.04]":"hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
-                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: baseColor, boxShadow: active ? `0 0 8px ${baseColor}80` : undefined }} />
-                                        <Folder className="w-3 h-3 shrink-0" style={{ color: active ? activeMuted : undefined }} />
-                                        <span className="truncate text-[11px] font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
+                                    <div key={p.id} className={`group relative flex items-center gap-1 rounded-md border-l-2 border-transparent px-1 py-0.5 transition-colors before:absolute before:-left-2 before:top-1/2 before:w-2 before:border-t before:border-white/[0.1] before:content-[''] ${active ? "bg-white/[0.07] text-white" : "text-zinc-300 hover:bg-white/[0.045]"}`} style={active ? { borderLeftColor: baseColor, color: activeText } : {}}>
+                                      <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-2 h-7 ${active?"hover:bg-white/[0.04]":"hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={()=>{onSelect(p.id); setMobileOpen(false);}}>
+                                        <Layers className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
+                                        <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                                       </Button>
-                                      <span className="text-[11px] tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+                                      <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                                       {editMode && (
                                       <DropdownMenu>
                                         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="h-5 w-5" aria-label={`${p.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
@@ -459,10 +456,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                             const activeText = "#fff";
                             const activeMuted = "rgba(255,255,255,0.62)";
                             return (
-                              <div key={p.id} className={`group flex items-center gap-1 rounded-lg border p-1 transition-colors ${active ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]" : "bg-white/[0.035] text-zinc-300 border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12]"}`} style={active ? { background: "rgba(255,255,255,0.08)", borderColor: baseColor + "70", color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
+                              <div key={p.id} className={`group flex items-center gap-1 rounded-md border-l-2 border-transparent px-1 py-0.5 transition-colors ${active ? "bg-white/[0.07] text-white" : "text-zinc-300 hover:bg-white/[0.045]"}`} style={active ? { borderLeftColor: baseColor, color: activeText } : {}}>
                                 <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-white/[0.04]" : "hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
-                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: baseColor, boxShadow: active ? `0 0 8px ${baseColor}80` : undefined }} />
-                                  <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
+                                  <Layers className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
                                   <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                                   <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize" style={active ? { background: "rgba(255,255,255,0.12)", color: activeMuted } : {}}>{p.type}</span>
                                 </Button>
@@ -518,8 +514,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                     return (
                       <div key={p.id} className={`group flex items-center gap-1 rounded-lg border p-1 transition-colors ${active ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]" : "bg-white/[0.035] text-zinc-300 border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12]"}`} style={active ? { background: "rgba(255,255,255,0.08)", borderColor: baseColor + "70", color: activeText } : { borderLeftColor: baseColor, borderLeftWidth: 2 }}>
                         <Button variant="ghost" size="sm" aria-pressed={active} className={`flex-1 justify-start gap-2 h-7 ${active ? "hover:bg-white/[0.04]" : "hover:bg-transparent"}`} style={active ? { color: activeText } : {}} onClick={() => { onSelect(p.id); setMobileOpen(false); }}>
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: baseColor, boxShadow: active ? `0 0 8px ${baseColor}80` : undefined }} />
-                          <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
+                          <Layers className="w-3.5 h-3.5 shrink-0" style={{ color: active ? activeMuted : undefined }} />
                           <span className="truncate text-xs font-medium" style={active ? { color: activeText } : {}}>{p.name}</span>
                         </Button>
                         <span className="text-xs tabular-nums pr-1" style={{ color: active ? activeMuted : undefined }}>£{val.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
@@ -727,8 +722,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
       </aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-50 xl:hidden flex">
-          <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
           <div className="w-[85vw] max-w-[380px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{inner}</div>
+          <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
         </div>
       )}
     </>
