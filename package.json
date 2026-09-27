@@ -75,6 +75,7 @@
     "linux": {
       "icon": "public/brand/mark-512.png",
       "category": "Finance",
+      "maintainer": "Olantis <mtlh@users.noreply.github.com>",
       "target": ["AppImage", "deb"]
     }
   }
