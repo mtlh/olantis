@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceDot } from "recharts";
 import { History, ArrowUpRight, ArrowDownRight, Wallet, Plus, Minus, FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,21 +8,22 @@ import { Badge } from "@/components/ui/badge";
 import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
 import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, gbpAxisFormatter, priceAxisFormatter, paddedDomain, numericValues, filterByRange, type MoneyHolding } from "@/lib/format";
 import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
+import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 
 type PriceRow = { date: string; price: number };
 
 export function StockDetail({ holding, portfolioId, portfolioValue, portfolioName, color, onBack, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioValue: number; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
   const { settings } = useSettings();
-  const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
+  const [range, setRange] = useState<ChartRange>("1Y");
   const rangeTouched = useRef(false);
   useEffect(() => {
     if (rangeTouched.current) return;
     setRange(settings.defaultRange);
   }, [settings.defaultRange]);
-  const pickRange = useCallback((r: "1M" | "3M" | "1Y" | "MAX") => {
+  const pickRange = (r: ChartRange) => {
     rangeTouched.current = true;
     setRange(r);
-  }, []);
+  };
   const isListed = isListedSymbol(holding.symbol);
   const [prices, setPrices] = useState<PriceRow[] | null>(null);
   const [snapSeriesFull, setSnapSeries] = useState<PriceRow[] | null>(null);
@@ -193,9 +194,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
               <CardDescription>{hasValueSeries ? "Tracked position value" : "Market price"} • {chartData.length} points • {holding.symbol}{dots.length ? ` • ${dots.length} trades` : ""}</CardDescription>
             </div>
             <div className="flex items-center gap-1">
-              {(["1M", "3M", "1Y", "MAX"] as const).map((r) => (
-                <Button key={r} variant={range === r ? "secondary" : "ghost"} size="xs" onClick={() => pickRange(r)}>{r}</Button>
-              ))}
+              <ChartRangeSelector range={range} onRangeChange={pickRange} />
               {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
             </div>
           </CardHeader>

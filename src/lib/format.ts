@@ -27,10 +27,17 @@ export function holdingCostGBP(h: MoneyHolding, rates?: FxRates): number {
   return toGBP(h.shares * (h.avgPrice ?? 0), h.currency, rates);
 }
 
-export function filterByRange<T extends { date: string }>(rows: T[], range: string): T[] {
-  if (range === "MAX") return rows;
+/** Earliest ISO day ("2026-01-05") included by a range; null for "MAX". */
+export function rangeCutoff(range: string): string | null {
+  if (range === "MAX") return null;
   const days = range === "1M" ? 31 : range === "3M" ? 92 : 365;
-  const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+}
+
+/** Filters rows whose `date` is an ISO day. Chart rows with a formatted label must filter on `dateISO` instead. */
+export function filterByRange<T extends { date: string }>(rows: T[], range: string): T[] {
+  const cutoff = rangeCutoff(range);
+  if (cutoff == null) return rows;
   return rows.filter((row) => row.date >= cutoff);
 }
 
@@ -52,10 +59,7 @@ export function valueChangeOverRange(
     .sort((a, b) => a.date.localeCompare(b.date));
   if (!ordered.length || !Number.isFinite(currentValue)) return null;
 
-  const days = range === "1M" ? 31 : range === "3M" ? 92 : range === "1Y" ? 365 : null;
-  const cutoff = days == null
-    ? ordered[0].date
-    : new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const cutoff = rangeCutoff(range) ?? ordered[0].date;
   const baseline = [...ordered].reverse().find((row) => row.date <= cutoff) ?? ordered[0];
   const amount = currentValue - baseline.value;
 

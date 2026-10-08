@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
-import { paddedDomain, fmtPct } from "@/lib/format";
+import { chartDateLabel, rangeCutoff, paddedDomain, fmtPct } from "@/lib/format";
+import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
+import type { Snapshot } from "@/lib/store";
 
 export type PerformanceChartRow = {
   date: string;
@@ -17,22 +18,98 @@ export type PerformanceChartRow = {
 export type PerformanceSeries = { key: string; name: string; color: string };
 
 export function PerformanceChart({
-  data,
+  snapshots,
+  byPortfolio,
   series,
   range,
   onRangeChange,
   benchmark,
   onBenchmarkChange,
 }: {
-  data: PerformanceChartRow[];
+  snapshots: Snapshot[];
+  byPortfolio: Record<string, { name: string; data: Snapshot[] }>;
   series: PerformanceSeries[];
-  range: "1M" | "3M" | "1Y" | "MAX";
-  onRangeChange: (range: "1M" | "3M" | "1Y" | "MAX") => void;
+  range: ChartRange;
+  onRangeChange: (range: ChartRange) => void;
   benchmark: string;
   onBenchmarkChange: (benchmark: string) => void;
 }) {
+  const [benchmarkPrices, setBenchmarkPrices] = useState<{ key: string; rows: Array<{ date: string; price: number }> } | null>(null);
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(() => new Set());
-  const chartZoom = useChartZoom(data);
+
+  useEffect(() => {
+    if (benchmark === "__none__") return;
+    let cancelled = false;
+    fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=MAX`)
+      .then(async (response) => response.ok ? (await response.json()).chart as Array<{ date: string; price: number }> : [])
+      .then((rows) => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:MAX`, rows }); })
+      .catch(() => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:MAX`, rows: [] }); });
+    return () => { cancelled = true; };
+  }, [benchmark]);
+
+  const data = useMemo<PerformanceChartRow[]>(() => {
+    const totalHistory = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+    const portfolioHistories = Object.entries(byPortfolio).map(([id, info]) => ({
+      id,
+      history: [...info.data].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    const dates = new Set<string>(totalHistory.map((snapshot) => snapshot.date));
+    for (const { history } of portfolioHistories) for (const snapshot of history) dates.add(snapshot.date);
+    const orderedDates = [...dates].sort((a, b) => a.localeCompare(b));
+    if (!orderedDates.length) return [];
+
+    const percentAt = (history: Snapshot[], date: string): number | null => {
+      const first = history[0];
+      if (!first || first.value <= 0 || date < first.date) return null;
+      let latest: Snapshot | undefined;
+      for (const snapshot of history) {
+        if (snapshot.date > date) break;
+        latest = snapshot;
+      }
+      return latest ? ((latest.value / first.value) - 1) * 100 : null;
+    };
+
+    const benchmarkHistory = benchmarkPrices?.key === `${benchmark}:MAX`
+      ? [...benchmarkPrices.rows].filter((point) => Number.isFinite(point.price) && point.price > 0).sort((a, b) => a.date.localeCompare(b.date))
+      : [];
+    const userDataStart = orderedDates[0];
+    const benchmarkBase = [...benchmarkHistory].reverse().find((point) => point.date <= userDataStart)
+      ?? benchmarkHistory.find((point) => point.date >= userDataStart);
+
+    return orderedDates.map((date) => {
+      const row: PerformanceChartRow = { date: chartDateLabel(date), dateISO: date };
+      const totalPct = percentAt(totalHistory, date);
+      if (totalPct != null) row.total = totalPct;
+      for (const { id, history } of portfolioHistories) {
+        const value = percentAt(history, date);
+        if (value != null) row[id] = value;
+      }
+      if (benchmarkBase && date >= userDataStart && date >= benchmarkBase.date) {
+        let latestPrice: number | undefined;
+        for (const point of benchmarkHistory) {
+          if (point.date > date) break;
+          latestPrice = point.price;
+        }
+        if (latestPrice != null) row.benchmark = ((latestPrice / benchmarkBase.price) - 1) * 100;
+      }
+      return row;
+    });
+  }, [snapshots, byPortfolio, benchmarkPrices, benchmark]);
+  // Rows carry a formatted `date` label for the axis, so the range cut has to
+  // compare against `dateISO` — comparing labels against an ISO cutoff never matches.
+  const rangedData = useMemo(() => {
+    const cutoff = rangeCutoff(range);
+    if (cutoff == null) return data;
+    return data.filter((row) => row.dateISO >= cutoff);
+  }, [data, range]);
+  const chartZoom = useChartZoom(rangedData);
+  const benchmarkName = useMemo(() => {
+    if (benchmark === "__none__") return null;
+    if (benchmark === "VWRL.L") return "VWRL";
+    if (benchmark === "^FTSE") return "FTSE 100";
+    if (benchmark === "^GSPC") return "S&P 500";
+    return benchmark;
+  }, [benchmark]);
   const visibleKeys = useMemo(() => {
     const keys = new Set<string>();
     if (!hiddenSeries.has("total")) keys.add("total");
@@ -44,10 +121,10 @@ export function PerformanceChart({
     const candidates = [
       { key: "total", name: "Total portfolio" },
       ...series.map(({ key, name }) => ({ key, name })),
-      ...(benchmark !== "__none__" ? [{ key: "benchmark", name: benchmark === "VWRL.L" ? "VWRL" : benchmark === "^FTSE" ? "FTSE 100" : benchmark === "^GSPC" ? "S&P 500" : benchmark }] : []),
+      ...(benchmarkName ? [{ key: "benchmark", name: benchmarkName }] : []),
     ];
     return candidates.map(({ key, name }) => {
-      const points = data.flatMap((row) => typeof row[key] === "number" && Number.isFinite(row[key]) ? [{ value: row[key] as number }] : []);
+      const points = rangedData.flatMap((row) => typeof row[key] === "number" && Number.isFinite(row[key]) ? [{ value: row[key] as number }] : []);
       if (points.length < 2) return { key, name, periodChange: null as number | null, maxDrawdown: null as number | null };
       const baseline = 100 + points[0].value;
       const periodChange = baseline > 0 ? ((100 + points.at(-1)!.value) / baseline - 1) * 100 : null;
@@ -60,7 +137,7 @@ export function PerformanceChart({
       }
       return { key, name, periodChange, maxDrawdown };
     });
-  }, [data, series, benchmark]);
+  }, [benchmarkName, rangedData, series]);
   const axisValues = useMemo(() => {
     const values: number[] = [0];
     for (const row of chartZoom.visible) {
@@ -92,7 +169,7 @@ export function PerformanceChart({
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="text-white">Change over time</CardTitle>
-            <CardDescription>{data.length} points · indexed to each series’ first saved observation</CardDescription>
+            <CardDescription>{rangedData.length} points · indexed to each series’ first saved observation</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-1">
             <Select value={benchmark} onValueChange={(value) => onBenchmarkChange(value ?? "__none__")}>
@@ -105,18 +182,20 @@ export function PerformanceChart({
                 <SelectItem value="MSFT">Microsoft</SelectItem>
               </SelectContent>
             </Select>
-            {(["1M", "3M", "1Y", "MAX"] as const).map((item) => (
-              <Button key={item} variant={range === item ? "secondary" : "ghost"} size="xs" onClick={() => onRangeChange(item)}>{item}</Button>
-            ))}
+            <ChartRangeSelector range={range} onRangeChange={onRangeChange} />
             {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
           </div>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col">
-          {data.length === 0 ? (
+          {rangedData.length === 0 ? (
             <div className="grid flex-1 place-items-center text-center">
               <div>
-                <p className="text-sm text-zinc-400">No snapshots yet</p>
-                <p className="mt-1 text-xs text-zinc-600">Performance will appear here after your first portfolio snapshot.</p>
+                <p className="text-sm text-zinc-400">{data.length === 0 ? "No snapshots yet" : `No snapshots in the last ${range === "MAX" ? "period" : range}`}</p>
+                <p className="mt-1 text-xs text-zinc-600">
+                  {data.length === 0
+                    ? "Performance will appear here after your first portfolio snapshot."
+                    : "Choose a wider range to see earlier performance."}
+                </p>
               </div>
             </div>
           ) : (
@@ -135,7 +214,7 @@ export function PerformanceChart({
                     />
                     <ReferenceLine y={0} stroke="rgba(255,255,255,0.24)" strokeDasharray="4 4" />
                     {!hiddenSeries.has("total") && <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} connectNulls />}
-                    {benchmark !== "__none__" && !hiddenSeries.has("benchmark") && <Area type="monotone" dataKey="benchmark" name={benchmark === "VWRL.L" ? "VWRL" : benchmark === "^FTSE" ? "FTSE 100" : benchmark === "^GSPC" ? "S&P 500" : benchmark} stroke="#fbbf24" fill="transparent" strokeWidth={2} dot={false} strokeDasharray="5 4" connectNulls />}
+                    {benchmarkName && !hiddenSeries.has("benchmark") && <Area type="monotone" dataKey="benchmark" name={benchmarkName} stroke="#fbbf24" fill="transparent" strokeWidth={2} dot={false} strokeDasharray="5 4" connectNulls />}
                     {series.filter((item) => !hiddenSeries.has(item.key)).map((item) => (
                       <Area key={item.key} type="monotone" dataKey={item.key} name={item.name} stroke={item.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" connectNulls />
                     ))}
@@ -143,7 +222,7 @@ export function PerformanceChart({
                 </ResponsiveContainer>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
-                {[{ key: "total", name: "Total", color: "#ffffff" }, ...series, ...(benchmark !== "__none__" ? [{ key: "benchmark", name: benchmark === "VWRL.L" ? "VWRL" : benchmark === "^FTSE" ? "FTSE 100" : benchmark === "^GSPC" ? "S&P 500" : benchmark, color: "#fbbf24" }] : [])].map((item) => (
+                {[{ key: "total", name: "Total", color: "#ffffff" }, ...series, ...(benchmarkName ? [{ key: "benchmark", name: benchmarkName, color: "#fbbf24" }] : [])].map((item) => (
                   <button key={item.key} onClick={() => toggleSeries(item.key)} title={`${hiddenSeries.has(item.key) ? "Show" : "Hide"} ${item.name}`} className={`flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors ${!hiddenSeries.has(item.key) ? "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10" : "border-white/5 text-zinc-600 hover:text-zinc-400"}`}>
                     <span className="h-0.5 w-3 rounded-full" style={{ background: item.color, opacity: hiddenSeries.has(item.key) ? 0.3 : 1 }} /> {item.name}
                   </button>

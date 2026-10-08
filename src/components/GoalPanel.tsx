@@ -9,18 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fmtGBP, filterByRange, todayISODate, chartDateLabel } from "@/lib/format";
 import type { Snapshot } from "@/lib/store";
+import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 
 type Goal = { id: string; name: string; targetValue: number; targetDate: string };
-type Range = "1M" | "3M" | "1Y" | "MAX";
-
-const RANGES: Range[] = ["1M", "3M", "1Y", "MAX"];
 
 export function GoalPanel({ currentValue, history, dateFormat }: { currentValue: number; history: Snapshot[]; dateFormat: string }) {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [name, setName] = useState("Portfolio goal");
   const [targetValue, setTargetValue] = useState("");
   const [targetDate, setTargetDate] = useState("");
-  const [range, setRange] = useState<Range>("MAX");
+  const [range, setRange] = useState<ChartRange>("MAX");
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -148,7 +146,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
               <CardDescription className="mt-1">{goal ? "Follow your portfolio as it moves toward your target." : "Your portfolio value, captured over time."}</CardDescription>
             </div>
             <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] p-1">
-              {RANGES.map((item) => <Button key={item} variant={range === item ? "secondary" : "ghost"} size="xs" className="px-2 text-[11px]" onClick={() => setRange(item)}>{item === "MAX" ? "All" : item}</Button>)}
+              <ChartRangeSelector range={range} onRangeChange={setRange} maxLabel="All" buttonClassName="px-2 text-[11px]" />
             </div>
           </CardHeader>
           <CardContent>

@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { chartDateLabel, fmtPct, fmtPrice } from "@/lib/format";
+import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 
 type WatchItem = { id: string; symbol: string; name: string; exchange: string | null; currency: string | null };
 type Quote = { price: number; currency: string };
@@ -32,10 +33,6 @@ type SearchResult = {
   currency?: string | null;
 };
 type PricePoint = { date: string; price: number };
-type ChartRange = "1M" | "3M" | "1Y" | "MAX";
-
-const CHART_RANGES: ChartRange[] = ["1M", "3M", "1Y", "MAX"];
-
 function apiError(data: unknown, fallback: string) {
   return data && typeof data === "object" && "error" in data && typeof data.error === "string"
     ? data.error
@@ -362,9 +359,12 @@ export function WatchlistPanel() {
                     {chartChange == null ? <Activity className="size-3.5" /> : chartChange >= 0 ? <ArrowUpRight className="size-3.5" /> : <ArrowDownRight className="size-3.5" />}
                     {chartChange == null ? "—" : `${fmtPct(chartChange)} over ${range}`}
                   </div>
-                  <div className="flex items-center gap-0.5 rounded-lg border border-white/[0.06] bg-white/[0.025] p-0.5">
-                    {CHART_RANGES.map((chartRange) => <Button key={chartRange} type="button" variant={range === chartRange ? "secondary" : "ghost"} size="xs" className="h-6 px-2 text-[11px]" onClick={() => setRange(chartRange)}>{chartRange}</Button>)}
-                  </div>
+                  <ChartRangeSelector
+                    range={range}
+                    onRangeChange={setRange}
+                    className="flex items-center gap-0.5 rounded-lg border border-white/[0.06] bg-white/[0.025] p-0.5"
+                    buttonClassName="h-6 px-2 text-[11px]"
+                  />
                 </div>
                 <div className="h-[230px] w-full">
                   {chartLoading ? (
