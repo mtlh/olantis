@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, Tool
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
-import { fmtGBP, gbpAxisFormatter, numericValues, paddedDomain } from "@/lib/format";
+import { evenAxisTicks, fmtGBP, gbpAxisFormatter, numericValues, paddedDomain } from "@/lib/format";
 
 export type ValueTimeChartRow = {
   date: string;
@@ -65,12 +65,15 @@ export function ValueTimeChart({
   showSeriesToggle = false,
   className = "",
 }: ValueTimeChartProps) {
-  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(() => new Set());
+  // Only the total is on by default so the Y axis stays tight around it;
+  // per-portfolio lines are opt in. Keys (not a hidden set) so a series that
+  // appears later — a new portfolio — also starts off.
+  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(() => new Set(["total"]));
   const chartZoom = useChartZoom(data);
-  const totalVisible = !showSeriesToggle || !hiddenSeries.has("total");
+  const totalVisible = !showSeriesToggle || visibleKeys.has("total");
   const visibleSeries = useMemo(
-    () => showSeriesToggle ? series.filter((item) => !hiddenSeries.has(item.key)) : series,
-    [hiddenSeries, series, showSeriesToggle],
+    () => showSeriesToggle ? series.filter((item) => visibleKeys.has(item.key)) : series,
+    [series, showSeriesToggle, visibleKeys],
   );
 
   const axisValues = useMemo(() => {
@@ -87,25 +90,27 @@ export function ValueTimeChart({
     return values;
   }, [chartZoom.visible, showSeriesToggle, totalVisible, visibleSeries]);
   const axisFormatter = useMemo(() => gbpAxisFormatter(axisValues), [axisValues]);
-  const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
+  const axis = useMemo(() => evenAxisTicks(axisValues), [axisValues]);
+  const yDomain = axis?.domain ?? paddedDomain(axisValues);
   const canShowDots = showTradeMarkers && (!showSeriesToggle || totalVisible);
   const visibleDates = useMemo(() => new Set(chartZoom.visible.map((row) => row.date)), [chartZoom.visible]);
   const visibleDots = useMemo(() => canShowDots ? dots.filter((dot) => visibleDates.has(dot.x)) : [], [canShowDots, dots, visibleDates]);
 
   const description = showSeriesToggle
-    ? `${detail} • ${data.length} points • ${range}${hiddenSeries.size ? ` • ${Number(totalVisible) + visibleSeries.length}/${1 + series.length} series` : ""}`
+    ? `${detail} • ${data.length} points • ${range}${visibleSeries.length ? ` • ${Number(totalVisible) + visibleSeries.length}/${1 + series.length} series` : ""}`
     : `${data.length} points • ${detail}${dots.length ? ` • ${dots.length} trades` : ""}`;
   const totalStroke = showSeriesToggle ? "#ffffff" : color;
   const totalFillOpacity = showSeriesToggle ? 0.08 : 0.14;
 
   const toggleSeries = (key: string) => {
-    setHiddenSeries((current) => {
+    setVisibleKeys((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
   };
+  const showAllSeries = () => setVisibleKeys(new Set(["total", ...series.map((item) => item.key)]));
 
   return (
     <Card className={`${className} glass-card`}>
@@ -123,10 +128,12 @@ export function ValueTimeChart({
         <div className="h-[320px] select-none">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              {/* Grid lines follow the Y ticks (which `evenAxisTicks` keeps on
+                  equal steps) so every row of the grid is the same height. */}
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" syncWithTicks />
               <ZoomSelectionArea labels={chartZoom.selectionLabels} />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-              <YAxis domain={yDomain ?? ["auto", "auto"]} tickFormatter={axisFormatter} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
+              <YAxis domain={yDomain ?? ["auto", "auto"]} ticks={axis?.ticks} tickFormatter={axisFormatter} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
               <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtGBP(Number(value))} />
               {totalVisible && (
                 <Area
@@ -159,14 +166,14 @@ export function ValueTimeChart({
         {showSeriesToggle && (
           <div className="flex flex-wrap gap-1.5 mt-3 text-xs">
             {[{ key: "total", name: "Total", color: "#ffffff" }, ...series].map((item) => {
-              const visible = !hiddenSeries.has(item.key);
+              const visible = visibleKeys.has(item.key);
               return (
                 <button key={item.key} type="button" onClick={() => toggleSeries(item.key)} title={`${visible ? "Hide" : "Show"} ${item.name}`} className={`flex items-center gap-1.5 px-2 py-1 rounded-full border transition-colors ${visible ? "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10" : "border-white/5 text-zinc-600 hover:text-zinc-400"}`}>
                   <span className="w-3 h-0.5 rounded-full" style={{ background: item.color, opacity: visible ? 1 : 0.3 }} /> {item.name}
                 </button>
               );
             })}
-            {hiddenSeries.size > 0 && <button type="button" onClick={() => setHiddenSeries(new Set())} className="px-2 py-1 rounded-full text-zinc-500 hover:text-white underline underline-offset-2">Show all</button>}
+            {visibleSeries.length < series.length && <button type="button" onClick={showAllSeries} className="px-2 py-1 rounded-full text-zinc-500 hover:text-white underline underline-offset-2">Show all</button>}
           </div>
         )}
       </CardContent>

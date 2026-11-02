@@ -177,6 +177,48 @@ export function paddedDomain(values: number[]): [number, number] | undefined {
 }
 
 /**
+ * Evenly spaced, round Y ticks for a relative (non-zero-based) axis.
+ *
+ * The padded domain alone lets recharts invent its own ticks, which can land on
+ * uneven steps (4k / 19k / 34k / 46k) and make the grid look lopsided. Here the
+ * domain and the ticks are derived from one nice step, so every grid line sits
+ * the same distance from the last and the labels stay round numbers.
+ */
+export function evenAxisTicks(values: number[], tickCount = 4): { domain: [number, number]; ticks: number[] } | undefined {
+  const nums = values.filter((n) => Number.isFinite(n));
+  if (!nums.length) return undefined;
+  const { min, max, span } = extent(nums);
+  const pad = span * 0.08;
+  const lo = min - pad;
+  const hi = max + pad;
+  const magnitude = 10 ** Math.floor(Math.log10(Math.max((hi - lo) / Math.max(1, tickCount), Number.EPSILON)));
+
+  // Candidate round steps, from a tenth of the rough step up to ten times it.
+  // Pick the one landing nearest the wanted number of gaps, then the one that
+  // wastes least space — a coarse step otherwise strands the data in the middle.
+  let best: { start: number; end: number; step: number; gaps: number } | undefined;
+  for (const scale of [0.1, 1, 10]) {
+    for (const fraction of [1, 2, 2.5, 5]) {
+      const step = fraction * magnitude * scale;
+      if (!Number.isFinite(step) || step <= 0) continue;
+      const start = Math.floor(lo / step) * step;
+      const end = Math.ceil(hi / step) * step;
+      const gaps = Math.round((end - start) / step);
+      if (gaps < 2) continue;
+      const better = !best
+        || Math.abs(gaps - tickCount) < Math.abs(best.gaps - tickCount)
+        || (Math.abs(gaps - tickCount) === Math.abs(best.gaps - tickCount) && end - start < best.end - best.start);
+      if (better) best = { start, end, step, gaps };
+    }
+  }
+  if (!best) return undefined;
+
+  const ticks: number[] = [];
+  for (let i = 0; i <= best.gaps; i++) ticks.push(Number((best.start + i * best.step).toPrecision(12)));
+  return { domain: [ticks[0], ticks[ticks.length - 1]], ticks };
+}
+
+/**
  * GBP axis ticks adapt to the visible range. The axis is relative (not zero-based),
  * so precision has to follow the zoom level or every tick rounds to the same label.
  */
@@ -185,9 +227,11 @@ export function gbpAxisFormatter(values: number[]): (v: number) => string {
   if (!nums.length) return (v) => fmtGBP(v);
   const { max, span } = extent(nums);
   if (max < 10_000) return (v) => fmtGBP(v);
-  if (span >= 10_000) return (v) => `£${Math.round(v / 1000)}k`;
-  if (span >= 1_000) return (v) => `£${(v / 1000).toFixed(1)}k`;
-  return (v) => `£${(v / 1000).toFixed(2)}k`;
+  // A relative axis that happens to reach zero should say "£0", not "£0k".
+  const thousands = (v: number, digits: number) => v === 0 ? "£0" : `£${(v / 1000).toFixed(digits)}k`;
+  if (span >= 10_000) return (v) => thousands(v, 0);
+  if (span >= 1_000) return (v) => thousands(v, 1);
+  return (v) => thousands(v, 2);
 }
 
 /** Price axis ticks: full precision only when the visible range is tight enough to need it. */

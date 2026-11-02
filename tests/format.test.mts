@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { filterByRange, holdingCostGBP, holdingValueGBP, toGBP, valueChangeOverRange } from "../src/lib/format.ts";
+import { evenAxisTicks, filterByRange, gbpAxisFormatter, holdingCostGBP, holdingValueGBP, toGBP, valueChangeOverRange } from "../src/lib/format.ts";
 
 test("converts supported quoted currencies into GBP", () => {
   assert.equal(toGBP(125, "GBX"), 1.25);
@@ -24,6 +24,23 @@ test("range filtering uses calendar age rather than snapshot count", () => {
   assert.deepEqual(filterByRange(rows, "3M").map((row) => row.value), [1, 20, 45]);
   assert.deepEqual(filterByRange(rows, "1Y").map((row) => row.value), [1, 20, 45, 100]);
   assert.equal(filterByRange(rows, "MAX").length, 5);
+});
+
+test("axis ticks for a value chart are evenly spaced and cover the data", () => {
+  const axis = evenAxisTicks([34000, 46000, 52000, 39500]);
+  assert.ok(axis);
+  const steps = axis.ticks.slice(1).map((tick, i) => Number((tick - axis.ticks[i]).toPrecision(12)));
+  assert.ok(steps.every((step) => step === steps[0]), `uneven steps: ${steps.join(",")}`);
+  assert.ok(axis.ticks[0] <= 34000 && axis.ticks[axis.ticks.length - 1] >= 52000);
+  assert.deepEqual(axis.domain, [axis.ticks[0], axis.ticks[axis.ticks.length - 1]]);
+  assert.equal(evenAxisTicks([]), undefined);
+  const flat = evenAxisTicks([42000]);
+  assert.ok(flat && flat.ticks.length >= 2);
+});
+
+test("GBP axis labels zero without a trailing k", () => {
+  assert.equal(gbpAxisFormatter([0, 20_000, 40_000])(0), "£0");
+  assert.equal(gbpAxisFormatter([0, 20_000, 40_000])(20_000), "£20k");
 });
 
 test("period value change uses the last saved value at or before the range start", () => {
