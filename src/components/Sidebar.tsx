@@ -1,8 +1,8 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp } from "lucide-react";
-import { memo, useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw } from "lucide-react";
+import { memo, useState, useMemo, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,92 +19,111 @@ import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
-const SIDEBAR_MORE_NAV_STORAGE_KEY = "olantis-sidebar-more-nav-open";
-const SIDEBAR_MORE_NAV_CHANGE_EVENT = "olantis-sidebar-more-nav-change";
-let moreNavOpenFallback: boolean | null = null;
+const TOOL_BUTTON_CLASS = "text-zinc-400 hover:text-white";
+const TOOL_ICON_CLASS = "w-4 h-4";
 
-function isSecondaryNavPage(page: string) {
-  return page === "watchlist" || page === "goals";
-}
-
-function getMoreNavOpen(page: string) {
-  try {
-    const savedState = localStorage.getItem(SIDEBAR_MORE_NAV_STORAGE_KEY);
-    if (savedState !== null) return savedState === "true";
-  } catch {
-    return moreNavOpenFallback ?? isSecondaryNavPage(page);
-  }
-  return moreNavOpenFallback ?? isSecondaryNavPage(page);
-}
-
-function subscribeToMoreNav(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(SIDEBAR_MORE_NAV_CHANGE_EVENT, onStoreChange);
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(SIDEBAR_MORE_NAV_CHANGE_EVENT, onStoreChange);
-  };
-}
-
-function SidebarPrimaryNav({ activeId, onSelect, onClose }: { activeId: string | null; onSelect: (id: string | null) => void; onClose: () => void }) {
+function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo, onRefreshPrices, refreshing }: {
+  activeId: string | null;
+  onSelect: (id: string | null) => void;
+  onClose: () => void;
+  lastRefreshLabel: string;
+  isDemo?: boolean;
+  onRefreshPrices?: () => void;
+  refreshing?: boolean;
+}) {
   const pathname = usePathname();
-  const page = pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : "dashboard";
-  const moreNavOpen = useSyncExternalStore(subscribeToMoreNav, () => getMoreNavOpen(page), () => false);
-
-  const toggleMoreNav = () => {
-    const nextOpen = !moreNavOpen;
-    moreNavOpenFallback = nextOpen;
-    try {
-      localStorage.setItem(SIDEBAR_MORE_NAV_STORAGE_KEY, String(nextOpen));
-    } catch {
-      // The navigation remains usable when storage is unavailable.
-    }
-    window.dispatchEvent(new Event(SIDEBAR_MORE_NAV_CHANGE_EVENT));
-  };
+  const page = pathname.split("/").filter(Boolean)[0] ?? "dashboard";
+  const goDashboard = () => { onSelect(null); onClose(); };
+  const navLink = (href: string, label: string, active: boolean, icon: ReactNode) => (
+    <Link
+      href={href}
+      onClick={onClose}
+      className={buttonVariants({ variant: active ? "secondary" : "ghost", size: "icon-sm", className: TOOL_BUTTON_CLASS })}
+      aria-label={label}
+      title={label}
+      aria-current={active ? "page" : undefined}
+    >
+      {icon}
+    </Link>
+  );
 
   return (
-    <>
-      {page === "dashboard" ? (
-        <Button variant={activeId === null ? "secondary" : "ghost"} className="w-full justify-start gap-2.5" onClick={() => { onSelect(null); onClose(); }}>
-          <LayoutDashboard className="w-4 h-4" /> Dashboard
-        </Button>
-      ) : (
-        <Link href="/dashboard" onClick={() => { onSelect(null); onClose(); }} className={buttonVariants({ variant: "ghost", className: "w-full justify-start gap-2.5" })}>
-          <LayoutDashboard className="w-4 h-4" /> Dashboard
-        </Link>
-      )}
-      <Link href="/performance" onClick={onClose} className={buttonVariants({ variant: page === "performance" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
-        <TrendingUp className="w-4 h-4" /> Performance
-      </Link>
-      <Button
-        type="button"
-        variant="ghost"
-        className="mt-1 w-full justify-between gap-2.5"
-        aria-expanded={moreNavOpen}
-        aria-controls="sidebar-more-nav"
-        onClick={toggleMoreNav}
-      >
-        <span>More</span>
-        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${moreNavOpen ? "" : "-rotate-90"}`} />
-      </Button>
-      <div id="sidebar-more-nav" hidden={!moreNavOpen}>
-        <Link href="/watchlist" onClick={onClose} className={buttonVariants({ variant: page === "watchlist" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
-          <Eye className="w-4 h-4" /> Watchlist
-        </Link>
-        <Link href="/goals" onClick={onClose} className={buttonVariants({ variant: page === "goals" ? "secondary" : "ghost", className: "mt-1 w-full justify-start gap-2.5" })}>
-          <Target className="w-4 h-4" /> Goals
-        </Link>
+    <div className="border-t p-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <div className="flex items-center gap-1">
+        {page === "dashboard" ? (
+          <Button
+            variant={activeId === null ? "secondary" : "ghost"}
+            size="icon-sm"
+            className={TOOL_BUTTON_CLASS}
+            onClick={goDashboard}
+            aria-label="Dashboard"
+            title="Dashboard"
+          >
+            <LayoutDashboard className={TOOL_ICON_CLASS} />
+          </Button>
+        ) : navLink("/dashboard", "Dashboard", false, <LayoutDashboard className={TOOL_ICON_CLASS} />)}
+        {navLink("/performance", "Performance", page === "performance", <TrendingUp className={TOOL_ICON_CLASS} />)}
+        {navLink("/watchlist", "Watchlist", page === "watchlist", <Eye className={TOOL_ICON_CLASS} />)}
+        {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />)}
+        {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />)}
+
+        <div className="ml-auto flex items-center gap-1">
+          <div className="group relative">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={TOOL_BUTTON_CLASS}
+              aria-label={`Prices update daily at 06:00 UTC. Last refresh ${lastRefreshLabel}.`}
+            >
+              <Clock className={TOOL_ICON_CLASS} />
+            </Button>
+            <div
+              role="tooltip"
+              className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-52 rounded-xl border border-white/10 bg-zinc-900/95 p-3 text-left opacity-0 shadow-xl backdrop-blur transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+            >
+              <p className="text-xs font-semibold text-zinc-200">Prices update daily</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500">Scheduled for 06:00 UTC</p>
+              <div className="mt-2 flex items-center justify-between border-t border-white/[0.06] pt-2 text-[11px]">
+                <span className="text-zinc-600">Last refresh</span>
+                <span className="tabular-nums text-zinc-300">{lastRefreshLabel}</span>
+              </div>
+            </div>
+          </div>
+          {onRefreshPrices && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={TOOL_BUTTON_CLASS}
+              onClick={onRefreshPrices}
+              disabled={refreshing}
+              aria-label="Refresh prices"
+              title="Refresh prices"
+            >
+              <RefreshCw className={`${TOOL_ICON_CLASS} ${refreshing ? "animate-spin" : ""}`} />
+            </Button>
+          )}
+          <a
+            href={isDemo ? "/api/demo?clear=1" : "/logout"}
+            className={buttonVariants({ variant: "ghost", size: "icon-sm", className: isDemo ? "text-amber-400 hover:text-amber-300" : TOOL_BUTTON_CLASS })}
+            aria-label={isDemo ? "Exit demo" : "Sign out"}
+            title={isDemo ? "Exit demo" : "Sign out"}
+          >
+            <LogOut className={TOOL_ICON_CLASS} />
+          </a>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
-export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, onRefreshPrices, refreshing, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; activeHoldingId?: string | null; activeProviderId?: string | null; activeAccountId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectAccount?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
   onCreateAccount: (name: string) => void | Promise<void>;
   onCreateProvider?: (name: string, accountId: string) => Promise<void>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
   onRefresh?: () => Promise<void>;
+  onRefreshPrices?: () => void;
+  refreshing?: boolean;
   isDemo?: boolean; accountsReady?: boolean; portfoliosReady?: boolean;
   onRenameAccount?: (id: string, name: string) => Promise<void>;
   onRenameProvider?: (id: string, name: string) => Promise<void>;
@@ -417,15 +436,13 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         <Button variant="ghost" size="icon" className="xl:hidden !size-11" aria-label="Close menu" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
-        <SidebarPrimaryNav activeId={activeId} onSelect={onSelect} onClose={closeMobileMenu} />
-
-        <div className="mt-4 relative">
+        <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
-          <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search accounts, providers, portfolios…" className="pl-8 h-8 bg-white/[0.04] border-white/10 text-xs"/>
+          <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
           {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
         </div>
 
-        <div className="mt-6">
+        <div className="mt-5">
           <div className="flex items-center justify-between px-1 mb-2">
             <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Accounts</span>
             <div className="flex items-center gap-0.5">
@@ -590,24 +607,15 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         </div>
 
       </nav>
-      <div className="p-3 border-t flex flex-col gap-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        <div className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-1">
-          <div className="flex items-center gap-2 text-xs">
-            <Clock className="w-3.5 h-3.5 text-zinc-500" />
-            <span className="font-semibold text-zinc-300">Prices update daily</span>
-            <span className="ml-auto text-[11px] text-zinc-500">06:00 UTC</span>
-          </div>
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-zinc-600">Last refresh</span>
-            <span className="text-zinc-400 tabular-nums">{lastRefresh ? fmtRelative(lastRefresh, settings.dateFormat) : "—"}</span>
-          </div>
-        </div>
-        <a href="/settings" className={buttonVariants({ variant: "ghost", size: "sm", className: "w-full justify-start gap-2 text-zinc-400 hover:text-white" })}><Settings className="w-4 h-4"/> Settings</a>
-        <div className="flex gap-2">
-          <a href={isDemo ? "/api/demo?clear=1" : "/logout"} className={buttonVariants({ variant: "ghost", size: "sm", className: "flex-1 justify-start text-zinc-500 hover:text-white" })}><LogOut className="w-4 h-4" /> {isDemo ? "Exit demo" : "Sign out"}</a>
-          {isDemo && <span className="ml-auto text-[10px] px-2 py-1 rounded-full bg-amber-400 text-black font-semibold self-center">DEMO</span>}
-        </div>
-      </div>
+      <SidebarToolRow
+        activeId={activeId}
+        onSelect={onSelect}
+        onClose={closeMobileMenu}
+        lastRefreshLabel={lastRefresh ? fmtRelative(lastRefresh, settings.dateFormat) : "—"}
+        isDemo={isDemo}
+        onRefreshPrices={onRefreshPrices}
+        refreshing={refreshing}
+      />
 
       <Dialog open={showAccountDialog} onOpenChange={setShowAccountDialog}>
         <DialogContent className="bg-zinc-900 border-white/10 text-white">
