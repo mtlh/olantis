@@ -2,7 +2,7 @@
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
 import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw } from "lucide-react";
-import { memo, useState, useMemo, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { memo, useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,6 +21,74 @@ interface SearchResult { symbol: string; name: string; exchange: string; price?:
 
 const TOOL_BUTTON_CLASS = "text-zinc-400 hover:text-white";
 const TOOL_ICON_CLASS = "w-4 h-4";
+
+// Sidebar width is remembered per device (localStorage), not per account.
+const SIDEBAR_WIDTH_KEY = "olantis.sidebar-width";
+const SIDEBAR_DEFAULT_WIDTH = 360;
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 560;
+
+function clampSidebarWidth(value: number) {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(value)));
+}
+
+// A tiny external store so the stored width can be read during hydration without
+// a mount effect (and so other tabs on the same device stay in sync).
+const sidebarWidthListeners = new Set<() => void>();
+
+function readStoredSidebarWidth() {
+  try {
+    const stored = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    if (Number.isFinite(stored) && stored > 0) {
+      // Keep the sidebar from dominating a narrower laptop screen.
+      return clampSidebarWidth(Math.min(stored, Math.round(window.innerWidth * 0.45)));
+    }
+  } catch {
+    // Storage can be unavailable (private mode / blocked cookies).
+  }
+  return SIDEBAR_DEFAULT_WIDTH;
+}
+
+function subscribeSidebarWidth(listener: () => void) {
+  sidebarWidthListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    sidebarWidthListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function writeStoredSidebarWidth(width: number) {
+  try {
+    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(clampSidebarWidth(width)));
+  } catch {
+    // Resizing still works for this session when storage is unavailable.
+  }
+  sidebarWidthListeners.forEach((listener) => listener());
+}
+
+function useSidebarWidth() {
+  const storedWidth = useSyncExternalStore(subscribeSidebarWidth, readStoredSidebarWidth, () => SIDEBAR_DEFAULT_WIDTH);
+  const [overrideWidth, setOverrideWidth] = useState<number | null>(null);
+  const width = overrideWidth ?? storedWidth;
+  const widthRef = useRef(width);
+
+  useEffect(() => {
+    widthRef.current = width;
+  }, [width]);
+
+  const applyWidth = useCallback((next: number) => {
+    const clamped = clampSidebarWidth(next);
+    widthRef.current = clamped;
+    setOverrideWidth(clamped);
+  }, []);
+
+  const persistWidth = useCallback(() => {
+    writeStoredSidebarWidth(widthRef.current);
+  }, []);
+
+  return { width, widthRef, applyWidth, persistWidth };
+}
 
 function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo, onRefreshPrices, refreshing }: {
   activeId: string | null;
@@ -169,6 +237,63 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [editMode, setEditMode] = useState(false);
 
   const closeMobileMenu = useCallback(() => setMobileOpen(false), []);
+
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+  const { width: sidebarWidth, widthRef: sidebarWidthRef, applyWidth: applySidebarWidth, persistWidth: persistSidebarWidth } = useSidebarWidth();
+  const resizePointerIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [resizingSidebar]);
+
+  const startSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizePointerIdRef.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizingSidebar(true);
+  };
+
+  const moveSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (resizePointerIdRef.current !== event.pointerId) return;
+    applySidebarWidth(event.clientX);
+  };
+
+  const endSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (resizePointerIdRef.current === null) return;
+    resizePointerIdRef.current = null;
+    setResizingSidebar(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    persistSidebarWidth();
+  };
+
+  const handleSidebarResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 48 : 16;
+    let next: number | null = null;
+    if (event.key === "ArrowLeft") next = sidebarWidthRef.current - step;
+    else if (event.key === "ArrowRight") next = sidebarWidthRef.current + step;
+    else if (event.key === "Home") next = SIDEBAR_MIN_WIDTH;
+    else if (event.key === "End") next = SIDEBAR_MAX_WIDTH;
+    if (next === null) return;
+    event.preventDefault();
+    applySidebarWidth(next);
+    persistSidebarWidth();
+  };
+
+  const resetSidebarWidth = () => {
+    applySidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+    persistSidebarWidth();
+  };
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -772,8 +897,36 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   return (
     <>
       <Button ref={mobileMenuTriggerRef} variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 !size-11 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu" aria-expanded={mobileOpen}><Menu className="w-4 h-4"/></Button>
-      <aside className="hidden xl:flex w-[360px] shrink-0 flex-col h-screen sticky top-0 border-r bg-black/40 backdrop-blur-xl" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+      <aside
+        className="hidden xl:flex relative shrink-0 flex-col h-screen sticky top-0 border-r bg-black/40 backdrop-blur-xl"
+        style={{ width: sidebarWidth, borderColor: "rgba(255,255,255,0.07)" }}
+      >
         {inner}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={SIDEBAR_MAX_WIDTH}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          title="Drag to resize · double-click to reset"
+          onPointerDown={startSidebarResize}
+          onPointerMove={moveSidebarResize}
+          onPointerUp={endSidebarResize}
+          onPointerCancel={endSidebarResize}
+          onLostPointerCapture={endSidebarResize}
+          onKeyDown={handleSidebarResizeKeyDown}
+          onDoubleClick={resetSidebarWidth}
+          className="group absolute inset-y-0 right-0 z-30 flex w-2 cursor-col-resize touch-none select-none items-center justify-center focus-visible:outline-none"
+        >
+          <span
+            aria-hidden
+            className={`h-full w-px transition-colors duration-150 ${
+              resizingSidebar ? "bg-white/45" : "bg-transparent group-hover:bg-white/20 group-focus-visible:bg-white/45"
+            }`}
+          />
+        </div>
       </aside>
       {mobileOpen && (
         <div ref={mobileMenuRef} className="fixed inset-0 z-50 xl:hidden flex" role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1}>
