@@ -1,6 +1,9 @@
 "use client";
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { DEFAULT_FX_RATES, holdingValueGBP, type FxRates } from "@/lib/format";
+import { DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "@/lib/settings";
+
+export { DEFAULT_SETTINGS, normalizeSettings, type AppSettings };
 
 export type Holding = { id: string; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; sector?: string | null; purchaseDate: string; exchange?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; userId?: string | null; lastRefreshedAt?: number | null };
 export type Portfolio = { id: string; name: string; type: "live" | "manual"; accountId: string | null; providerId: string | null; color: string | null; sortOrder?: number | null; holdings: Holding[]; userId?: string; createdAt?: number };
@@ -10,6 +13,29 @@ export type UserSettings = { userId: string; currency: string; dateFormat: strin
 export type Snapshot = { date: string; value: number };
 export type SnapResponse = { total: Snapshot[]; byPortfolio: Record<string, { name: string; data: Snapshot[] }>; byHolding?: Record<string, { symbol: string; name: string; data: Snapshot[] }> };
 export type Transaction = { id: string; userId?: string; portfolioId?: string | null; holdingId?: string | null; symbol: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date: string; note?: string | null; createdAt: number };
+
+/**
+ * Workspace data resolved on the server (see lib/bootstrap.ts) and handed to
+ * the client tree. Hooks initialise from it so the server HTML and the first
+ * client render agree, and skip their mount fetch entirely.
+ */
+export type WorkspaceBootstrap = {
+  accounts: Account[];
+  providers: Provider[];
+  portfolios: Portfolio[];
+  holdings: Holding[];
+  snapshots: SnapResponse;
+  transactions: Transaction[];
+  settings: Record<string, unknown>;
+  fx: { date: string | null; rates: FxRates };
+};
+
+const WorkspaceBootstrapContext = createContext<WorkspaceBootstrap | null>(null);
+export const WorkspaceDataProvider = WorkspaceBootstrapContext.Provider;
+
+export function useWorkspaceBootstrap(): WorkspaceBootstrap | null {
+  return useContext(WorkspaceBootstrapContext);
+}
 
 type AccountPayload = { id: string; name?: string; color?: string | null };
 type ProviderPayload = { id: string; name?: string; color?: string | null; accountId?: string };
@@ -55,8 +81,9 @@ function useAsyncInit(load: () => Promise<void>) {
 }
 
 export function useAccounts() {
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [ready, setReady] = useState(false);
+  const boot = useWorkspaceBootstrap();
+  const [accounts, setAccounts] = useState<Account[]>(boot?.accounts ?? []);
+  const [ready, setReady] = useState(!!boot);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -67,7 +94,7 @@ export function useAccounts() {
     }
     setReady(true);
   }, []);
-  useAsyncInit(refresh);
+  useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   const create = useCallback(async (name: string) => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) });
     await refresh();
@@ -90,8 +117,9 @@ export function useAccounts() {
 }
 
 export function useProviders() {
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [ready, setReady] = useState(false);
+  const boot = useWorkspaceBootstrap();
+  const [providers, setProviders] = useState<Provider[]>(boot?.providers ?? []);
+  const [ready, setReady] = useState(!!boot);
   const refresh = useCallback(async () => {
     try {
       setProviders(parseList<Provider>(await api("/api/providers")));
@@ -100,7 +128,7 @@ export function useProviders() {
     }
     setReady(true);
   }, []);
-  useAsyncInit(refresh);
+  useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   const create = useCallback(async (name: string, accountId: string, color?: string | null) => {
     const r = await api("/api/providers", { method: "POST", body: JSON.stringify({ name, accountId, color: color ?? null }) });
     await refresh();
@@ -124,8 +152,9 @@ export function useProviders() {
 }
 
 export function usePortfolios() {
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [ready, setReady] = useState(false);
+  const boot = useWorkspaceBootstrap();
+  const [portfolios, setPortfolios] = useState<Portfolio[]>(boot?.portfolios ?? []);
+  const [ready, setReady] = useState(!!boot);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -136,7 +165,7 @@ export function usePortfolios() {
     }
     setReady(true);
   }, []);
-  useAsyncInit(refresh);
+  useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   useVisibilityRefresh(refresh);
 
   const create = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
@@ -185,7 +214,8 @@ export function usePortfolios() {
 const SNAPSHOT_DEBOUNCE_MS = 2000;
 
 export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] = [], fxRates: FxRates = DEFAULT_FX_RATES) {
-  const [data, setData] = useState<SnapResponse>({ total: [], byPortfolio: {} });
+  const boot = useWorkspaceBootstrap();
+  const [data, setData] = useState<SnapResponse>(boot?.snapshots ?? { total: [], byPortfolio: {} });
   const refresh = useCallback(async () => {
     try {
       const r = await fetch("/api/snapshots");
@@ -197,7 +227,7 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
       /* keep previous data */
     }
   }, []);
-  useAsyncInit(refresh);
+  useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   useVisibilityRefresh(refresh);
 
   const pfVals = useMemo(
@@ -236,8 +266,9 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
 }
 
 export function useHoldings() {
-  const [holdings, setHoldings] = useState<Holding[]>([]);
-  const [ready, setReady] = useState(false);
+  const boot = useWorkspaceBootstrap();
+  const [holdings, setHoldings] = useState<Holding[]>(boot?.holdings ?? []);
+  const [ready, setReady] = useState(!!boot);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -248,14 +279,18 @@ export function useHoldings() {
     }
     setReady(true);
   }, []);
-  useAsyncInit(refresh);
+  useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   useVisibilityRefresh(refresh);
   return { holdings, ready, error, refresh };
 }
 
 export function useTransactions(portfolioId?: string | null, symbol?: string | null, holdingId?: string | null) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [ready, setReady] = useState(false);
+  const boot = useWorkspaceBootstrap();
+  const hasFilter = !!(portfolioId || symbol || holdingId);
+  const [transactions, setTransactions] = useState<Transaction[]>(
+    boot && !hasFilter ? boot.transactions : [],
+  );
+  const [ready, setReady] = useState(!!boot && !hasFilter);
   const key = `${portfolioId ?? ""}:${symbol ?? ""}:${holdingId ?? ""}`;
   const refresh = useCallback(async () => {
     try {
@@ -272,6 +307,7 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   useEffect(() => {
+    if (boot && !hasFilter) return;
     let cancelled = false;
     const p = Promise.resolve().then(async () => {
       if (cancelled) return;
@@ -281,6 +317,7 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
   const create = async (payload: { portfolioId?: string | null; holdingId?: string | null; symbol?: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date?: string; note?: string }) => {
     await api("/api/transactions", { method: "POST", body: JSON.stringify(payload) });
@@ -293,49 +330,21 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
   return { transactions, ready, refresh, create, remove };
 }
 
-export type AppSettings = {
-  currency: string;
-  dateFormat: string;
-  defaultRange: "1M" | "3M" | "1Y" | "MAX";
-  showTradeMarkers: boolean;
-  fxRates: FxRates;
-  fxDate: string | null;
-};
-
-export const DEFAULT_SETTINGS: AppSettings = {
-  currency: "GBP",
-  dateFormat: "en-GB",
-  defaultRange: "1Y",
-  showTradeMarkers: true,
-  fxRates: DEFAULT_FX_RATES,
-  fxDate: null,
-};
-
-const RANGE_KEYS = ["1M", "3M", "1Y", "MAX"] as const;
-
-function normalizeSettings(raw: unknown): AppSettings {
-  const r = (raw ?? {}) as Partial<Record<keyof AppSettings, unknown>>;
-  const range = typeof r.defaultRange === "string" && (RANGE_KEYS as readonly string[]).includes(r.defaultRange)
-    ? (r.defaultRange as AppSettings["defaultRange"])
-    : DEFAULT_SETTINGS.defaultRange;
-  return {
-    currency: typeof r.currency === "string" && r.currency ? r.currency : DEFAULT_SETTINGS.currency,
-    dateFormat: typeof r.dateFormat === "string" && r.dateFormat ? r.dateFormat : DEFAULT_SETTINGS.dateFormat,
-    defaultRange: range,
-    showTradeMarkers: r.showTradeMarkers == null ? DEFAULT_SETTINGS.showTradeMarkers : Number(r.showTradeMarkers) !== 0,
-    fxRates: DEFAULT_FX_RATES,
-    fxDate: null,
-  };
-}
-
 /**
  * User preferences, shared across the dashboard. Previously these were written
  * by /settings but never read anywhere — chart range, trade markers and
  * currency were all hardcoded. Consumers now subscribe here.
  */
 export function useSettings() {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [ready, setReady] = useState(false);
+  const boot = useWorkspaceBootstrap();
+  const [settings, setSettings] = useState<AppSettings>(() => boot
+    ? {
+        ...normalizeSettings(boot.settings),
+        fxRates: { ...DEFAULT_FX_RATES, ...boot.fx.rates },
+        fxDate: boot.fx.date,
+      }
+    : DEFAULT_SETTINGS);
+  const [ready, setReady] = useState(!!boot);
 
   const refresh = useCallback(async () => {
     try {
@@ -348,7 +357,7 @@ export function useSettings() {
     }
     setReady(true);
   }, []);
-  useAsyncInit(refresh);
+  useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
 
   const save = useCallback(
     async (patch: Partial<AppSettings>) => {

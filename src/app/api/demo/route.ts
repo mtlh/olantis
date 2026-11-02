@@ -146,23 +146,17 @@ function marketFactor(idx: number, n: number): number {
 
 async function seedDemo(userId: string) {
   const db = getDb();
+
+  // Fast path for returning demo visitors: one cheap query decides whether the
+  // tenant already exists, instead of re-checking goals, watchlist and
+  // portfolios on every click of "Try the demo".
+  const existing = await db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId));
+  if (existing.length > 0) return;
+
   const [existingGoals, existingWatchlist] = await Promise.all([
     db.select({ id: goals.id }).from(goals).where(eq(goals.userId, userId)),
     db.select({ symbol: watchlistItems.symbol }).from(watchlistItems).where(eq(watchlistItems.userId, userId)),
   ]);
-
-  if (existingGoals.length === 0) {
-    const targetDate = new Date();
-    targetDate.setUTCFullYear(targetDate.getUTCFullYear() + 2);
-    await db.insert(goals).values({
-      id: crypto.randomUUID(),
-      userId,
-      name: "Build a £50,000 portfolio",
-      targetValue: 50000,
-      targetDate: targetDate.toISOString().slice(0, 10),
-      createdAt: Math.floor(Date.now() / 1000),
-    });
-  }
 
   const existingSymbols = new Set(existingWatchlist.map((item) => item.symbol));
   const demoWatchlist = [
@@ -171,32 +165,18 @@ async function seedDemo(userId: string) {
     { symbol: "GOOGL", name: "Alphabet Inc.", exchange: "NASDAQ", currency: "USD" },
     { symbol: "TSLA", name: "Tesla, Inc.", exchange: "NASDAQ", currency: "USD" },
   ].filter((item) => !existingSymbols.has(item.symbol));
-  if (demoWatchlist.length > 0) {
-    await db.insert(watchlistItems).values(demoWatchlist.map((item) => ({
-      id: crypto.randomUUID(),
-      userId,
-      ...item,
-      createdAt: Math.floor(Date.now() / 1000),
-    }))).onConflictDoNothing();
-  }
-
-  const existing = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
-  if (existing.length > 0) return;
 
   const now = Math.floor(Date.now() / 1000);
   const accHousehold: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Household", createdAt: now };
   const accPersonal: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Personal", createdAt: now };
-  await db.insert(accounts).values([accHousehold, accPersonal]);
 
   const provVanguard: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Vanguard", createdAt: now };
   const provT212: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Trading 212", createdAt: now };
   const provHL: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, name: "Hargreaves Lansdown", createdAt: now };
-  await db.insert(providers).values([provVanguard, provT212, provHL]);
 
   const p1: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA — Global Tracker", type: "live", createdAt: now };
   const p2: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 — Growth", type: "live", createdAt: now };
   const p3: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP — Retirement", type: "live", createdAt: now };
-  await db.insert(portfolios).values([p1, p2, p3]);
 
   const slotFor: Record<string, string> = { [p1.id]: "p1", [p2.id]: "p2", [p3.id]: "p3" };
   const hs: (typeof holdings.$inferInsert)[] = [];
@@ -205,9 +185,9 @@ async function seedDemo(userId: string) {
       hs.push({ id: crypto.randomUUID(), userId, portfolioId: pid, lastRefreshedAt: now, ...h });
     }
   }
-  await db.insert(holdings).values(hs);
 
-  // Predefined history — deterministic, no network.
+  // Predefined history — deterministic, no network. Built before any insert so
+  // the writes can be batched instead of run one after another.
   const dates = weeklyDates(3);
   const n = dates.length;
   const seriesBySymbol = new Map<string, number[]>();
@@ -227,21 +207,53 @@ async function seedDemo(userId: string) {
     }
     return { date, total, byPort };
   });
-
-  await db.insert(snapshots)
-    .values(snapRows.map((r) => ({ userId, date: r.date, value: r.total })))
-    .onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: snapshots.value } });
-
   const portRows = snapRows.flatMap((r) => [...r.byPort].map(([pid, val]) => ({ userId, portfolioId: pid, date: r.date, value: val })));
-  if (portRows.length) {
-    await db.insert(portfolioSnapshots)
-      .values(portRows)
-      .onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: portfolioSnapshots.value } });
-  }
 
-  await db.insert(userSettings)
+  // Side rows don't depend on the account tree, so start them immediately and
+  // let the four dependent waves below run in the foreground.
+  const sideWrites: Promise<unknown>[] = [];
+  if (existingGoals.length === 0) {
+    const targetDate = new Date();
+    targetDate.setUTCFullYear(targetDate.getUTCFullYear() + 2);
+    sideWrites.push(db.insert(goals).values({
+      id: crypto.randomUUID(),
+      userId,
+      name: "Build a £50,000 portfolio",
+      targetValue: 50000,
+      targetDate: targetDate.toISOString().slice(0, 10),
+      createdAt: now,
+    }));
+  }
+  if (demoWatchlist.length > 0) {
+    sideWrites.push(db.insert(watchlistItems).values(demoWatchlist.map((item) => ({
+      id: crypto.randomUUID(),
+      userId,
+      ...item,
+      createdAt: now,
+    }))).onConflictDoNothing());
+  }
+  sideWrites.push(db.insert(userSettings)
     .values({ userId, currency: "GBP", dateFormat: "en-GB", defaultRange: "1Y", showTradeMarkers: 1, updatedAt: now })
-    .onConflictDoNothing();
+    .onConflictDoNothing());
+
+  // Foreign keys force three sequential waves; everything else runs with the
+  // last one (~6 round trips instead of ~10 on a first demo visit).
+  await db.insert(accounts).values([accHousehold, accPersonal]);
+  await db.insert(providers).values([provVanguard, provT212, provHL]);
+  await db.insert(portfolios).values([p1, p2, p3]);
+
+  await Promise.all([
+    db.insert(holdings).values(hs),
+    db.insert(snapshots)
+      .values(snapRows.map((r) => ({ userId, date: r.date, value: r.total })))
+      .onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: snapshots.value } }),
+    portRows.length
+      ? db.insert(portfolioSnapshots)
+        .values(portRows)
+        .onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: portfolioSnapshots.value } })
+      : Promise.resolve(),
+    ...sideWrites,
+  ]);
 }
 
 async function clearDemo(userId: string) {
