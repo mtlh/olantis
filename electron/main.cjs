@@ -39,12 +39,6 @@ if (!app.requestSingleInstanceLock()) {
   });
   ipcMain.on("olantis:window:close", (event) => shellWindowFor(event)?.close());
   ipcMain.handle("olantis:window:is-maximized", (event) => Boolean(shellWindowFor(event)?.isMaximized()));
-  ipcMain.on("olantis:page:back", (event) => {
-    if (shellWindowFor(event) && appView?.webContents.canGoBack()) appView.webContents.goBack();
-  });
-  ipcMain.on("olantis:page:reload", (event) => {
-    if (shellWindowFor(event)) appView?.webContents.reload();
-  });
 
   function syncAppBounds() {
     if (!mainWindow || !appView) return;
@@ -128,7 +122,7 @@ if (!app.requestSingleInstanceLock()) {
         try {
           await shellLoaded;
           const integratedToolbar = await mainWindow.webContents.executeJavaScript(
-            '["back-button", "reload-button", "minimize-button", "maximize-button", "close-button"].every((id) => document.getElementById(id))',
+            '["minimize-button", "maximize-button", "close-button"].every((id) => document.getElementById(id))',
           );
           const renderedApp = await appView.webContents.executeJavaScript(
             'document.readyState === "complete" && document.body.innerText.trim().length > 0',

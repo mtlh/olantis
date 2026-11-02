@@ -3,8 +3,6 @@ const iconPath = new URLSearchParams(window.location.search).get("icon");
 
 if (iconPath) document.getElementById("brand-icon").src = iconPath;
 
-document.getElementById("back-button").addEventListener("click", () => desktop.goBack());
-document.getElementById("reload-button").addEventListener("click", () => desktop.reload());
 document.getElementById("minimize-button").addEventListener("click", () => desktop.minimize());
 document.getElementById("maximize-button").addEventListener("click", () => desktop.toggleMaximize());
 document.getElementById("close-button").addEventListener("click", () => desktop.close());
