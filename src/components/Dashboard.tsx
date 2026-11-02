@@ -14,6 +14,7 @@ import { PortfolioDashboard } from "@/components/dashboard/PortfolioDashboard";
 import { ProviderDashboard } from "@/components/dashboard/ProviderDashboard";
 import { WatchlistPanel } from "@/components/WatchlistPanel";
 import { GoalPanel } from "@/components/GoalPanel";
+import { SettingsView } from "@/components/Settings";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { AssignHoldingDialog } from "@/components/dashboard/AssignHoldingDialog";
 import { EditPortfolioDialog } from "@/components/dashboard/EditPortfolioDialog";
@@ -48,11 +49,11 @@ type DeleteRequest =
   | { kind: "portfolio"; item: Portfolio }
   | { kind: "holding"; item: Pick<Holding, "id" | "symbol"> };
 
-export type DashboardSection = "dashboard" | "watchlist" | "goals" | "performance";
+export type DashboardSection = "dashboard" | "watchlist" | "goals" | "performance" | "settings";
 
 export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: boolean; section?: DashboardSection }) {
   const pathname = usePathname();
-  const section = requestedSection ?? (pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : "dashboard");
+  const section = requestedSection ?? (pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : pathname === "/settings" ? "settings" : "dashboard");
   const router = useRouter();
   const searchParams = useSearchParams();
   const portfolioFromUrl = searchParams.get("portfolio");
@@ -363,7 +364,9 @@ const pickRange = useCallback((r: ChartRange) => {
               <Button variant="outline" size="sm" className="border-amber-500/30 bg-black/20" onClick={() => void Promise.all([refreshPortfolios(), refreshAllHoldings(), refreshAccounts(), refreshProviders()])}>Retry</Button>
             </div>
           )}
-          {section === "watchlist" ? (
+          {section === "settings" ? (
+            <SettingsView isDemo={isDemo} />
+          ) : section === "watchlist" ? (
             <section className="space-y-4">
               <div><h1 className="text-3xl font-bold tracking-tight text-white">Watchlist</h1><p className="mt-1 text-sm text-zinc-500">Keep an eye on symbols before adding them to a portfolio.</p></div>
               <WatchlistPanel />
