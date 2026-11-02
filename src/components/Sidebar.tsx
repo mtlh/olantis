@@ -567,7 +567,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
         </div>
 
-        <div className="mt-5">
+        <div className="mt-3">
           <div className="flex items-center justify-between px-1 mb-2">
             <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Accounts</span>
             <div className="flex items-center gap-0.5">
