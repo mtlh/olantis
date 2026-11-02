@@ -572,7 +572,32 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Accounts</span>
             <div className="flex items-center gap-0.5">
               <Button variant="ghost" size="icon-xs" onClick={() => setEditMode(v => !v)} aria-pressed={editMode} aria-label="Toggle edit mode" title={editMode ? "Hide edit controls" : "Show edit controls"} className={editMode ? "bg-white/10 text-white hover:bg-white/15" : "text-zinc-500 hover:text-zinc-300"}><Pencil className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="icon-xs" onClick={() => setShowAccountDialog(true)} aria-label="New account"><Plus className="w-3.5 h-3.5" /></Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Create new" title="Create new"><Plus className="w-3.5 h-3.5" /></Button>} />
+                <DropdownMenuContent align="end" className="min-w-56 bg-zinc-900 border-white/10 text-white">
+                  <DropdownMenuItem onClick={() => setShowAccountDialog(true)}>
+                    <Building2 className="w-3.5 h-3.5"/> Account
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={accounts.length === 0}
+                    onClick={() => {
+                      const targetAccount = activeAccountId ?? accounts[0]?.id;
+                      if (!targetAccount) return;
+                      setProviderAccountId(targetAccount);
+                      setProviderName("");
+                      setShowProviderDialog(true);
+                    }}
+                  >
+                    <Briefcase className="w-3.5 h-3.5"/> Provider
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openWizard(activeAccountId ?? null, activeProviderId ?? null)}>
+                    <Layers className="w-3.5 h-3.5"/> Portfolio
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setDirectTarget({ accountId: activeAccountId ?? null, providerId: activeProviderId ?? null }); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}>
+                    <TrendingUp className="w-3.5 h-3.5"/> Stock
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -725,10 +750,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             )}
           </div>
           )}
-          <div className="mt-4">
-            <Button size="default" className={`w-full h-10 font-medium ${portfolios.length>0 ? "bg-white/[0.06] border border-white/10 text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-400" : "bg-white text-black hover:bg-zinc-100 font-semibold shadow-lg"}`} onClick={() => openWizard(null)}><Plus className="w-4 h-4"/> {portfolios.length>0 ? "New portfolio" : "New portfolio"}</Button>
-            <p className="text-xs text-zinc-600 text-center mt-2">Account → Provider → Portfolio</p>
-          </div>
         </div>
 
       </nav>
