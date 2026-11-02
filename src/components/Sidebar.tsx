@@ -898,7 +898,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     <>
       <Button ref={mobileMenuTriggerRef} variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 !size-11 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu" aria-expanded={mobileOpen}><Menu className="w-4 h-4"/></Button>
       <aside
-        className="hidden xl:flex relative shrink-0 flex-col h-screen sticky top-0 border-r bg-black/40 backdrop-blur-xl"
+        className="hidden xl:flex relative shrink-0 flex-col h-screen sticky top-0 border-r bg-black"
         style={{ width: sidebarWidth, borderColor: "rgba(255,255,255,0.07)" }}
       >
         {inner}
