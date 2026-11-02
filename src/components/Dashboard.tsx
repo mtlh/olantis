@@ -351,7 +351,7 @@ const pickRange = useCallback((r: ChartRange) => {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} onRefreshPrices={() => { void refreshPrices(); }} refreshing={refreshing} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={requestDeleteAccount}
         onDeleteProvider={requestDeleteProvider}
         onDeletePortfolio={requestDeletePortfolio} />
