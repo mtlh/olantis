@@ -134,11 +134,15 @@ if (!app.requestSingleInstanceLock()) {
             'document.readyState === "complete" && document.body.innerText.trim().length > 0',
           );
           const toolbarIsIntegrated = appView.getBounds().y === TITLEBAR_HEIGHT;
+          const brandIconLoaded = await mainWindow.webContents.executeJavaScript(
+            '(() => { const img = document.getElementById("brand-icon"); return Boolean(img && img.complete && img.naturalWidth > 0); })()',
+          );
           if (!integratedToolbar || !toolbarIsIntegrated) {
             console.error("Electron smoke test: integrated desktop toolbar was not rendered above the app.");
           }
           if (!renderedApp) console.error("Electron smoke test: Olantis content was not rendered.");
-          app.exit(renderedApp && integratedToolbar && toolbarIsIntegrated ? 0 : 1);
+          if (!brandIconLoaded) console.error("Electron smoke test: the Olantis brand icon did not load in the title bar.");
+          app.exit(renderedApp && integratedToolbar && toolbarIsIntegrated && brandIconLoaded ? 0 : 1);
         } catch (error) {
           console.error("Electron smoke test failed:", error);
           app.exit(1);
