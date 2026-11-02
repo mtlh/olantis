@@ -431,11 +431,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const inner = (
     <>
-      <div className="px-5 py-5 border-b flex items-center justify-between" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <div className="px-5 py-5 border-b flex items-center justify-between xl:hidden" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         <Logo size={36} />
         <Button variant="ghost" size="icon" className="xl:hidden !size-11" aria-label="Close menu" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
       </div>
-      <nav className="flex-1 overflow-y-auto p-3">
+      <nav className="flex-1 overflow-y-auto p-3 xl:pt-5">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
           <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
