@@ -1,6 +1,8 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DEMO_COOKIE, demoUserId } from "@/lib/auth";
+import { loadWorkspaceBootstrap, type WorkspaceBootstrap } from "@/lib/bootstrap";
+import { WorkspaceDataProvider } from "@/lib/store";
 import { Dashboard } from "@/components/Dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
@@ -42,5 +44,20 @@ export async function AuthenticatedDashboardLayout() {
   }
 
   if (!user) redirect("/login");
-  return <Dashboard isDemo={isDemo} />;
+
+  // Resolve the workspace data on the server so the first HTML already shows
+  // real numbers instead of a client-fetch skeleton. If the database is
+  // unreachable we fall back to the client-side loaders (null bootstrap).
+  let bootstrap: WorkspaceBootstrap | null = null;
+  try {
+    bootstrap = await loadWorkspaceBootstrap(user.id);
+  } catch {
+    bootstrap = null;
+  }
+
+  return (
+    <WorkspaceDataProvider value={bootstrap}>
+      <Dashboard isDemo={isDemo} />
+    </WorkspaceDataProvider>
+  );
 }
