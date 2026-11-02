@@ -8,8 +8,27 @@ on:
 permissions:
   contents: write
 
+# Installers go straight onto the GitHub Release. Release assets are free and
+# unlimited, while Actions artifacts count against the repo's storage quota
+# (500 MB on the free plan — one Electron build set is already bigger than that).
+
 jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: desktop-${{ github.run_number }}-${{ github.sha }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "Olantis Desktop ${{ github.run_number }}" \
+            --generate-notes
+
   build:
+    needs: draft
     strategy:
       fail-fast: false
       matrix:
@@ -29,23 +48,38 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run electron:dist
-      - uses: actions/upload-artifact@v4
-        with:
-          name: olantis-desktop-${{ matrix.artifact }}
-          path: release/*
-          if-no-files-found: error
+      - name: Attach installers to draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: desktop-${{ github.run_number }}-${{ github.sha }}
+        run: |
+          shopt -s nullglob
+          # Only distributables and update metadata — never the unpacked app dirs.
+          files=(
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/*.blockmap
+            release/latest*.yml
+          )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No distributables found in release/" >&2
+            ls -la release || true
+            exit 1
+          fi
+          printf 'uploading: %s\n' "${files[@]}"
+          gh release upload "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
 
   publish:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: desktop-${{ github.run_number }}-${{ github.sha }}
-          name: Olantis Desktop ${{ github.run_number }}
-          files: release-assets/*
-          generate_release_notes: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: desktop-${{ github.run_number }}-${{ github.sha }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
