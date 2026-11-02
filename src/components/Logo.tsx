@@ -1,3 +1,22 @@
+/** The "O" ring, broken at the top-right for the live status bead. */
+const RING_PATH = "M56.99 23.92 A27 27 0 1 0 76.08 43.01";
+
+export function LogoGlyph({ size = 36, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      fill="none"
+      aria-hidden="true"
+      className={`block ${className}`}
+    >
+      <path d={RING_PATH} stroke="#fff" strokeWidth="9" strokeLinecap="round" />
+      <circle cx="69.09" cy="30.91" r="6.2" fill="#10b981" />
+    </svg>
+  );
+}
+
 export function Logo({ size = 36, showText = true, className = "" }: { size?: number; showText?: boolean; className?: string }) {
   return (
     <div className={`flex items-center gap-3 ${className}`}>
@@ -12,16 +31,7 @@ export function Logo({ size = 36, showText = true, className = "" }: { size?: nu
           boxShadow: "0 4px 20px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)",
         }}
       >
-        <svg width={size * 0.88} height={size * 0.88} viewBox="0 0 100 100" fill="none" className="block">
-          <g transform="translate(50,50)">
-            <rect x="-35" y="-35" width="70" height="70" rx="15.5" fill="none" stroke="white" strokeWidth="3.9" />
-            <rect x="-24.4" y="-24.4" width="48.8" height="48.8" rx="10.9" fill="white" />
-            <g transform="translate(-12.5,-1)">
-              <path d="M0 6.6 L6.25 2.5 L12.5 4.3 L25 0" fill="none" stroke="#0f0f12" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="25" cy="0" r="3.5" fill="#10b981" stroke="white" strokeWidth="0.48" />
-            </g>
-          </g>
-        </svg>
+        <LogoGlyph size={size} />
       </div>
       {showText && (
         <div className="leading-none">
