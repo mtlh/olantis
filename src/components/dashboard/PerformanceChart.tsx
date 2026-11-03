@@ -69,11 +69,10 @@ export function PerformanceChart({
     fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=MAX`)
       .then(async (response) => response.ok ? (await response.json()).chart as Array<{ date: string; price: number }> : [])
       .then((rows) => {
-        benchmarkCache.set(cacheKey, rows);
+        if (rows.length) benchmarkCache.set(cacheKey, rows);
         if (!cancelled) setBenchmarkPrices({ key: cacheKey, rows });
       })
       .catch(() => {
-        benchmarkCache.set(cacheKey, []);
         if (!cancelled) setBenchmarkPrices({ key: cacheKey, rows: [] });
       });
     return () => { cancelled = true; };

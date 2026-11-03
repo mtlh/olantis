@@ -183,9 +183,6 @@ export function cacheStats() {
   return { size: cache.size, inflight: inflight.size, active };
 }
 
-export const SOFT_TTL_EXPORT = SOFT_TTL;
-export const HARD_TTL_EXPORT = HARD_TTL;
-
 export function getCachedEntry<T>(kind: CacheKind, key: string): { value: T; at: number; staleAt: number } | undefined {
   const ck = `${kind}:${key}`;
   return cache.get(ck) as { value: T; at: number; staleAt: number } | undefined;

@@ -1,6 +1,6 @@
 import YahooFinance from "yahoo-finance2";
 import { cached, withRetry, getCachedEntry, setCachedEntry, isFresh } from "@/lib/http-cache";
-import { readQuoteDaily, writeQuoteDaily } from "@/lib/quote-cache";
+import { readQuoteDailyBatch, writeQuoteDailyBatch } from "@/lib/quote-cache";
 
 const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
@@ -53,9 +53,11 @@ export async function fetchQuotes(
     if (opts?.disambiguate) out[quoteKey(up, exchange)] = entry;
   };
 
-  // First pass: resolve symbols already covered by a fresh in-memory or L2 cache
-  // entry, so they never trigger an upstream call.
+  // First pass: resolve symbols already covered by a fresh in-memory entry, so
+  // they never trigger an upstream call. Symbols needing an L2 check are
+  // collected and resolved with a SINGLE batched query below.
   const toFetch: Array<{ symbol: string; exchange?: string }> = [];
+  const l2Candidates: Array<{ symbol: string; exchange?: string }> = [];
   for (const { symbol, exchange } of symbols) {
     const ys = toYahooSymbol(symbol, exchange);
     if (isFresh("quote", ys)) {
@@ -65,13 +67,21 @@ export async function fetchQuotes(
         continue;
       }
     }
-    const l2 = await readQuoteDaily(ys);
-    if (l2) {
-      setCachedEntry("quote", ys, { price: l2.price, currency: l2.currency });
-      applyEntry(symbol, exchange, l2);
-      continue;
+    l2Candidates.push({ symbol, exchange });
+  }
+
+  if (l2Candidates.length) {
+    const l2Map = await readQuoteDailyBatch(l2Candidates.map(({ symbol, exchange }) => toYahooSymbol(symbol, exchange)));
+    for (const { symbol, exchange } of l2Candidates) {
+      const ys = toYahooSymbol(symbol, exchange);
+      const l2 = l2Map.get(ys.toUpperCase());
+      if (l2) {
+        setCachedEntry("quote", ys, { price: l2.price, currency: l2.currency });
+        applyEntry(symbol, exchange, l2);
+      } else {
+        toFetch.push({ symbol, exchange });
+      }
     }
-    toFetch.push({ symbol, exchange });
   }
 
   // Second pass: batch upstream calls, 20-50 symbols per request.
@@ -79,6 +89,7 @@ export async function fetchQuotes(
   for (let offset = 0; offset < toFetch.length; offset += BATCH_SIZE) {
     const batch = toFetch.slice(offset, offset + BATCH_SIZE);
     const ysList = batch.map(({ symbol, exchange }) => toYahooSymbol(symbol, exchange));
+    const writes: Array<{ symbol: string; price: number; currency: string }> = [];
     let rawBySymbol: Record<string, YahooQuoteResult> = {};
     try {
       const res = await withRetry(async () => yf.quote(ysList));
@@ -107,24 +118,19 @@ export async function fetchQuotes(
             if (mem?.value?.price) {
               price = mem.value.price;
               currency = mem.value.currency;
-            } else {
-              const l2 = await readQuoteDaily(ys);
-              if (l2) {
-                price = l2.price;
-                currency = l2.currency;
-              }
             }
           }
           if (!price) return;
           const entry = { price, currency };
           setCachedEntry("quote", ys, { price, currency });
-          if (price) await writeQuoteDaily(ys, price, currency);
           applyEntry(symbol, exchange, entry);
+          writes.push({ symbol: ys, price, currency });
         } catch {
           /* symbol not found */
         }
       })
     );
+    if (writes.length) await writeQuoteDailyBatch(writes);
   }
   return out;
 }
