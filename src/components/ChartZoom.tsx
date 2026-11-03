@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReferenceArea } from "recharts";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,17 +29,43 @@ export function useChartZoom<T extends { date: string }>(data: T[]) {
   const [zoom, setZoom] = useState<ZoomRange<T>>(null);
   const [drag, setDrag] = useState<DragState<T>>(null);
   const dragRef = useRef<DragState<T>>(null);
+  // Pointer samples arrive far faster than React can paint, so only the newest
+  // index per frame reaches state: it moves the selection band, which is the
+  // only thing that has to follow the pointer.
+  const renderedDragRef = useRef<DragState<T>>(null);
+  const frameRef = useRef<number | null>(null);
 
   const zoomed = zoom && zoom.data === data ? zoom : null;
   const base = zoomed ? zoomed.i1 : 0;
   const visible = useMemo(() => (zoomed ? data.slice(zoomed.i1, zoomed.i2 + 1) : data), [data, zoomed]);
   const activeDrag = drag && drag.data === data ? drag : null;
 
+  const cancelPendingFrame = useCallback(() => {
+    if (frameRef.current === null) return;
+    window.cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+  }, []);
+
+  const flushDrag = () => {
+    frameRef.current = null;
+    const next = dragRef.current;
+    if (!next || next === renderedDragRef.current) return;
+    renderedDragRef.current = next;
+    setDrag(next);
+  };
+
+  const scheduleDragFlush = () => {
+    if (frameRef.current !== null) return;
+    frameRef.current = window.requestAnimationFrame(flushDrag);
+  };
+
   // Releasing the pointer anywhere commits the selection, even outside the chart.
   useEffect(() => {
     const commit = () => {
       const d = dragRef.current;
       dragRef.current = null;
+      cancelPendingFrame();
+      renderedDragRef.current = null;
       setDrag(null);
       if (!d || d.data !== data) return;
       const a = Math.min(d.a, d.b);
@@ -49,27 +75,36 @@ export function useChartZoom<T extends { date: string }>(data: T[]) {
     };
     window.addEventListener("mouseup", commit);
     return () => window.removeEventListener("mouseup", commit);
-  }, [data]);
+  }, [data, cancelPendingFrame]);
+
+  useEffect(() => () => {
+    if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
+  }, []);
 
   const onMouseDown = (e: ChartMouseEvent) => {
     const i = indexFromEvent(e, visible);
     if (i < 0) return;
     const next: DragState<T> = { data, base, a: i, b: i };
+    cancelPendingFrame();
     dragRef.current = next;
+    renderedDragRef.current = next;
     setDrag(next);
   };
   const onMouseMove = (e: ChartMouseEvent) => {
     const d = dragRef.current;
     if (!d || d.data !== data) return;
     const i = indexFromEvent(e, visible);
+    // The ref already holds the newest index, so samples inside the same column
+    // cost nothing at all.
     if (i < 0 || i === d.b) return;
-    const next: DragState<T> = { ...d, b: i };
-    dragRef.current = next;
-    setDrag(next);
+    dragRef.current = { ...d, b: i };
+    scheduleDragFlush();
   };
 
   const reset = () => {
     dragRef.current = null;
+    cancelPendingFrame();
+    renderedDragRef.current = null;
     setDrag(null);
     setZoom(null);
   };

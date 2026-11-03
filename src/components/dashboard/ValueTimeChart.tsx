@@ -5,6 +5,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, Tool
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
+import { useChartAnimation } from "@/lib/use-chart-animation";
 import { evenAxisTicks, fmtGBP, fmtPrice, gbpAxisFormatter, numericValues, paddedDomain, priceAxisFormatter } from "@/lib/format";
 
 export type ValueTimeChartRow = {
@@ -77,6 +78,7 @@ export function ValueTimeChart({
   // appears later — a new portfolio — also starts off.
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(() => new Set(["total"]));
   const chartZoom = useChartZoom(data);
+  const animateSeries = useChartAnimation(chartZoom.visible.length);
   const totalVisible = !showSeriesToggle || visibleKeys.has("total");
   const visibleSeries = useMemo(
     () => showSeriesToggle ? series.filter((item) => visibleKeys.has(item.key)) : series,
@@ -152,10 +154,11 @@ export function ValueTimeChart({
                   fillOpacity={totalFillOpacity}
                   strokeWidth={2.5}
                   dot={false}
+                  isAnimationActive={animateSeries}
                 />
               )}
               {visibleSeries.map((item) => (
-                <Area key={item.key} type="monotone" dataKey={item.dataKey} name={item.name} stroke={item.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" />
+                <Area key={item.key} type="monotone" dataKey={item.dataKey} name={item.name} stroke={item.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" isAnimationActive={animateSeries} />
               ))}
               {visibleDots.map((dot) => (
                 <ReferenceDot key={`${dot.date}-${dot.symbol}-${dot.x}`} x={dot.x} y={dot.y} r={showSeriesToggle ? 4 : 5} fill={dot.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={showSeriesToggle ? 1 : 1.5} />

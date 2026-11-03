@@ -5,6 +5,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Too
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
+import { useChartAnimation } from "@/lib/use-chart-animation";
 import { chartDateLabel, carryForward, rangeCutoff, paddedDomain, fmtPct, seriesCursor, type SeriesCursor } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import type { Snapshot } from "@/lib/store";
@@ -137,6 +138,7 @@ export function PerformanceChart({
     return data.filter((row) => row.dateISO >= cutoff);
   }, [data, range]);
   const chartZoom = useChartZoom(rangedData);
+  const animateSeries = useChartAnimation(chartZoom.visible.length);
   const benchmarkName = useMemo(() => {
     if (benchmark === "__none__") return null;
     if (benchmark === "VWRL.L") return "VWRL";
@@ -293,10 +295,10 @@ export function PerformanceChart({
                       labelStyle={{ color: "#a1a1aa" }}
                     />
                     <ReferenceLine y={0} stroke="rgba(255,255,255,0.24)" strokeDasharray="4 4" />
-                    {!hiddenSeries.has("total") && <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} connectNulls />}
-                    {benchmarkName && !hiddenSeries.has("benchmark") && <Area type="monotone" dataKey="benchmark" name={benchmarkName} stroke="#fbbf24" fill="transparent" strokeWidth={2} dot={false} strokeDasharray="5 4" connectNulls />}
+                    {!hiddenSeries.has("total") && <Area type="monotone" dataKey="total" name="Total" stroke="#ffffff" fill="#ffffff" fillOpacity={0.08} strokeWidth={2.5} dot={false} connectNulls isAnimationActive={animateSeries} />}
+                    {benchmarkName && !hiddenSeries.has("benchmark") && <Area type="monotone" dataKey="benchmark" name={benchmarkName} stroke="#fbbf24" fill="transparent" strokeWidth={2} dot={false} strokeDasharray="5 4" connectNulls isAnimationActive={animateSeries} />}
                     {series.filter((item) => !hiddenSeries.has(item.key)).map((item) => (
-                      <Area key={item.key} type="monotone" dataKey={item.key} name={item.name} stroke={item.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" connectNulls />
+                      <Area key={item.key} type="monotone" dataKey={item.key} name={item.name} stroke={item.color} fill="transparent" strokeWidth={2} dot={false} strokeDasharray="4 4" connectNulls isAnimationActive={animateSeries} />
                     ))}
                   </AreaChart>
                 </ResponsiveContainer>
