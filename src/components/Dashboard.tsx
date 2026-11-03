@@ -61,8 +61,8 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
-  const { portfolios, create, remove, upsertHolding, deleteHolding, moveHolding, refresh: refreshPortfolios, ready: portfoliosReady, error: portfoliosError } = usePortfolios();
-  const { holdings: allHoldingsList, refresh: refreshAllHoldings, error: holdingsError } = useHoldings();
+  const { portfolios, create, remove, upsertHolding, deleteHolding, moveHolding, refresh: refreshPortfolios, setPortfolios, ready: portfoliosReady, error: portfoliosError } = usePortfolios();
+  const { holdings: allHoldingsList, refresh: refreshAllHoldings, setHoldings: setAllHoldings, error: holdingsError } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
   const { settings } = useSettings();
   const { snapshots, byPortfolio, byHolding } = useSnapshots(portfolios, directHoldings, settings.fxRates);
@@ -143,7 +143,6 @@ const pickRange = useCallback((r: ChartRange) => {
       await createTx({ portfolioId: tradeRequest.holding.portfolioId ?? null, holdingId: tradeRequest.holding.id, type: tradeRequest.type, shares: data.shares, price: data.price, date: data.date });
       await refreshPortfolios();
       await refreshTx();
-      await refreshAllHoldings();
       toast({ title: tradeRequest.type === "buy" ? "Buy recorded" : "Sell recorded", description: `${tradeRequest.type === "buy" ? "+" : "-"}${data.shares} ${tradeRequest.holding.symbol} @ ${fmtPrice(data.price, tradeRequest.holding.currency)}`, variant: "success" });
     } catch (e: unknown) { toast({ title: "Trade failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); throw e; }
   };
@@ -152,7 +151,7 @@ const pickRange = useCallback((r: ChartRange) => {
     if (!window.confirm("Delete this trade and recalculate the position?")) return;
     try {
       await removeTx(id);
-      await Promise.all([refreshPortfolios(), refreshAllHoldings(), refreshTx()]);
+      await Promise.all([refreshPortfolios(), refreshTx()]);
       toast({ title: "Trade deleted", description: "The affected position was recalculated.", variant: "success" });
     } catch (error) {
       toast({ title: "Could not delete trade", description: error instanceof Error ? error.message : String(error), variant: "error" });
@@ -217,14 +216,33 @@ const pickRange = useCallback((r: ChartRange) => {
     try { const r = await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"}); return r; } catch(e: unknown){toast({title:"Failed to create portfolio",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   };
   const handleCreateAccount = useCallback(async (name: string) => {
-    try { await createAccount(name); await refreshProviders(); } catch(e: unknown){ toast({title:"Failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
-  }, [createAccount, refreshProviders, toast]);
+    try { await createAccount(name); } catch(e: unknown){ toast({title:"Failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
+  }, [createAccount, toast]);
   const handleCreateProvider = useCallback(async (name: string, accountId: string) => {
     try { await createProvider(name, accountId); toast({title:"Provider created",description:name,variant:"success"});} catch(e: unknown){toast({title:"Failed to create provider",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   }, [createProvider, toast]);
-  const handleRenameAccount = useCallback(async (id:string,name:string)=>{ await renameAccount(id,name); await refreshPortfolios(); }, [renameAccount, refreshPortfolios]);
-  const handleRenameProvider = useCallback(async (id:string,name:string)=>{ await renameProvider(id,name); await refreshPortfolios(); }, [renameProvider, refreshPortfolios]);
-  const handleRenamePortfolio = useCallback(async (id:string,patch: { name?: string; type?: string; accountId?: string | null; providerId?: string | null })=>{ if(patch.accountId!==undefined || patch.providerId!==undefined || patch.name!==undefined || patch.type!==undefined){ const body: PortfolioUpdateBody={id}; if(patch.name!==undefined) body.name=patch.name; if(patch.type!==undefined) body.type=patch.type; if(patch.accountId!==undefined) body.accountId=patch.accountId; if(patch.providerId!==undefined) body.providerId=patch.providerId; await fetch("/api/portfolios",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(async r=>{ if(!r.ok) throw new Error(await r.text()); }); await refreshPortfolios(); } }, [refreshPortfolios]);
+  const handleRenameAccount = useCallback(async (id:string,name:string)=>{ await renameAccount(id,name); }, [renameAccount]);
+  const handleRenameProvider = useCallback(async (id:string,name:string)=>{ await renameProvider(id,name); }, [renameProvider]);
+  const handleRenamePortfolio = useCallback(async (id: string, patch: { name?: string; type?: string; accountId?: string | null; providerId?: string | null }) => {
+    if (patch.accountId !== undefined || patch.providerId !== undefined || patch.name !== undefined || patch.type !== undefined) {
+      const body: PortfolioUpdateBody = { id };
+      if (patch.name !== undefined) body.name = patch.name;
+      if (patch.type !== undefined) body.type = patch.type;
+      if (patch.accountId !== undefined) body.accountId = patch.accountId;
+      if (patch.providerId !== undefined) body.providerId = patch.providerId;
+      const r = await fetch("/api/portfolios", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(await r.text());
+      setPortfolios((prev) => prev.map((p) => {
+        if (p.id !== id) return p;
+        const next = { ...p };
+        if (patch.name !== undefined) next.name = patch.name;
+        if (patch.type !== undefined) next.type = patch.type as "live" | "manual";
+        if (patch.accountId !== undefined) next.accountId = patch.accountId;
+        if (patch.providerId !== undefined) next.providerId = patch.providerId;
+        return next;
+      }));
+    }
+  }, [setPortfolios]);
   const handleRemoveAccount = async (id: string) => {
     try { await removeAccount(id); await refreshProviders(); await refreshPortfolios(); toast({title:"Account deleted",variant:"success"});} catch(e: unknown){toast({title:"Delete failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
   };
@@ -275,8 +293,10 @@ const pickRange = useCallback((r: ChartRange) => {
       const patch = await fetch("/api/holdings",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols:quotes})});
       const j = await patch.json();
       if(!patch.ok){ toast({title:j.message||j.error||"Refresh limited",description:j.nextAllowedAt?`Next allowed ${new Date(j.nextAllowedAt*1000).toLocaleTimeString()}`:undefined,variant:"error"}); return; }
-      await refreshPortfolios();
-      await refreshAllHoldings();
+      const rows = await fetch("/api/holdings").then((r) => r.json());
+      const list = Array.isArray(rows) ? rows : [];
+      setAllHoldings(list as Holding[]);
+      setPortfolios((prev) => prev.map((p) => ({ ...p, holdings: list.filter((h: Holding) => h.portfolioId === p.id) })));
       toast({title:`Updated ${j.updated} holdings`,description:j.skipped?`${j.skipped} skipped (24h limit)`:undefined,variant:"success"});
     } catch(e: unknown){ toast({title:"Refresh failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
     finally{setRefreshing(false);}
@@ -331,6 +351,7 @@ const pickRange = useCallback((r: ChartRange) => {
 
     if (deleteRequest.kind === "portfolio") {
       await remove(deleteRequest.item.id);
+      await refreshAllHoldings();
       if (portfolioFromUrl === deleteRequest.item.id) router.replace("/dashboard");
       toast({ title: "Portfolio deleted", variant: "success" });
     } else if (deleteRequest.kind === "account") {

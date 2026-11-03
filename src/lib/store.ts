@@ -56,9 +56,16 @@ function useVisibilityRefresh(refresh: () => void) {
   useEffect(() => {
     ref.current = refresh;
   }, [refresh]);
+  const lastRef = useRef(0);
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible") ref.current();
+      if (document.visibilityState === "visible") {
+        const now = Date.now();
+        if (now - lastRef.current >= 60000) {
+          lastRef.current = now;
+          ref.current();
+        }
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
@@ -96,9 +103,9 @@ export function useAccounts() {
   }, []);
   useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   const create = useCallback(async (name: string) => {
-    await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) });
-    await refresh();
-  }, [refresh]);
+    const r = await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) }) as { id: string };
+    setAccounts((prev) => [...prev, { id: r.id, name, color: null, userId: undefined }]);
+  }, []);
   const remove = useCallback(async (id: string) => {
     await api(`/api/accounts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
@@ -107,12 +114,12 @@ export function useAccounts() {
     const payload: AccountPayload = { id, name };
     if (color !== undefined) payload.color = color;
     await api("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
-    await refresh();
-  }, [refresh]);
+    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, name, ...(color !== undefined ? { color: color ?? null } : {}) } : a)));
+  }, []);
   const setColor = useCallback(async (id: string, color: string | null) => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ id, color }) });
-    await refresh();
-  }, [refresh]);
+    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, color } : a)));
+  }, []);
   return { accounts, ready, error, create, remove, rename, setColor, refresh, setAccounts };
 }
 
@@ -130,10 +137,10 @@ export function useProviders() {
   }, []);
   useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   const create = useCallback(async (name: string, accountId: string, color?: string | null) => {
-    const r = await api("/api/providers", { method: "POST", body: JSON.stringify({ name, accountId, color: color ?? null }) });
-    await refresh();
-    return r as { id: string };
-  }, [refresh]);
+    const r = await api("/api/providers", { method: "POST", body: JSON.stringify({ name, accountId, color: color ?? null }) }) as { id: string };
+    setProviders((prev) => [...prev, { id: r.id, name, color: color ?? null, accountId, sortOrder: null, userId: undefined, createdAt: undefined } as Provider]);
+    return r;
+  }, []);
   const remove = useCallback(async (id: string) => {
     await api(`/api/providers?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
@@ -142,12 +149,12 @@ export function useProviders() {
     const payload: ProviderPayload = { id, name };
     if (color !== undefined) payload.color = color;
     await api("/api/providers", { method: "POST", body: JSON.stringify(payload) });
-    await refresh();
-  }, [refresh]);
+    setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, name, ...(color !== undefined ? { color: color ?? null } : {}) } : p)));
+  }, []);
   const setColor = useCallback(async (id: string, color: string | null) => {
     await api("/api/providers", { method: "POST", body: JSON.stringify({ id, color }) });
-    await refresh();
-  }, [refresh]);
+    setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
+  }, []);
   return { providers, ready, create, remove, rename, setColor, refresh, setProviders };
 }
 
@@ -169,9 +176,9 @@ export function usePortfolios() {
   useVisibilityRefresh(refresh);
 
   const create = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
-    const r = await api("/api/portfolios", { method: "POST", body: JSON.stringify({ name, type, accountId: accountId ?? null, providerId: providerId ?? null }) });
-    await refresh();
-    return r as { id: string };
+    const r = await api("/api/portfolios", { method: "POST", body: JSON.stringify({ name, type, accountId: accountId ?? null, providerId: providerId ?? null }) }) as { id: string };
+    setPortfolios((prev) => [...prev, { id: r.id, name, type, accountId: accountId ?? null, providerId: providerId ?? null, color: null, holdings: [], sortOrder: null, userId: undefined, createdAt: undefined } as Portfolio]);
+    return r;
   };
   const remove = async (id: string) => {
     await api(`/api/portfolios?id=${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -179,11 +186,15 @@ export function usePortfolios() {
   };
   const move = async (id: string, accountId: string | null, providerId?: string | null) => {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ id, accountId, providerId: providerId ?? null }) });
-    await refresh();
+    setPortfolios((prev) => prev.map((p) => {
+      if (p.id !== id) return p;
+      const finalAccountId: string | null = accountId;
+      return { ...p, accountId: finalAccountId, providerId: providerId ?? null };
+    }));
   };
   const setColor = async (id: string, color: string | null) => {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ id, color }) });
-    await refresh();
+    setPortfolios((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
   };
   const upsertHolding = async (targetId: string, h: Omit<Holding, "id"> & { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null }, kind: "portfolio" | "provider" | "account" = "portfolio") => {
     const body: HoldingsBody = { ...h, id: h.id };
@@ -255,9 +266,7 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: totalValue, portfolios: pfVals, holdings: hVals }),
-      })
-        .then(() => refresh())
-        .catch(() => {});
+      }).catch(() => {});
     }, SNAPSHOT_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [totalValue, portfolios.length, directHoldings.length, pfVals, hVals, refresh]);
@@ -281,7 +290,7 @@ export function useHoldings() {
   }, []);
   useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   useVisibilityRefresh(refresh);
-  return { holdings, ready, error, refresh };
+  return { holdings, ready, error, refresh, setHoldings };
 }
 
 export function useTransactions(portfolioId?: string | null, symbol?: string | null, holdingId?: string | null) {
