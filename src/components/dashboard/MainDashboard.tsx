@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
-import { TrendingDown, TrendingUp, Wallet, Plus, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, RefreshCw, Loader2 } from "lucide-react";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fmtGBP, fmtPct, type ValueChange } from "@/lib/format";
 
@@ -27,6 +26,15 @@ type MainDashboardProps = {
   children: ReactNode;
 };
 
+const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
+const SUB = "mt-2 text-[11px] text-zinc-600";
+
+function formatSnapshotDate(iso: string) {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
 export function MainDashboard({
   accountsCount,
   providersCount,
@@ -47,60 +55,92 @@ export function MainDashboard({
   onCreateFirstPortfolio,
   children,
 }: MainDashboardProps) {
+  const gainColor = totalGain >= 0 ? "text-emerald-400" : "text-red-400";
+  const changeColor = periodChange && periodChange.amount >= 0 ? "text-emerald-400" : "text-red-400";
+
   return (
     <DashboardLevel label="Main dashboard">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Dashboard</h1>
-          <p className="mt-1 text-sm text-zinc-500">{accountsCount} accounts • {providersCount} providers • {portfoliosCount} portfolios</p>
-          <p className="mt-1 text-xs text-zinc-600">Latest saved valuation {latestSnapshot} · totals shown in GBP{portfoliosCount === 0 && <><span className="mx-1">•</span><Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={onCreateFirstPortfolio}>Create first portfolio</Button></>}</p>
+          <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Dashboard</h1>
+          <p className="mt-2 text-xs text-zinc-500">
+            {accountsCount} accounts · {providersCount} providers · {portfoliosCount} portfolios
+            <span className="mx-1.5 text-zinc-700">·</span>
+            <span className="whitespace-nowrap">Updated {formatSnapshotDate(latestSnapshot)}</span>
+          </p>
+          {portfoliosCount === 0 && (
+            <Button variant="link" size="xs" className="mt-1 h-auto p-0 text-xs text-zinc-500" onClick={onCreateFirstPortfolio}>Create your first portfolio</Button>
+          )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="border-white/10 bg-white/5" onClick={onRefresh} disabled={refreshing || !canRefresh}>
-            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Refresh prices
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+            onClick={onRefresh}
+            disabled={refreshing || !canRefresh}
+          >
+            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Refresh prices
           </Button>
-          <Button size="sm" onClick={onNewPortfolio}><Plus className="h-4 w-4" /> New portfolio</Button>
+          <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onNewPortfolio}>
+            <Plus className="h-3.5 w-3.5" /> New portfolio
+          </Button>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 min-[520px]:grid-cols-2 xl:grid-cols-4">
-          {[1, 2, 3].map((index) => <Card key={index} className="glass-card p-6"><Skeleton className="mb-4 h-6 w-24 bg-white/10" /><Skeleton className="h-8 w-32 bg-white/10" /><Skeleton className="mt-2 h-4 w-20 bg-white/10" /></Card>)}
+        <div className="grid grid-cols-2 gap-6 border-y border-white/[0.06] py-7 sm:gap-x-10 lg:grid-cols-[1.3fr_1fr_1fr_0.75fr] lg:gap-0">
+          {[1, 2, 3, 4].map((index) => (
+            <div key={index} className={index === 4 ? "hidden lg:block" : undefined}>
+              <Skeleton className="h-2.5 w-20 bg-white/[0.07]" />
+              <Skeleton className="mt-3 h-8 w-28 bg-white/[0.09]" />
+              <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.05]" />
+            </div>
+          ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 min-[520px]:grid-cols-2 xl:grid-cols-4">
-          <Card className="glass-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Total value</CardTitle><Wallet className="h-4 w-4 text-zinc-500" />
-            </CardHeader>
-            <CardContent><div className="tabular-nums text-3xl font-bold text-white">{fmtGBP(totalValue)}</div><p className="mt-1 text-xs text-zinc-500">Cost {fmtGBP(totalCost)}</p></CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Unrealized gain</CardTitle>{totalGain >= 0 ? <TrendingUp className="h-4 w-4 text-emerald-400" /> : <TrendingDown className="h-4 w-4 text-red-400" />}
-            </CardHeader>
-            <CardContent><div className="tabular-nums text-3xl font-bold" style={{ color: totalGain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(totalGain)} <span className="text-sm font-medium">{fmtPct(totalGainPct)}</span></div><p className="mt-1 text-xs text-zinc-500">Current positions only</p></CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Value change · {range}</CardTitle>{periodChange && periodChange.amount >= 0 ? <TrendingUp className="h-4 w-4 text-emerald-400" /> : <TrendingDown className="h-4 w-4 text-red-400" />}
-            </CardHeader>
-            <CardContent>
-              {periodChange ? <>
-                <div className="tabular-nums text-3xl font-bold" style={{ color: periodChange.amount >= 0 ? "#34d399" : "#f87171" }}>{periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))} <span className="text-sm font-medium">{periodChange.percent == null ? "" : fmtPct(periodChange.percent)}</span></div>
-                <p className="mt-1 text-xs text-zinc-500">Since {periodChange.fromDate} · trades can affect value</p>
-              </> : <>
-                <div className="text-3xl font-bold text-zinc-500">—</div>
-                <p className="mt-1 text-xs text-zinc-500">More saved history needed</p>
-              </>}
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardHeader className="pb-2"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Holdings</CardTitle></CardHeader>
-            <CardContent><div className="text-3xl font-bold text-white">{holdingCount}</div><p className="mt-1 text-xs text-zinc-500">{accountsCount} accounts • {portfoliosCount} portfolios</p></CardContent>
-          </Card>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.3fr_1fr_1fr_0.75fr] lg:gap-0 lg:py-7">
+          <div className="col-span-2 lg:col-span-1 lg:pr-8">
+            <p className={LABEL}>Total value</p>
+            <p className="mt-2 text-[38px] font-semibold leading-none tracking-tight tabular-nums text-white sm:text-[42px]">{fmtGBP(totalValue)}</p>
+            <p className={SUB}>Cost basis {fmtGBP(totalCost)}<span className="lg:hidden"> · {holdingCount} holdings</span></p>
+          </div>
+
+          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
+            <p className={LABEL}>Unrealized gain</p>
+            <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${gainColor}`}>
+              {totalGain >= 0 ? "+" : ""}{fmtGBP(totalGain)}
+              <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(totalGainPct)}</span>
+            </p>
+          </div>
+
+          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
+            <p className={LABEL}>Change · {range}</p>
+            {periodChange ? (
+              <>
+                <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${changeColor}`}>
+                  {periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))}
+                  <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{periodChange.percent == null ? "" : fmtPct(periodChange.percent)}</span>
+                </p>
+                <p className={SUB}>Since {formatSnapshotDate(periodChange.fromDate)}</p>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-zinc-600">—</p>
+                <p className={SUB}>More history needed</p>
+              </>
+            )}
+          </div>
+
+          <div className="hidden lg:block lg:border-l lg:border-white/[0.06] lg:pl-8">
+            <p className={LABEL}>Holdings</p>
+            <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-white">{holdingCount}</p>
+            <p className={SUB}>{portfoliosCount} portfolios</p>
+          </div>
         </div>
       )}
+
       {children}
     </DashboardLevel>
   );

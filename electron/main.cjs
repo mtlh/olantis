@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const path = require("node:path");
-const { app, BrowserWindow, Menu, WebContentsView, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, WebContentsView, dialog, ipcMain, shell } = require("electron");
 const { isAllowedNavigation, isExternalWebUrl } = require("./url-policy.cjs");
 
 const DEFAULT_APP_URL = "https://olantis.vercel.app";
@@ -9,6 +9,7 @@ const TITLEBAR_HEIGHT = 46;
 // Matches the app's own background (globals.css) so no white frame can show
 // through while the remote page loads.
 const APP_BACKGROUND = "#050507";
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const iconPath = app.isPackaged
   ? path.join(process.resourcesPath, "brand-mark.png")
   : path.join(__dirname, "..", "public", "brand", "mark-512.png");
@@ -157,10 +158,59 @@ if (!app.requestSingleInstanceLock()) {
     void appView.webContents.loadURL(APP_URL);
   }
 
+  function promptToRestart(version) {
+    const options = {
+      type: "info",
+      buttons: ["Restart now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: "Update ready",
+      message: `Olantis ${version} is ready to install.`,
+      detail: "Restart the app to finish updating. Choosing Later installs the update the next time you quit.",
+    };
+    const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+    return parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options);
+  }
+
+  function startAutoUpdates() {
+    // Auto-updates are resolved by electron-updater from the published GitHub
+    // release (see build.publish in package.json); skip them in dev runs.
+    if (!app.isPackaged) return;
+
+    let updater;
+    try {
+      ({ autoUpdater: updater } = require("electron-updater"));
+    } catch (error) {
+      console.error("[updater] electron-updater is unavailable:", error?.message ?? error);
+      return;
+    }
+
+    updater.logger = console;
+    updater.autoDownload = true;
+    updater.autoInstallOnAppQuit = true;
+    updater.on("error", (error) => console.error("[updater]", error?.message ?? error));
+    updater.on("update-downloaded", async (info) => {
+      try {
+        const { response } = await promptToRestart(info?.version ?? "a new version");
+        if (response === 0) updater.quitAndInstall(true, true);
+      } catch (error) {
+        console.error("[updater] restart prompt failed:", error?.message ?? error);
+      }
+    });
+
+    const check = () => {
+      updater.checkForUpdates().catch((error) => console.error("[updater] check failed:", error?.message ?? error));
+    };
+    check();
+    setInterval(check, UPDATE_CHECK_INTERVAL_MS).unref();
+  }
+
   app.whenReady().then(() => {
     // The integrated toolbar replaces the platform menu/title bar.
     Menu.setApplicationMenu(null);
     installWindowControls();
+    startAutoUpdates();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) installWindowControls();
     });

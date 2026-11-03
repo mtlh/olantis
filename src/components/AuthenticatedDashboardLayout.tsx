@@ -1,11 +1,9 @@
-import { Suspense } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DEMO_COOKIE, demoUserId } from "@/lib/auth";
 import { loadWorkspaceBootstrap, type WorkspaceBootstrap } from "@/lib/bootstrap";
 import { WorkspaceDataProvider } from "@/lib/store";
 import { Dashboard } from "@/components/Dashboard";
-import { WorkspaceBootScreen } from "@/components/WorkspaceBootScreen";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -51,29 +49,16 @@ export async function AuthenticatedDashboardLayout() {
   // real numbers instead of a client-fetch skeleton. If the database is
   // unreachable we fall back to the client-side loaders (null bootstrap).
   //
-  // The read is started here but awaited inside the Suspense boundary below, so
-  // the shell streams immediately. That matters most right after "Try demo":
-  // the redirect lands on a visible progress screen instead of an idle tab
-  // while the freshly seeded tenant is read back.
-  const bootstrap: Promise<WorkspaceBootstrap | null> = loadWorkspaceBootstrap(user.id).catch(() => null);
+  // Awaited here rather than behind a Suspense fallback on purpose: a demo
+  // click seeds the tenant, redirects to /dashboard and only then reads it back.
+  // Streaming a fallback meant the landing page's "Setting up demo…" button was
+  // immediately replaced by a second, near-identical loading screen. Holding the
+  // response instead keeps the button the visitor just pressed on screen until
+  // the dashboard is actually ready, then paints it in one go.
+  const bootstrap: WorkspaceBootstrap | null = await loadWorkspaceBootstrap(user.id).catch(() => null);
 
   return (
-    <Suspense fallback={<WorkspaceBootScreen isDemo={isDemo} />}>
-      <WorkspaceShell bootstrap={bootstrap} isDemo={isDemo} />
-    </Suspense>
-  );
-}
-
-async function WorkspaceShell({
-  bootstrap,
-  isDemo,
-}: {
-  bootstrap: Promise<WorkspaceBootstrap | null>;
-  isDemo: boolean;
-}) {
-  const value = await bootstrap;
-  return (
-    <WorkspaceDataProvider value={value}>
+    <WorkspaceDataProvider value={bootstrap}>
       <Dashboard isDemo={isDemo} />
     </WorkspaceDataProvider>
   );

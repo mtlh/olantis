@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, Tool
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
-import { evenAxisTicks, fmtGBP, gbpAxisFormatter, numericValues, paddedDomain } from "@/lib/format";
+import { evenAxisTicks, fmtGBP, fmtPrice, gbpAxisFormatter, numericValues, paddedDomain, priceAxisFormatter } from "@/lib/format";
 
 export type ValueTimeChartRow = {
   date: string;
@@ -32,7 +32,6 @@ export type ValueTimeChartDot = {
 type ValueTimeChartProps = {
   data: ValueTimeChartRow[];
   title: string;
-  detail: string;
   range: ChartRange;
   onRangeChange: (range: ChartRange) => void;
   color?: string;
@@ -41,6 +40,12 @@ type ValueTimeChartProps = {
   dots?: ValueTimeChartDot[];
   showTradeMarkers?: boolean;
   showSeriesToggle?: boolean;
+  /** Optional one-line note under the title. Omit it when the chart speaks for itself. */
+  description?: string;
+  /** Format as a per-share price in this currency instead of a GBP value. */
+  currency?: string | null;
+  /** `panel` uses the quieter overview surface; `glass` keeps the classic card. */
+  surface?: "glass" | "panel";
   className?: string;
 };
 
@@ -54,7 +59,6 @@ const TOOLTIP_STYLE = {
 export function ValueTimeChart({
   data,
   title,
-  detail,
   range,
   onRangeChange,
   color = "#ffffff",
@@ -63,6 +67,9 @@ export function ValueTimeChart({
   dots = [],
   showTradeMarkers = false,
   showSeriesToggle = false,
+  description,
+  currency,
+  surface = "glass",
   className = "",
 }: ValueTimeChartProps) {
   // Only the total is on by default so the Y axis stays tight around it;
@@ -89,16 +96,16 @@ export function ValueTimeChart({
     }
     return values;
   }, [chartZoom.visible, showSeriesToggle, totalVisible, visibleSeries]);
-  const axisFormatter = useMemo(() => gbpAxisFormatter(axisValues), [axisValues]);
+  const axisFormatter = useMemo(
+    () => (currency ? priceAxisFormatter(axisValues, currency) : gbpAxisFormatter(axisValues)),
+    [axisValues, currency],
+  );
   const axis = useMemo(() => evenAxisTicks(axisValues), [axisValues]);
   const yDomain = axis?.domain ?? paddedDomain(axisValues);
   const canShowDots = showTradeMarkers && (!showSeriesToggle || totalVisible);
   const visibleDates = useMemo(() => new Set(chartZoom.visible.map((row) => row.date)), [chartZoom.visible]);
   const visibleDots = useMemo(() => canShowDots ? dots.filter((dot) => visibleDates.has(dot.x)) : [], [canShowDots, dots, visibleDates]);
 
-  const description = showSeriesToggle
-    ? `${detail} • ${data.length} points • ${range}${visibleSeries.length ? ` • ${Number(totalVisible) + visibleSeries.length}/${1 + series.length} series` : ""}`
-    : `${data.length} points • ${detail}${dots.length ? ` • ${dots.length} trades` : ""}`;
   const totalStroke = showSeriesToggle ? "#ffffff" : color;
   const totalFillOpacity = showSeriesToggle ? 0.08 : 0.14;
 
@@ -113,14 +120,14 @@ export function ValueTimeChart({
   const showAllSeries = () => setVisibleKeys(new Set(["total", ...series.map((item) => item.key)]));
 
   return (
-    <Card className={`${className} glass-card`}>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle className="text-white">{title}</CardTitle>
-          <CardDescription>{description}</CardDescription>
+    <Card className={`${className} ${surface === "panel" ? "panel" : "glass-card"}`}>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className="min-w-0">
+          <CardTitle className="text-sm font-medium text-white">{title}</CardTitle>
+          {description && <CardDescription className="mt-1 text-xs text-zinc-500">{description}</CardDescription>}
         </div>
-        <div className="flex items-center gap-1">
-          <ChartRangeSelector range={range} onRangeChange={onRangeChange} />
+        <div className="flex items-center gap-2">
+          <ChartRangeSelector range={range} onRangeChange={onRangeChange} segmented />
           {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
         </div>
       </CardHeader>
@@ -134,7 +141,7 @@ export function ValueTimeChart({
               <ZoomSelectionArea labels={chartZoom.selectionLabels} />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
               <YAxis domain={yDomain ?? ["auto", "auto"]} ticks={axis?.ticks} tickFormatter={axisFormatter} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtGBP(Number(value))} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => (currency ? fmtPrice(Number(value), currency) : fmtGBP(Number(value)))} />
               {totalVisible && (
                 <Area
                   type="monotone"
@@ -157,23 +164,22 @@ export function ValueTimeChart({
           </ResponsiveContainer>
         </div>
         {canShowDots && dots.length > 0 && (
-          <div className="flex gap-3 mt-2 text-xs">
-            <span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span>
-            <span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span>
-            {!showSeriesToggle && <span className="text-zinc-600">Trades marked on chart</span>}
+          <div className="mt-2 flex gap-4 text-[11px]">
+            <span className="flex items-center gap-1.5 text-zinc-500"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Buy</span>
+            <span className="flex items-center gap-1.5 text-zinc-500"><span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Sell</span>
           </div>
         )}
         {showSeriesToggle && (
-          <div className="flex flex-wrap gap-1.5 mt-3 text-xs">
+          <div className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1.5 text-[11px]">
             {[{ key: "total", name: "Total", color: "#ffffff" }, ...series].map((item) => {
               const visible = visibleKeys.has(item.key);
               return (
-                <button key={item.key} type="button" onClick={() => toggleSeries(item.key)} title={`${visible ? "Hide" : "Show"} ${item.name}`} className={`flex items-center gap-1.5 px-2 py-1 rounded-full border transition-colors ${visible ? "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10" : "border-white/5 text-zinc-600 hover:text-zinc-400"}`}>
-                  <span className="w-3 h-0.5 rounded-full" style={{ background: item.color, opacity: visible ? 1 : 0.3 }} /> {item.name}
+                <button key={item.key} type="button" onClick={() => toggleSeries(item.key)} title={`${visible ? "Hide" : "Show"} ${item.name}`} className={`flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors ${visible ? "text-zinc-300 hover:text-white" : "text-zinc-600 hover:text-zinc-400"}`}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: item.color, opacity: visible ? 1 : 0.3 }} /> {item.name}
                 </button>
               );
             })}
-            {visibleSeries.length < series.length && <button type="button" onClick={showAllSeries} className="px-2 py-1 rounded-full text-zinc-500 hover:text-white underline underline-offset-2">Show all</button>}
+            {visibleSeries.length < series.length && <button type="button" onClick={showAllSeries} className="px-2 py-1 text-zinc-500 transition-colors hover:text-white">Show all</button>}
           </div>
         )}
       </CardContent>

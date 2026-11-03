@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Minus, Pencil, Plus, Search, Trash2, Wallet, X } from "lucide-react";
+import { Download, Minus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,6 +24,8 @@ type HoldingsTableProps = {
   onEdit: (holding: Holding) => void;
   onDelete: (holding: Holding) => void;
 };
+
+const HEAD = "h-8 px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600";
 
 export function HoldingsTable({
   portfolio,
@@ -84,105 +85,116 @@ export function HoldingsTable({
   };
 
   return (
-    <Card className="glass-card overflow-hidden">
-      <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b border-white/5">
-        <CardTitle className="flex-1 text-white">Holdings</CardTitle>
-        <div className="text-[11px] text-zinc-500 hidden lg:block mr-1">Buy / Sell on each row records a trade</div>
-        <div className="flex items-center gap-2 flex-wrap">
+    <section aria-labelledby="holdings-heading">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
+        <div className="flex items-baseline gap-2">
+          <h2 id="holdings-heading" className="text-sm font-medium text-white">Holdings</h2>
+          <span className="text-[11px] tabular-nums text-zinc-600">
+            {query ? `${filteredHoldings.length} of ${portfolio.holdings.length}` : filteredHoldings.length}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search symbol or name" className="w-44 pl-8 h-8 bg-white/5 border-white/10 text-xs" />
-            {query && <button type="button" onClick={() => setQuery("")} aria-label="Clear holdings search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"><X className="w-3 h-3" /></button>}
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search symbol or name"
+              className="h-8 w-full bg-white/[0.04] pl-8 text-xs sm:w-44"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery("")} aria-label="Clear holdings search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white">
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
           <Select value={sort} onValueChange={(value) => setSort((value ?? "value") as HoldingSort)}>
-            <SelectTrigger className="w-28 h-8 bg-white/5 border-white/10 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-28 bg-white/[0.04] text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="value">Value</SelectItem>
               <SelectItem value="gain">Gain</SelectItem>
               <SelectItem value="symbol">Symbol</SelectItem>
             </SelectContent>
           </Select>
-          <Button type="button" variant="outline" size="sm" className="h-8 bg-white/5 border-white/10" onClick={exportCsv} disabled={!portfolio.holdings.length}>
-            <Download className="w-3.5 h-3.5" /> CSV
+          <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={exportCsv} disabled={!portfolio.holdings.length}>
+            <Download className="h-3.5 w-3.5" /> CSV
           </Button>
         </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        {filteredHoldings.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 grid place-items-center mx-auto mb-3"><Wallet className="w-6 h-6 text-zinc-500" /></div>
-            <p className="text-sm text-zinc-400">{query ? "No holdings match your search." : "No holdings yet."}</p>
-            <p className="text-xs text-zinc-600 mt-1">{query ? "Try a different search or clear the filter." : "Add your first position to start tracking."}</p>
-            {!query && <Button type="button" className="mt-4" onClick={onAdd}><Plus className="w-4 h-4" /> Add holding</Button>}
-            {query && <Button type="button" variant="outline" className="mt-4" onClick={() => setQuery("")}>Clear search</Button>}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-white/5 hover:bg-transparent">
-                  <TableHead className="text-zinc-500">Asset</TableHead>
-                  <TableHead className="text-zinc-500 hidden md:table-cell">Shares • Avg cost</TableHead>
-                  <TableHead className="text-right text-zinc-500 hidden lg:table-cell">Current price</TableHead>
-                  <TableHead className="text-right text-zinc-500 hidden xl:table-cell">Cost basis</TableHead>
-                  <TableHead className="text-right text-zinc-500">Value</TableHead>
-                  <TableHead className="text-right text-zinc-500">Unrealized P/L</TableHead>
-                  <TableHead className="text-right text-zinc-500 hidden sm:table-cell">Weight</TableHead>
-                  <TableHead className="text-right text-zinc-500 hidden 2xl:table-cell">Updated</TableHead>
-                  <TableHead className="w-36" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredHoldings.map((holding) => {
-                  const value = holdingValueGBP(holding, fxRates);
-                  const cost = holdingCostGBP(holding, fxRates);
-                  const gain = value - cost;
-                  const returnPct = cost ? (gain / cost) * 100 : 0;
-                  const weight = totalValue > 0 ? value / totalValue * 100 : 0;
-                  const stale = staleHoldingIds.has(holding.id);
+      </div>
 
-                  return (
-                    <TableRow key={holding.id} className="border-white/5 hover:bg-white/[0.04] cursor-pointer" onClick={() => onSelect(holding)}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl grid place-items-center font-bold text-xs bg-white/10 border border-white/10 text-white shrink-0">{holding.symbol.slice(0, 3)}</div>
-                          <div className="min-w-0">
-                            <div className="font-medium text-sm text-white truncate">{holding.symbol}</div>
-                            <div className="text-xs text-zinc-500 truncate max-w-[160px]">{holding.name}</div>
-                            <div className="text-xs text-zinc-600 md:hidden">{holding.shares} × {fmtPrice(holding.avgPrice, holding.currency)}</div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-zinc-400 hidden md:table-cell">{holding.shares} × {fmtPrice(holding.avgPrice, holding.currency)}</TableCell>
-                      <TableCell className="text-right text-sm text-zinc-400 tabular-nums hidden lg:table-cell">{fmtPrice(holding.currentPrice, holding.currency)}</TableCell>
-                      <TableCell className="text-right text-sm text-zinc-400 tabular-nums hidden xl:table-cell">{fmtGBP(cost)}</TableCell>
-                      <TableCell className="text-right font-semibold text-white tabular-nums">{fmtGBP(value)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="font-medium tabular-nums" style={{ color: gain >= 0 ? "#34d399" : "#f87171" }}>{gain >= 0 ? "+" : "−"}{fmtGBP(Math.abs(gain))}</div>
-                        <div className="text-[11px] text-zinc-500 tabular-nums">{fmtPct(returnPct)}</div>
-                      </TableCell>
-                      <TableCell className="text-right text-xs tabular-nums text-zinc-400 hidden sm:table-cell">{weight.toFixed(1)}%</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums hidden 2xl:table-cell" title={holding.lastRefreshedAt ? new Date(holding.lastRefreshedAt * 1000).toLocaleString(dateFormat) : "No refresh recorded"}>
-                        {stale
-                          ? <span className="text-amber-400" title="No recent quote refresh is recorded for this holding">{holding.lastRefreshedAt ? `Stale · ${fmtRelative(holding.lastRefreshedAt, dateFormat)}` : "Unverified"}</span>
-                          : <span className="text-zinc-500">{fmtRelative(holding.lastRefreshedAt, dateFormat)}</span>}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          <Button type="button" variant="outline" size="xs" className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20" onClick={(event) => { event.stopPropagation(); onTrade(holding, "buy"); }} title="Buy / DCA"><Plus className="w-3.5 h-3.5" /> Buy</Button>
-                          <Button type="button" variant="outline" size="xs" className="bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20" onClick={(event) => { event.stopPropagation(); onTrade(holding, "sell"); }} title="Sell"><Minus className="w-3.5 h-3.5" /> Sell</Button>
-                          <Button type="button" variant="ghost" size="icon-xs" onClick={(event) => { event.stopPropagation(); onEdit(holding); }} aria-label={`Edit ${holding.symbol}`}><Pencil className="w-3.5 h-3.5" /></Button>
-                          <Button type="button" variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" onClick={(event) => { event.stopPropagation(); onDelete(holding); }} aria-label={`Delete ${holding.symbol}`}><Trash2 className="w-3.5 h-3.5" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {filteredHoldings.length === 0 ? (
+        <div className="border-y border-white/[0.06] px-4 py-14 text-center">
+          <p className="text-sm text-zinc-400">{query ? "No holdings match your search." : "No holdings yet."}</p>
+          <p className="mt-1 text-[11px] text-zinc-600">{query ? "Try a different symbol or name." : "Add your first position to start tracking it."}</p>
+          {!query && <Button type="button" size="sm" className="mt-4 rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onAdd}><Plus className="h-3.5 w-3.5" /> Add holding</Button>}
+          {query && <Button type="button" variant="ghost" size="sm" className="mt-4 text-zinc-400 hover:text-white" onClick={() => setQuery("")}>Clear search</Button>}
+        </div>
+      ) : (
+        <Table className="border-b border-white/[0.06]">
+          <TableHeader>
+            <TableRow className="border-white/[0.06] hover:bg-transparent">
+              <TableHead className={`${HEAD} first:pl-1`}>Asset</TableHead>
+              <TableHead className={`${HEAD} hidden md:table-cell`}>Shares · Avg cost</TableHead>
+              <TableHead className={`${HEAD} hidden text-right lg:table-cell`}>Current price</TableHead>
+              <TableHead className={`${HEAD} hidden text-right xl:table-cell`}>Cost basis</TableHead>
+              <TableHead className={`${HEAD} text-right`}>Value</TableHead>
+              <TableHead className={`${HEAD} text-right`}><span className="sm:hidden">P/L</span><span className="hidden sm:inline">Unrealized P/L</span></TableHead>
+              <TableHead className={`${HEAD} hidden text-right sm:table-cell`}>Weight</TableHead>
+              <TableHead className={`${HEAD} hidden text-right 2xl:table-cell`}>Updated</TableHead>
+              <TableHead className={`${HEAD} hidden w-36 sm:table-cell`} aria-label="Actions" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredHoldings.map((holding) => {
+              const value = holdingValueGBP(holding, fxRates);
+              const cost = holdingCostGBP(holding, fxRates);
+              const gain = value - cost;
+              const returnPct = cost ? (gain / cost) * 100 : 0;
+              const weight = totalValue > 0 ? value / totalValue * 100 : 0;
+              const stale = staleHoldingIds.has(holding.id);
+
+              return (
+                <TableRow key={holding.id} className="cursor-pointer border-white/[0.05] hover:bg-white/[0.025]" onClick={() => onSelect(holding)}>
+                  <TableCell className="pl-1">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.05] text-[10px] font-semibold text-zinc-300">{holding.symbol.slice(0, 3)}</div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-white">{holding.symbol}</div>
+                        <div className="max-w-[128px] truncate text-[11px] text-zinc-500 sm:max-w-[160px]">{holding.name}</div>
+                        <div className="text-[11px] tabular-nums text-zinc-600 md:hidden">{holding.shares} × {fmtPrice(holding.avgPrice, holding.currency)}</div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden text-sm tabular-nums text-zinc-400 md:table-cell">{holding.shares} × {fmtPrice(holding.avgPrice, holding.currency)}</TableCell>
+                  <TableCell className="hidden text-right text-sm tabular-nums text-zinc-400 lg:table-cell">{fmtPrice(holding.currentPrice, holding.currency)}</TableCell>
+                  <TableCell className="hidden text-right text-sm tabular-nums text-zinc-400 xl:table-cell">{fmtGBP(cost)}</TableCell>
+                  <TableCell className="text-right text-sm font-medium tabular-nums text-white">{fmtGBP(value)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className={`text-sm font-medium tabular-nums ${gain >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {gain >= 0 ? "+" : "−"}{fmtGBP(Math.abs(gain))}
+                    </div>
+                    <div className="text-[11px] tabular-nums text-zinc-600">{fmtPct(returnPct)}</div>
+                  </TableCell>
+                  <TableCell className="hidden text-right text-xs tabular-nums text-zinc-400 sm:table-cell">{weight.toFixed(1)}%</TableCell>
+                  <TableCell className="hidden text-right text-xs tabular-nums 2xl:table-cell" title={holding.lastRefreshedAt ? new Date(holding.lastRefreshedAt * 1000).toLocaleString(dateFormat) : "No refresh recorded"}>
+                    {stale
+                      ? <span className="text-amber-300/80" title="No recent quote refresh is recorded for this holding">{holding.lastRefreshedAt ? `Stale · ${fmtRelative(holding.lastRefreshedAt, dateFormat)}` : "Unverified"}</span>
+                      : <span className="text-zinc-500">{fmtRelative(holding.lastRefreshedAt, dateFormat)}</span>}
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <div className="flex justify-end gap-0.5">
+                      <Button type="button" variant="ghost" size="xs" className="px-1.5 text-zinc-400 hover:bg-white/[0.06] hover:text-white" onClick={(event) => { event.stopPropagation(); onTrade(holding, "buy"); }} title="Buy / DCA" aria-label={`Buy ${holding.symbol}`}><Plus className="h-3 w-3" /><span className="hidden sm:inline">Buy</span></Button>
+                      <Button type="button" variant="ghost" size="xs" className="px-1.5 text-zinc-400 hover:bg-white/[0.06] hover:text-white" onClick={(event) => { event.stopPropagation(); onTrade(holding, "sell"); }} title="Sell" aria-label={`Sell ${holding.symbol}`}><Minus className="h-3 w-3" /><span className="hidden sm:inline">Sell</span></Button>
+                      <Button type="button" variant="ghost" size="icon-xs" className="text-zinc-500 hover:text-white" onClick={(event) => { event.stopPropagation(); onEdit(holding); }} aria-label={`Edit ${holding.symbol}`}><Pencil className="h-3 w-3" /></Button>
+                      <Button type="button" variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" onClick={(event) => { event.stopPropagation(); onDelete(holding); }} aria-label={`Delete ${holding.symbol}`}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
+    </section>
   );
 }

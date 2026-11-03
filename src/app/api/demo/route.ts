@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+﻿import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";

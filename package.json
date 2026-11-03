@@ -8,13 +8,13 @@
     "dev": "next dev",
     "electron:dev": "node scripts/electron-dev.mjs",
     "electron:smoke": "node scripts/electron-dev.mjs --smoke-test",
-    "electron:pack": "electron-builder --dir --publish never",
-    "electron:dist": "electron-builder --publish never",
+    "electron:pack": "npm --prefix electron ci --omit=dev --no-audit --no-fund && electron-builder --dir --publish never",
+    "electron:dist": "npm --prefix electron ci --omit=dev --no-audit --no-fund && electron-builder --publish never && node scripts/verify-electron-update-manifest.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/format.test.mts tests/electron-policy.test.cjs",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/format.test.mts tests/electron-policy.test.cjs tests/electron-release.test.cjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
@@ -53,7 +53,6 @@
     "appId": "com.olantis.desktop",
     "productName": "Olantis",
     "asar": true,
-    "beforeBuild": "scripts/electron-no-deps.cjs",
     "extraResources": [
       {
         "from": "public/brand/mark-512.png",
@@ -66,6 +65,7 @@
     },
     "win": {
       "icon": "public/brand/mark-512.png",
+      "artifactName": "${productName}.Setup.${version}.${ext}",
       "target": [
         "nsis"
       ]
@@ -85,7 +85,15 @@
         "AppImage",
         "deb"
       ]
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "mtlh",
+        "repo": "olantis",
+        "releaseType": "release"
+      }
+    ]
   },
   "overrides": {
     "@esbuild-kit/core-utils": {

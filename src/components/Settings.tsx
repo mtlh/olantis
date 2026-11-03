@@ -1,14 +1,15 @@
 "use client";
-import { useAccounts, useProviders, usePortfolios } from "@/lib/store";
+import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings } from "@/lib/store";
 import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { Palette, Building2, Briefcase, Folder, Trash2, Download, Upload, Shield, Clock, Image as ImageIcon, Sparkles, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
+import { Building2, Briefcase, Folder, Trash2, Download, Upload, ChevronUp, ChevronDown } from "lucide-react";
 import { PALETTE, tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
+import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
+import { AllocationCard } from "@/components/dashboard/shared/AllocationCard";
+import { usePortfolioAllocation } from "@/components/dashboard/usePortfolioAllocation";
 
 interface SettingsState {
   currency: string | null;
@@ -16,6 +17,11 @@ interface SettingsState {
   defaultRange: string | null;
   showTradeMarkers: number | null;
 }
+
+const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
+const ROW_HINT = "mt-0.5 text-[11px] text-zinc-600";
+const FIELD = "w-full border-white/[0.08] bg-white/[0.03]";
+const ACTION = "justify-start rounded-full text-zinc-300 sm:justify-center";
 
 function parseCsv(source: string): string[][] {
   const rows: string[][] = [];
@@ -42,7 +48,46 @@ function parseCsv(source: string): string[][] {
 
 function Swatch({ color, active, onClick }: { color: string; active?: boolean; onClick?: () => void }) {
   return (
-    <button onClick={onClick} className={`w-8 h-8 rounded-full border-2 transition-all ${active ? "border-white scale-110 shadow-lg" : "border-white/10 hover:border-white/30"}`} style={{ background: color }} aria-label={color} />
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={!!active}
+      aria-label={`Use colour ${color}`}
+      className={`h-7 w-7 rounded-full border-2 transition-all ${active ? "scale-110 border-white" : "border-white/10 hover:border-white/30"}`}
+      style={{ background: color }}
+    />
+  );
+}
+
+function SegmentedToggle<T extends string | number>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
+  return (
+    <div className="flex w-fit items-center gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.03] p-0.5 md:justify-self-end">
+      {options.map((option) => (
+        <button
+          key={String(option.value)}
+          type="button"
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${value === option.value ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function OrderRow({ name, meta, color, onUp, onDown, upDisabled, downDisabled }: { name: string; meta?: string; color: string; onUp: () => void; onDown: () => void; upDisabled: boolean; downDisabled: boolean }) {
+  return (
+    <div className="flex items-center gap-2 py-2">
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+      <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{name}</span>
+      {meta && <span className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-zinc-600">{meta}</span>}
+      <div className="flex shrink-0 gap-0.5">
+        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${name} up`} disabled={upDisabled} onClick={onUp}><ChevronUp className="h-3.5 w-3.5" /></Button>
+        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${name} down`} disabled={downDisabled} onClick={onDown}><ChevronDown className="h-3.5 w-3.5" /></Button>
+      </div>
+    </div>
   );
 }
 
@@ -50,6 +95,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   const { accounts, setColor: setAccountColor, refresh: refreshAccounts } = useAccounts();
   const { providers, setColor: setProviderColor, refresh: refreshProviders } = useProviders();
   const { portfolios, setColor: setPortfolioColor, refresh: refreshPortfolios } = usePortfolios();
+  const { holdings: allHoldings } = useHoldings();
+  const { settings: appSettings } = useSettings();
   const { toast } = useToast();
   const [settings, setSettings] = useState<SettingsState>({ currency: "GBP", dateFormat: "en-GB", defaultRange: "1Y", showTradeMarkers: 1 });
   const [saving, setSaving] = useState<string | null>(null);
@@ -107,6 +154,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   };
 
   const sortedAccounts = useMemo(() => [...accounts].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [accounts]);
+  const sortedProviders = useMemo(() => [...providers].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [providers]);
+  const sortedPortfolios = useMemo(() => [...portfolios].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [portfolios]);
   const providersByAccount = useMemo(() => {
     const m = new Map<string, typeof providers>();
     for (const pr of providers) { const arr = m.get(pr.accountId) ?? []; arr.push(pr); m.set(pr.accountId, arr); }
@@ -128,6 +177,24 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     return { portfoliosByProvider: byProvider, portfoliosByAccount: byAccount, unassignedPortfolios: unassigned };
   }, [portfolios]);
 
+  const directHoldings = useMemo(() => allHoldings.filter((holding) => !holding.portfolioId), [allHoldings]);
+  const holdingCount = useMemo(
+    () => portfolios.reduce((sum, portfolio) => sum + portfolio.holdings.length, 0) + directHoldings.length,
+    [portfolios, directHoldings],
+  );
+  const allocation = usePortfolioAllocation({
+    activePortfolio: null,
+    portfolios,
+    directHoldings,
+    accounts,
+    providers,
+    fxRates: appSettings.fxRates,
+    activeBaseColor: null,
+    mode: "account",
+  });
+  const defaultRange: ChartRange = settings.defaultRange === "1M" || settings.defaultRange === "3M" || settings.defaultRange === "MAX" ? settings.defaultRange : "1Y";
+  const ordered = sortedAccounts.length === 0 && providers.length === 0 && portfolios.length === 0;
+
   const exportAll = async () => {
     const data = { accounts, providers, portfolios, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -135,203 +202,241 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   };
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
-          <p className="mt-1 text-sm text-zinc-500">Manage colors, preferences & data.</p>
-        </div>
-        <Badge variant="outline" className="border-white/10 text-zinc-400 hidden sm:inline-flex"><Sparkles className="w-3 h-3"/> Personalize everything</Badge>
+    <section className="space-y-6 pb-16 xl:pb-0">
+      <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Settings</h1>
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-6 border-y border-white/[0.06] py-6 sm:grid-cols-4 sm:gap-x-0">
+        {[
+          { label: "Accounts", value: accounts.length },
+          { label: "Providers", value: providers.length },
+          { label: "Portfolios", value: portfolios.length },
+          { label: "Holdings", value: holdingCount },
+        ].map((item, index) => (
+          <div key={item.label} className={index === 0 ? "sm:pr-8" : "sm:border-l sm:border-white/[0.06] sm:pl-8"}>
+            <p className={LABEL}>{item.label}</p>
+            <p className="mt-2 text-2xl font-semibold leading-none tracking-tight tabular-nums text-white">{item.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="space-y-4">
-        <Card className="glass-card border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-0 gap-0">
-          <details className="group">
-            <summary className="flex list-none cursor-pointer items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-semibold text-white"><Palette className="w-4 h-4"/> Color mapping <span className="text-xs font-normal text-zinc-500">{accounts.length} accounts · {providers.length} providers · {portfolios.length} portfolios</span></div>
-                <p className="mt-1 text-xs text-zinc-500">Assign colors for accounts, providers and portfolios.</p>
+      <div className="divide-y divide-white/[0.06] border-b border-white/[0.06]">
+        <section aria-labelledby="preferences-heading" className="py-6">
+          <h2 id="preferences-heading" className="text-sm font-medium text-white">Preferences</h2>
+          <div className="mt-4 divide-y divide-white/[0.05]">
+            <div className="grid gap-2 py-3.5 first:pt-0 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
+              <div>
+                <Label htmlFor="setting-currency">Default currency</Label>
+                <p className={ROW_HINT}>Applied to new holdings and trades.</p>
               </div>
-              <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="border-t border-white/5 px-4 py-4">
-          <CardContent className="space-y-5 p-0">
-            <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/5 w-fit">
-              {([
-                { key: "accounts" as const, label: "Accounts", icon: Building2, count: accounts.length },
-                { key: "providers" as const, label: "Providers", icon: Briefcase, count: providers.length },
-                { key: "portfolios" as const, label: "Portfolios", icon: Folder, count: portfolios.length },
-              ]).map(({ key, label, icon: Icon, count }) => (
-                <button key={key} onClick={() => setColorTab(key)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${colorTab === key ? "bg-white text-black shadow" : "text-zinc-400 hover:text-white hover:bg-white/5"}`}>
-                  <Icon className="w-3.5 h-3.5" /> {label}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${colorTab === key ? "bg-black/10 text-black/60" : "bg-white/10 text-zinc-500"}`}>{count}</span>
-                </button>
-              ))}
+              <Select value={settings.currency ?? "GBP"} onValueChange={v=> saveSettings({ currency: v })}>
+                <SelectTrigger id="setting-currency" className={FIELD}><span className="flex-1 text-left truncate">{settings.currency ?? "GBP"}</span></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GBP">GBP (£)</SelectItem>
+                  <SelectItem value="USD">USD ($)</SelectItem>
+                  <SelectItem value="EUR">EUR (€)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <p className="text-xs text-zinc-500">
-              {colorTab === "accounts" ? "Base colors — providers & portfolios inherit tints from these." : colorTab === "providers" ? "Inherit their account's color as a tint, or override with a fixed color." : "Auto-tint from the parent color, or pin a fixed color."}
-            </p>
 
-            {colorTab === "accounts" && (
-              accounts.length===0 ? <p className="text-sm text-zinc-500">No accounts yet. Create one from the sidebar.</p> : (
-                <div className="space-y-3">
-                  {accounts.map((acc) => {
-                    const base = resolveAccountColor(acc, accounts);
-                    return (
-                      <div key={acc.id} className="p-4 rounded-xl border border-white/5 bg-white/[0.03] flex flex-col gap-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="w-3 h-3 rounded-full" style={{ background: base }} />
-                            <span className="text-sm font-medium text-white">{acc.name}</span>
-                            <span className="text-xs text-zinc-600 hidden sm:inline">Account</span>
+            <div className="grid gap-2 py-3.5 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
+              <div>
+                <Label htmlFor="setting-date-format">Date format</Label>
+              </div>
+              <Select value={settings.dateFormat ?? "en-GB"} onValueChange={v=> saveSettings({ dateFormat: v })}>
+                <SelectTrigger id="setting-date-format" className={FIELD}><span className="flex-1 text-left truncate">{settings.dateFormat ?? "en-GB"}</span></SelectTrigger>
+                <SelectContent><SelectItem value="en-GB">Day / month / year</SelectItem><SelectItem value="en-US">Month / day / year</SelectItem><SelectItem value="de-DE">Day.month.year</SelectItem><SelectItem value="fr-FR">Day / month / year (French)</SelectItem></SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2 py-3.5 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Default chart range</p>
+                <p className={ROW_HINT}>Range every chart opens on.</p>
+              </div>
+              <ChartRangeSelector range={defaultRange} onRangeChange={(value) => saveSettings({ defaultRange: value })} segmented className="w-fit md:justify-self-end" />
+            </div>
+
+            <div className="grid gap-2 py-3.5 pb-0 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Trade markers</p>
+                <p className={ROW_HINT}>Buy and sell dots on portfolio charts.</p>
+              </div>
+              <SegmentedToggle
+                value={Number(settings.showTradeMarkers ?? 1)}
+                options={[{ value: 1, label: "On" }, { value: 0, label: "Off" }]}
+                onChange={(value) => saveSettings({ showTradeMarkers: value })}
+              />
+            </div>
+          </div>
+        </section>
+
+        <details className="group py-6" open>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
+            <span className="text-sm font-medium text-white">Colour mapping</span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="grid gap-6 pt-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-10">
+            <div className="min-w-0">
+              <div className="grid w-full grid-cols-3 gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.03] p-0.5 sm:inline-flex sm:w-fit sm:items-center">
+                {([
+                  { key: "accounts" as const, label: "Accounts", icon: Building2 },
+                  { key: "providers" as const, label: "Providers", icon: Briefcase },
+                  { key: "portfolios" as const, label: "Portfolios", icon: Folder },
+                ]).map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={colorTab === key}
+                    onClick={() => setColorTab(key)}
+                    className={`flex items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-medium transition-colors ${colorTab === key ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+                  >
+                    <Icon className="h-3.5 w-3.5" /> {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-[11px] text-zinc-600">
+                {colorTab === "accounts" ? "Base colour for each account; providers and portfolios tint from these." : colorTab === "providers" ? "Inherit the account tint, or pin a fixed colour." : "Follow the parent tint, or pin a fixed colour."}
+              </p>
+
+              {colorTab === "accounts" && (
+                accounts.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No accounts yet. Create one from the sidebar.</p> : (
+                  <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
+                    {sortedAccounts.map((acc) => {
+                      const base = resolveAccountColor(acc, accounts);
+                      return (
+                        <div key={acc.id} className="py-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: base }} />
+                              <span className="truncate text-sm font-medium text-white">{acc.name}</span>
+                            </div>
+                            {acc.color && <Button variant="ghost" size="xs" className="rounded-full text-zinc-500 hover:text-white" onClick={()=>handleAccountColor(acc.id, null)} disabled={saving===acc.id}>Reset</Button>}
                           </div>
-                          {acc.color && <Button variant="ghost" size="xs" className="text-zinc-500" onClick={()=>handleAccountColor(acc.id, null)} disabled={saving===acc.id}>Reset</Button>}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={acc.color===c.value} onClick={()=>handleAccountColor(acc.id, c.value)} />)}
-                          <div className="ml-2 pl-3 border-l border-white/10 flex items-center gap-2">
-                            <span className="text-xs text-zinc-500">Tint preview:</span>
-                            <div className="flex gap-1">
-                              {[0,0.18,-0.18,0.32].map((t,i)=> <span key={i} className="w-6 h-6 rounded-full border border-white/10" style={{ background: tintColor(base, t) }} title={`Tint ${t>0?"+":""}${t}`} />)}
+                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                            {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={acc.color===c.value} onClick={()=>handleAccountColor(acc.id, c.value)} />)}
+                            <div className="ml-1 hidden items-center gap-1.5 border-l border-white/[0.08] pl-2.5 sm:flex">
+                              {[0,0.18,-0.18,0.32].map((t,i)=> <span key={i} className="h-6 w-6 rounded-full border border-white/10" style={{ background: tintColor(base, t) }} title={`Tint ${t>0?"+":""}${t}`} />)}
                             </div>
                           </div>
                         </div>
-                        <div className="text-xs text-zinc-600">Portfolios in this account will auto-tint from this base unless overridden.</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )
-            )}
+                      );
+                    })}
+                  </div>
+                )
+              )}
 
-            {colorTab === "providers" && (
-              providers.length===0 ? <p className="text-sm text-zinc-500">No providers yet. Add one inside an account.</p> : (
-                <div className="space-y-3">
-                  {providers.map((pr)=>{
-                    const acc = accounts.find(a=>a.id===pr.accountId);
-                    const base = resolveProviderColor(pr, providers, accounts);
-                    return (
-                      <div key={pr.id} className="p-4 rounded-xl border border-white/5 bg-black/20 flex flex-col gap-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: base }} />
-                            <span className="text-sm text-white font-medium">{pr.name}</span>
-                            <Badge variant="outline" className="text-[11px] border-white/10 text-zinc-500">{acc?.name ?? "—"}</Badge>
+              {colorTab === "providers" && (
+                providers.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No providers yet. Add one inside an account.</p> : (
+                  <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
+                    {sortedProviders.map((pr)=>{
+                      const acc = accounts.find(a=>a.id===pr.accountId);
+                      const base = resolveProviderColor(pr, providers, accounts);
+                      return (
+                        <div key={pr.id} className="py-4">
+                          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: base }} />
+                            <span className="truncate text-sm font-medium text-white">{pr.name}</span>
+                            <span className="shrink-0 text-[11px] text-zinc-600">{acc?.name ?? "—"}</span>
                           </div>
-                          <div className="flex gap-1">
-                            {pr.color && <Button variant="ghost" size="xs" onClick={()=>handleProviderColor(pr.id, null)} disabled={saving===pr.id}>Auto</Button>}
+                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                            <button type="button" aria-pressed={!pr.color} onClick={()=>handleProviderColor(pr.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!pr.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-500 hover:text-zinc-300"}`}>Auto tint</button>
+                            {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={pr.color===c.value} onClick={()=>handleProviderColor(pr.id, c.value)} />)}
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          <button onClick={()=>handleProviderColor(pr.id, null)} className={`px-3 py-1.5 rounded-full text-xs border ${!pr.color ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10"}`}>Auto tint of {acc?.name ?? "account"}</button>
-                          {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={pr.color===c.value} onClick={()=>handleProviderColor(pr.id, c.value)} />)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )
-            )}
+                      );
+                    })}
+                  </div>
+                )
+              )}
 
-            {colorTab === "portfolios" && (
-              portfolios.length===0 ? <p className="text-sm text-zinc-500">No portfolios yet.</p> : (
-                <div className="space-y-3">
-                  {portfolios.map((p)=>{
-                    const prov = providers.find(pr=> pr.id===p.providerId);
-                    const acc = accounts.find(a=>a.id===p.accountId) ?? (prov ? accounts.find(a=>a.id===prov.accountId) : null);
-                    const inherited = !p.color;
-                    const tinted = resolvePortfolioColor(p, portfolios, providers, accounts);
-                    return (
-                      <div key={p.id} className="p-4 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col gap-3">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 rounded-full border border-white/20" style={{ background: tinted }} />
-                            <span className="text-sm font-medium text-white">{p.name}</span>
-                            <Badge variant="outline" className="border-white/10 text-zinc-500 text-[11px] capitalize">{p.type}</Badge>
-                            <span className="text-xs text-zinc-600 hidden md:inline">{acc?.name ?? "Unassigned"} {prov ? `› ${prov.name}` : ""}</span>
-                            {inherited && <Badge variant="outline" className="border-amber-500/20 text-amber-300 text-[11px] bg-amber-500/10">Auto tint</Badge>}
+              {colorTab === "portfolios" && (
+                portfolios.length===0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No portfolios yet.</p> : (
+                  <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
+                    {sortedPortfolios.map((p)=>{
+                      const prov = providers.find(pr=> pr.id===p.providerId);
+                      const acc = accounts.find(a=>a.id===p.accountId) ?? (prov ? accounts.find(a=>a.id===prov.accountId) : null);
+                      const tinted = resolvePortfolioColor(p, portfolios, providers, accounts);
+                      return (
+                        <div key={p.id} className="py-4">
+                          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/20" style={{ background: tinted }} />
+                            <span className="truncate text-sm font-medium text-white">{p.name}</span>
+                            <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{p.type}</span>
+                            <span className="truncate text-[11px] text-zinc-600">{acc?.name ?? "Unassigned"} {prov ? `/ ${prov.name}` : ""}</span>
                           </div>
-                          {!p.color ? null : <Button variant="ghost" size="xs" onClick={()=>handlePortfolioColor(p.id, null)} disabled={saving===p.id}>Auto</Button>}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 items-center">
-                          <button onClick={()=>handlePortfolioColor(p.id, null)} className={`px-3 py-1 rounded-full text-xs border ${!p.color ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-zinc-400"}`}>Auto tint</button>
-                          {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={p.color===c.value} onClick={()=>handlePortfolioColor(p.id, c.value)} />)}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-zinc-600">
-                          <span className="w-16">Preview:</span>
-                          <div className="h-2 flex-1 rounded-full overflow-hidden flex">
-                            {[0,0.18,-0.18].map((t,i)=> <div key={i} className="flex-1" style={{ background: tintColor(tinted, t) }} />)}
+                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                            <button type="button" aria-pressed={!p.color} onClick={()=>handlePortfolioColor(p.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!p.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-500 hover:text-zinc-300"}`}>Auto tint</button>
+                            {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={p.color===c.value} onClick={()=>handlePortfolioColor(p.id, c.value)} />)}
                           </div>
-                          <span className="hidden sm:inline">Used in sidebar & charts</span>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )
-            )}
-
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-400">
-              <Palette className="w-4 h-4 shrink-0"/> Colors sync instantly — sidebar dots, provider headers, allocation pie & performance lines all use the same mapping. Auto tints generate lighter/darker variants so portfolios stay distinct but on-brand.
+                      );
+                    })}
+                  </div>
+                )
+              )}
             </div>
-          </CardContent>
-            </div>
-          </details>
-        </Card>
 
-        <Card className="glass-card border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-0 gap-0">
-          <details className="group">
-            <summary className="flex list-none cursor-pointer items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-semibold text-white"><ArrowUpDown className="w-4 h-4"/> Sidebar order <span className="text-xs font-normal text-zinc-500">{sortedAccounts.length + providers.length + portfolios.length} items</span></div>
-                <p className="mt-1 text-xs text-zinc-500">Choose the display order for accounts, providers and portfolios.</p>
-              </div>
-              <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="border-t border-white/5 px-4 py-4">
-          <CardContent className="space-y-5 p-0">
-            {sortedAccounts.length === 0 && providers.length === 0 && portfolios.length === 0 ? (
+            <div className="min-w-0 xl:self-start">
+              <AllocationCard
+                allocation={allocation}
+                mode="account"
+                onModeChange={() => {}}
+                showModeSelector={false}
+                surface="panel"
+                emptyMessage="Add holdings to preview account colours"
+              />
+            </div>
+          </div>
+        </details>
+
+        <details className="group py-6">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
+            <span className="text-sm font-medium text-white">Sidebar order</span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="pt-4">
+            {ordered ? (
               <p className="text-sm text-zinc-500">Nothing to reorder yet.</p>
             ) : (
               <>
                 <div>
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Building2 className="w-4 h-4 text-zinc-500"/> Accounts</h3>
-                  {sortedAccounts.length === 0 ? <p className="text-xs text-zinc-500">No accounts</p> : (
-                    <div className="space-y-1">
+                  <p className={LABEL}>Accounts</p>
+                  {sortedAccounts.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No accounts</p> : (
+                    <div className="mt-2 divide-y divide-white/[0.05]">
                       {sortedAccounts.map((acc, i) => (
-                        <div key={acc.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
-                          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: acc.color || PALETTE[i % PALETTE.length].value }} />
-                          <span className="flex-1 text-sm text-white truncate">{acc.name}</span>
-                          <div className="flex gap-0.5">
-                            <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${acc.name} up`} disabled={i === 0} onClick={() => moveItem("accounts", sortedAccounts, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                            <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${acc.name} down`} disabled={i === sortedAccounts.length - 1} onClick={() => moveItem("accounts", sortedAccounts, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
-                          </div>
-                        </div>
+                        <OrderRow
+                          key={acc.id}
+                          name={acc.name}
+                          color={resolveAccountColor(acc, accounts)}
+                          upDisabled={i === 0}
+                          downDisabled={i === sortedAccounts.length - 1}
+                          onUp={() => moveItem("accounts", sortedAccounts, i, -1)}
+                          onDown={() => moveItem("accounts", sortedAccounts, i, 1)}
+                        />
                       ))}
                     </div>
                   )}
                 </div>
 
-                <div className="h-px bg-white/5" />
-
-                <div>
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Briefcase className="w-4 h-4 text-zinc-500"/> Providers</h3>
-                  {providers.length === 0 ? <p className="text-xs text-zinc-500">No providers</p> : sortedAccounts.map(acc => {
+                <div className="mt-5 border-t border-white/[0.05] pt-5">
+                  <p className={LABEL}>Providers</p>
+                  {providers.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No providers</p> : sortedAccounts.map(acc => {
                     const provs = providersByAccount.get(acc.id) ?? [];
                     if (provs.length === 0) return null;
                     return (
-                      <div key={acc.id} className="mb-3">
-                        <div className="text-[11px] text-zinc-500 mb-1 ml-1">{acc.name}</div>
-                        <div className="space-y-1">
+                      <div key={acc.id} className="mt-3 first:mt-2">
+                        <p className="text-[11px] text-zinc-500">{acc.name}</p>
+                        <div className="divide-y divide-white/[0.05]">
                           {provs.map((pr, i) => (
-                            <div key={pr.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: pr.color || acc.color || PALETTE[0].value }} />
-                              <span className="flex-1 text-sm text-white truncate">{pr.name}</span>
-                              <div className="flex gap-0.5">
-                                <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${pr.name} up`} disabled={i === 0} onClick={() => moveItem("providers", provs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                                <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${pr.name} down`} disabled={i === provs.length - 1} onClick={() => moveItem("providers", provs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
-                              </div>
-                            </div>
+                            <OrderRow
+                              key={pr.id}
+                              name={pr.name}
+                              color={resolveProviderColor(pr, providers, accounts)}
+                              upDisabled={i === 0}
+                              downDisabled={i === provs.length - 1}
+                              onUp={() => moveItem("providers", provs, i, -1)}
+                              onDown={() => moveItem("providers", provs, i, 1)}
+                            />
                           ))}
                         </div>
                       </div>
@@ -339,12 +444,10 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                   })}
                 </div>
 
-                <div className="h-px bg-white/5" />
-
-                <div>
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3"><Folder className="w-4 h-4 text-zinc-500"/> Portfolios</h3>
-                  {portfolios.length === 0 ? <p className="text-xs text-zinc-500">No portfolios</p> : (
-                    <div className="space-y-4">
+                <div className="mt-5 border-t border-white/[0.05] pt-5">
+                  <p className={LABEL}>Portfolios</p>
+                  {portfolios.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No portfolios</p> : (
+                    <div className="mt-2 space-y-4">
                       {sortedAccounts.map(acc => {
                         const provs = providersByAccount.get(acc.id) ?? [];
                         const directPfs = portfoliosByAccount.get(acc.id) ?? [];
@@ -352,43 +455,45 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                         if (!hasContent) return null;
                         return (
                           <div key={acc.id}>
-                            <div className="text-[11px] text-zinc-500 mb-1 ml-1 flex items-center gap-1"><Building2 className="w-3 h-3"/> {acc.name}</div>
+                            <p className="text-[11px] text-zinc-500">{acc.name}</p>
                             {provs.map(pr => {
                               const pfs = portfoliosByProvider.get(pr.id) ?? [];
                               if (pfs.length === 0) return null;
                               return (
-                                <div key={pr.id} className="ml-3 mb-2">
-                                  <div className="text-[11px] text-zinc-600 mb-1 ml-1">{pr.name}</div>
-                                  <div className="space-y-1">
+                                <div key={pr.id} className="pl-3">
+                                  <p className="text-[11px] text-zinc-600">{pr.name}</p>
+                                  <div className="divide-y divide-white/[0.05]">
                                     {pfs.map((p, i) => (
-                                      <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
-                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color || pr.color || acc.color || PALETTE[0].value }} />
-                                        <span className="flex-1 text-sm text-white truncate">{p.name}</span>
-                                        <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
-                                        <div className="flex gap-0.5">
-                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} up`} disabled={i === 0} onClick={() => moveItem("portfolios", pfs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} down`} disabled={i === pfs.length - 1} onClick={() => moveItem("portfolios", pfs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
-                                        </div>
-                                      </div>
+                                      <OrderRow
+                                        key={p.id}
+                                        name={p.name}
+                                        meta={p.type}
+                                        color={resolvePortfolioColor(p, portfolios, providers, accounts)}
+                                        upDisabled={i === 0}
+                                        downDisabled={i === pfs.length - 1}
+                                        onUp={() => moveItem("portfolios", pfs, i, -1)}
+                                        onDown={() => moveItem("portfolios", pfs, i, 1)}
+                                      />
                                     ))}
                                   </div>
                                 </div>
                               );
                             })}
                             {directPfs.length > 0 && (
-                              <div className="ml-3 mb-2">
-                                <div className="text-[11px] text-zinc-600 mb-1 ml-1">Direct</div>
-                                <div className="space-y-1">
+                              <div className="pl-3">
+                                <p className="text-[11px] text-zinc-600">Direct</p>
+                                <div className="divide-y divide-white/[0.05]">
                                   {directPfs.map((p, i) => (
-                                    <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
-                                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color || acc.color || PALETTE[0].value }} />
-                                      <span className="flex-1 text-sm text-white truncate">{p.name}</span>
-                                      <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
-                                      <div className="flex gap-0.5">
-                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} up`} disabled={i === 0} onClick={() => moveItem("portfolios", directPfs, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                                        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} down`} disabled={i === directPfs.length - 1} onClick={() => moveItem("portfolios", directPfs, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
-                                      </div>
-                                    </div>
+                                    <OrderRow
+                                      key={p.id}
+                                      name={p.name}
+                                      meta={p.type}
+                                      color={resolvePortfolioColor(p, portfolios, providers, accounts)}
+                                      upDisabled={i === 0}
+                                      downDisabled={i === directPfs.length - 1}
+                                      onUp={() => moveItem("portfolios", directPfs, i, -1)}
+                                      onDown={() => moveItem("portfolios", directPfs, i, 1)}
+                                    />
                                   ))}
                                 </div>
                               </div>
@@ -398,18 +503,19 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                       })}
                       {unassignedPortfolios.length > 0 && (
                         <div>
-                          <div className="text-[11px] text-zinc-500 mb-1 ml-1">Unassigned</div>
-                          <div className="space-y-1">
+                          <p className="text-[11px] text-zinc-500">Unassigned</p>
+                          <div className="divide-y divide-white/[0.05]">
                             {unassignedPortfolios.map((p, i) => (
-                              <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/5">
-                                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color || PALETTE[0].value }} />
-                                <span className="flex-1 text-sm text-white truncate">{p.name}</span>
-                                <span className="text-[10px] text-zinc-600 capitalize">{p.type}</span>
-                                <div className="flex gap-0.5">
-                                  <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} up`} disabled={i === 0} onClick={() => moveItem("portfolios", unassignedPortfolios, i, -1)}><ChevronUp className="w-3.5 h-3.5"/></Button>
-                                  <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${p.name} down`} disabled={i === unassignedPortfolios.length - 1} onClick={() => moveItem("portfolios", unassignedPortfolios, i, 1)}><ChevronDown className="w-3.5 h-3.5"/></Button>
-                                </div>
-                              </div>
+                              <OrderRow
+                                key={p.id}
+                                name={p.name}
+                                meta={p.type}
+                                color={resolvePortfolioColor(p, portfolios, providers, accounts)}
+                                upDisabled={i === 0}
+                                downDisabled={i === unassignedPortfolios.length - 1}
+                                onUp={() => moveItem("portfolios", unassignedPortfolios, i, -1)}
+                                onDown={() => moveItem("portfolios", unassignedPortfolios, i, 1)}
+                              />
                             ))}
                           </div>
                         </div>
@@ -419,79 +525,32 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 </div>
               </>
             )}
-          </CardContent>
+          </div>
+        </details>
+
+        <section aria-labelledby="data-heading" className="py-6">
+          <h2 id="data-heading" className="text-sm font-medium text-white">Data &amp; privacy</h2>
+          <div className="mt-4 divide-y divide-white/[0.05]">
+            <div className="flex flex-col gap-3 py-3.5 first:pt-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div>
+                <p className="text-sm text-zinc-200">Export workspace</p>
+                <p className={ROW_HINT}>Accounts, providers, portfolios and holdings as JSON.</p>
+              </div>
+              <Button variant="ghost" size="sm" className={ACTION} onClick={exportAll}><Download className="h-4 w-4" /> Export JSON</Button>
             </div>
-          </details>
-        </Card>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-white"><Clock className="w-4 h-4"/> Preferences</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-x-4 gap-y-3 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Default currency</Label>
-                <Select value={settings.currency ?? "GBP"} onValueChange={v=> saveSettings({ currency: v })}>
-                  <SelectTrigger><span className="flex-1 text-left truncate">{settings.currency ?? "GBP"}</span></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GBP">GBP (£)</SelectItem>
-                    <SelectItem value="USD">USD ($)</SelectItem>
-                    <SelectItem value="EUR">EUR (€)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-zinc-600">Applied to new holdings and trades. Existing holdings keep the currency they were recorded with.</p>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Date format</Label>
-                <Select value={settings.dateFormat ?? "en-GB"} onValueChange={v=> saveSettings({ dateFormat: v })}>
-                  <SelectTrigger><span className="flex-1 text-left truncate">{settings.dateFormat ?? "en-GB"}</span></SelectTrigger>
-                  <SelectContent><SelectItem value="en-GB">Day / month / year</SelectItem><SelectItem value="en-US">Month / day / year</SelectItem><SelectItem value="de-DE">Day.month.year</SelectItem><SelectItem value="fr-FR">Day / month / year (French)</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Default chart range</Label>
-                <Select value={settings.defaultRange ?? "1Y"} onValueChange={v=> saveSettings({ defaultRange: v })}>
-                  <SelectTrigger><span className="flex-1 text-left truncate">{settings.defaultRange ?? "1Y"}</span></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1M">1M</SelectItem>
-                    <SelectItem value="3M">3M</SelectItem>
-                    <SelectItem value="1Y">1Y</SelectItem>
-                    <SelectItem value="MAX">MAX</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-zinc-600">Range every chart opens on. You can still switch per chart.</p>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Show trade markers on charts</Label>
-                <Select value={String(settings.showTradeMarkers ?? 1)} onValueChange={v=> saveSettings({ showTradeMarkers: Number(v) })}>
-                  <SelectTrigger><span className="flex-1 text-left truncate">{Number(settings.showTradeMarkers ?? 1) ? "On" : "Off"}</span></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">On — green buy / red sell dots</SelectItem>
-                    <SelectItem value="0">Off</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-zinc-600">Applies to portfolio and single-stock charts.</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-white"><Shield className="w-4 h-4"/> Data & privacy</CardTitle>
-              <CardDescription>Export, import & danger zone.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" onClick={exportAll}><Download className="w-4 h-4"/> Export all as JSON</Button>
-              <details className="group rounded-xl border border-white/10 bg-white/[0.03]">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm text-zinc-200 [&::-webkit-details-marker]:hidden">
-                  <span className="flex items-center gap-2"><Upload className="w-3.5 h-3.5 text-zinc-500"/> Import CSV into portfolio</span>
-                  <ChevronDown className="w-4 h-4 text-zinc-500 transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="space-y-2 border-t border-white/5 p-3">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3.5 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <p className="text-sm text-zinc-200">Import CSV</p>
+                  <p className={ROW_HINT}>Holdings or buy/sell trades into a portfolio.</p>
+                </div>
+                <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="space-y-2 pb-4">
                 <Label htmlFor="import-portfolio" className="sr-only">Import CSV into portfolio</Label>
                 <Select value={importPortfolioId} onValueChange={(value) => setImportPortfolioId(value ?? "")}>
-                  <SelectTrigger id="import-portfolio"><span className="flex-1 text-left truncate">{portfolios.find((p) => p.id === importPortfolioId)?.name ?? "Choose portfolio"}</span></SelectTrigger>
+                  <SelectTrigger id="import-portfolio" className={FIELD}><span className="flex-1 text-left truncate">{portfolios.find((p) => p.id === importPortfolioId)?.name ?? "Choose portfolio"}</span></SelectTrigger>
                   <SelectContent>{portfolios.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                 </Select>
                 <input
@@ -542,52 +601,53 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     } finally { setImporting(false); }
                   }}
                 />
-                <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" disabled={importing || !importPortfolioId} onClick={() => document.getElementById("import-csv")?.click()}><Upload className="w-4 h-4"/>{importing ? "Importing…" : "Import holdings or buy/sell CSV"}</Button>
-                <p className="text-xs text-zinc-600">Holdings: Symbol, Name, Shares, AvgPrice, CurrentPrice, Currency. Trades: Symbol, Type, Shares, Price, Date.</p>
-                </div>
-              </details>
+                <Button variant="outline" size="sm" className={`${ACTION} w-full border-white/[0.08] bg-white/[0.03]`} disabled={importing || !importPortfolioId} onClick={() => document.getElementById("import-csv")?.click()}><Upload className="h-4 w-4" />{importing ? "Importing…" : "Choose CSV file"}</Button>
+                <p className="text-[11px] text-zinc-600">Holdings: Symbol, Name, Shares, AvgPrice, CurrentPrice, Currency. Trades: Symbol, Type, Shares, Price, Date.</p>
+              </div>
+            </details>
+
+            <div className="flex flex-col gap-3 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div>
+                <p className="text-sm text-zinc-200">Demo data</p>
+                <p className={ROW_HINT}>{isDemo ? "This workspace is showing the demo dataset." : "Load a complete example workspace."}</p>
+              </div>
               {/* eslint-disable-next-line @next/next/no-location-assign-relative-destination */}
-              <Button variant="outline" className="w-full justify-start gap-2 bg-white/5 border-white/10" onClick={()=> { window.location.href="/api/demo"; }} disabled={isDemo}><Upload className="w-4 h-4"/> Load demo data</Button>
-              <details className="group rounded-xl border border-red-500/20 bg-red-500/[0.06]">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium text-red-300 [&::-webkit-details-marker]:hidden">
-                  <span className="flex items-center gap-2"><Trash2 className="w-4 h-4"/> Danger zone</span>
-                  <ChevronDown className="w-4 h-4 text-red-300/60 transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="border-t border-red-500/15 p-3">
-                <p className="text-xs text-red-300/70">Delete all portfolios and holdings. Accounts & providers remain. Cannot be undone.</p>
-                <Button variant="ghost" size="sm" className="mt-2 bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/20" onClick={async()=>{
+              <Button variant="ghost" size="sm" className={ACTION} onClick={()=> { window.location.href="/api/demo"; }} disabled={isDemo}><Upload className="h-4 w-4" /> {isDemo ? "Demo active" : "Load demo data"}</Button>
+            </div>
+
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3.5 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <p className="text-sm font-medium text-red-300">Danger zone</p>
+                  <p className="mt-0.5 text-[11px] text-red-300/50">Delete every portfolio and holding.</p>
+                </div>
+                <ChevronDown className="h-4 w-4 shrink-0 text-red-300/60 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="pb-4">
+                <p className="text-[11px] text-red-300/70">Accounts and providers remain. This cannot be undone.</p>
+                <Button variant="ghost" size="sm" className="mt-2 rounded-full border border-red-500/20 bg-red-500/10 text-red-300 hover:bg-red-500/20" onClick={async()=>{
                   if(!confirm("Delete ALL portfolios?")) return;
                   for(const p of portfolios){ await fetch(`/api/portfolios?id=${p.id}`, { method:"DELETE" }); }
                   location.reload();
-                }}><Trash2 className="w-3.5 h-3.5"/> Delete all portfolios</Button>
-                </div>
-              </details>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="glass-card p-0 gap-0">
-          <details className="group">
-            <summary className="flex list-none cursor-pointer items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-white"><ImageIcon className="w-4 h-4"/> Theme palette <span className="text-xs font-normal text-zinc-500">{PALETTE.length} data colors</span></div>
-                <p className="mt-1 text-xs text-zinc-500">Black glass with neutral cards; color is reserved for data.</p>
+                }}><Trash2 className="h-3.5 w-3.5" /> Delete all portfolios</Button>
               </div>
-              <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
-            </summary>
-            <CardContent className="flex flex-wrap gap-2 border-t border-white/5 py-3">
+            </details>
+          </div>
+        </section>
+
+        <section aria-labelledby="palette-heading" className="py-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="palette-heading" className="text-sm font-medium text-white">Palette</h2>
+            <span className="text-[11px] text-zinc-600">{PALETTE.length} data colours</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2.5">
             {PALETTE.map(c=> (
-              <div key={c.value} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs">
-                <span className="w-3 h-3 rounded-full" style={{ background: c.value }} /> {c.label}
-              </div>
+              <span key={c.value} className="flex items-center gap-2 text-[11px] text-zinc-500">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.value }} /> {c.label}
+              </span>
             ))}
-          </CardContent>
-          </details>
-        </Card>
-
-        <div className="text-center text-xs text-zinc-600">
-          Olantis • Your portfolios, beautifully simple.
-        </div>
+          </div>
+        </section>
       </div>
     </section>
   );
