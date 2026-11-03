@@ -22,14 +22,14 @@ const MAX_ENTRIES = 500;
 
 /** Hard TTL — entries older than this are never served. */
 const HARD_TTL = {
-  quote: 5 * 60_000,
+  quote: 24 * 60 * 60_000,
   chart: 15 * 60_000,
   search: 10 * 60_000,
 } as const;
 
 /** Soft TTL — fresh window; after this we refresh but can still serve stale. */
 const SOFT_TTL = {
-  quote: 30_000,
+  quote: 90_000,
   chart: 5 * 60_000,
   search: 60_000,
 } as const;
@@ -100,7 +100,7 @@ function retryAfterFrom(err: unknown): number {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     await acquire();
@@ -181,4 +181,21 @@ export function invalidateCache(prefix?: string) {
 
 export function cacheStats() {
   return { size: cache.size, inflight: inflight.size, active };
+}
+
+export function getCachedEntry<T>(kind: CacheKind, key: string): { value: T; at: number; staleAt: number } | undefined {
+  const ck = `${kind}:${key}`;
+  return cache.get(ck) as { value: T; at: number; staleAt: number } | undefined;
+}
+
+export function setCachedEntry<T>(kind: CacheKind, key: string, value: T) {
+  const ck = `${kind}:${key}`;
+  cache.set(ck, { value, at: Date.now(), staleAt: Date.now() });
+  prune();
+}
+
+export function isFresh(kind: CacheKind, key: string): boolean {
+  const hit = cache.get(`${kind}:${key}`) as CacheEntry<unknown> | undefined;
+  if (!hit) return false;
+  return Date.now() - hit.at < SOFT_TTL[kind];
 }

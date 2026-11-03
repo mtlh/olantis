@@ -18,6 +18,10 @@ export type PerformanceChartRow = {
 export type PerformanceSeries = { key: string; name: string; color: string };
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
+
+// Module-level cache of benchmark series, keyed by symbol, so remounts/route
+// changes do not refetch the benchmark MAX chart.
+const benchmarkCache = new Map<string, Array<{ date: string; price: number }>>();
 const SUB = "mt-2 text-[11px] text-zinc-600";
 
 function tone(value: number | null | undefined) {
@@ -54,11 +58,23 @@ export function PerformanceChart({
 
   useEffect(() => {
     if (benchmark === "__none__") return;
+    const cacheKey = `${benchmark}:MAX`;
+    const cachedRows = benchmarkCache.get(cacheKey);
+    if (cachedRows) {
+      const rows = cachedRows;
+      setTimeout(() => setBenchmarkPrices({ key: cacheKey, rows }), 0);
+      return;
+    }
     let cancelled = false;
     fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=MAX`)
       .then(async (response) => response.ok ? (await response.json()).chart as Array<{ date: string; price: number }> : [])
-      .then((rows) => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:MAX`, rows }); })
-      .catch(() => { if (!cancelled) setBenchmarkPrices({ key: `${benchmark}:MAX`, rows: [] }); });
+      .then((rows) => {
+        if (rows.length) benchmarkCache.set(cacheKey, rows);
+        if (!cancelled) setBenchmarkPrices({ key: cacheKey, rows });
+      })
+      .catch(() => {
+        if (!cancelled) setBenchmarkPrices({ key: cacheKey, rows: [] });
+      });
     return () => { cancelled = true; };
   }, [benchmark]);
 
