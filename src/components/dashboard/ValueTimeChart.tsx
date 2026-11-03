@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, Tool
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
-import { evenAxisTicks, fmtGBP, gbpAxisFormatter, numericValues, paddedDomain } from "@/lib/format";
+import { evenAxisTicks, fmtGBP, fmtPrice, gbpAxisFormatter, numericValues, paddedDomain, priceAxisFormatter } from "@/lib/format";
 
 export type ValueTimeChartRow = {
   date: string;
@@ -42,6 +42,8 @@ type ValueTimeChartProps = {
   showSeriesToggle?: boolean;
   /** Optional one-line note under the title. Omit it when the chart speaks for itself. */
   description?: string;
+  /** Format as a per-share price in this currency instead of a GBP value. */
+  currency?: string | null;
   /** `panel` uses the quieter overview surface; `glass` keeps the classic card. */
   surface?: "glass" | "panel";
   className?: string;
@@ -66,6 +68,7 @@ export function ValueTimeChart({
   showTradeMarkers = false,
   showSeriesToggle = false,
   description,
+  currency,
   surface = "glass",
   className = "",
 }: ValueTimeChartProps) {
@@ -93,7 +96,10 @@ export function ValueTimeChart({
     }
     return values;
   }, [chartZoom.visible, showSeriesToggle, totalVisible, visibleSeries]);
-  const axisFormatter = useMemo(() => gbpAxisFormatter(axisValues), [axisValues]);
+  const axisFormatter = useMemo(
+    () => (currency ? priceAxisFormatter(axisValues, currency) : gbpAxisFormatter(axisValues)),
+    [axisValues, currency],
+  );
   const axis = useMemo(() => evenAxisTicks(axisValues), [axisValues]);
   const yDomain = axis?.domain ?? paddedDomain(axisValues);
   const canShowDots = showTradeMarkers && (!showSeriesToggle || totalVisible);
@@ -135,7 +141,7 @@ export function ValueTimeChart({
               <ZoomSelectionArea labels={chartZoom.selectionLabels} />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
               <YAxis domain={yDomain ?? ["auto", "auto"]} ticks={axis?.ticks} tickFormatter={axisFormatter} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => fmtGBP(Number(value))} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => (currency ? fmtPrice(Number(value), currency) : fmtGBP(Number(value)))} />
               {totalVisible && (
                 <Area
                   type="monotone"
