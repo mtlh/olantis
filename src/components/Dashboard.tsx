@@ -482,7 +482,6 @@ range={range}
               portfolio={active}
               accounts={accounts}
               providers={providers}
-              color={activeBaseColor}
               dateFormat={settings.dateFormat}
               value={activeValue}
               cost={activeCost}
@@ -500,20 +499,21 @@ range={range}
                onDelete={() => requestDeletePortfolio(active)}
             >
               <>
-              <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
                 <ValueTimeChart
                   data={chartData}
-                  title="Performance"
+                  title="Value over time"
                   range={range}
                   onRangeChange={pickRange}
                   color={portfolioChartColor}
                   totalName={active.name}
                   dots={chartDots}
                   showTradeMarkers={settings.showTradeMarkers}
-                  className="xl:col-span-3"
+                  surface="panel"
+                  className="lg:col-span-3"
                 />
-                <div className="xl:col-span-2 min-w-0">
-                  <AllocationCard allocation={allocation} mode={allocMode} onModeChange={setAllocMode} layout="fill" />
+                <div className="min-w-0 lg:col-span-2">
+                  <AllocationCard allocation={allocation} mode={allocMode} onModeChange={setAllocMode} layout="fill" compactChart surface="panel" />
                 </div>
               </div>
 
