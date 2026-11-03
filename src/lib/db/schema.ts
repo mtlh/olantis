@@ -1,4 +1,4 @@
-import { pgTable, text, numeric, integer, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, numeric, integer, primaryKey, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 /**
  * Money and share counts use `numeric` (unlimited-precision decimal) rather
@@ -19,7 +19,7 @@ export const accounts = pgTable("accounts", {
   color: text("color"),
   sortOrder: integer("sort_order"),
   createdAt: integer("created_at").notNull(),
-});
+}, (t) => ({ userIdIdx: index("accounts_user_id_idx").on(t.userId) }));
 
 export const providers = pgTable("providers", {
   id: text("id").primaryKey(),
@@ -29,7 +29,10 @@ export const providers = pgTable("providers", {
   color: text("color"),
   sortOrder: integer("sort_order"),
   createdAt: integer("created_at").notNull(),
-});
+}, (t) => ({
+  userIdIdx: index("providers_user_id_idx").on(t.userId),
+  accountIdIdx: index("providers_account_id_idx").on(t.accountId),
+}));
 
 export const portfolios = pgTable("portfolios", {
   id: text("id").primaryKey(),
@@ -41,7 +44,11 @@ export const portfolios = pgTable("portfolios", {
   color: text("color"),
   sortOrder: integer("sort_order"),
   createdAt: integer("created_at").notNull(),
-});
+}, (t) => ({
+  userIdIdx: index("portfolios_user_id_idx").on(t.userId),
+  accountIdIdx: index("portfolios_account_id_idx").on(t.accountId),
+  providerIdIdx: index("portfolios_provider_id_idx").on(t.providerId),
+}));
 
 export const userSettings = pgTable("user_settings", {
   userId: text("user_id").primaryKey(),
@@ -74,7 +81,12 @@ export const holdings = pgTable("holdings", {
   purchaseDate: text("purchase_date"),
   exchange: text("exchange"),
   lastRefreshedAt: integer("last_refreshed_at"),
-});
+}, (t) => ({
+  userIdIdx: index("holdings_user_id_idx").on(t.userId),
+  portfolioIdIdx: index("holdings_portfolio_id_idx").on(t.portfolioId),
+  providerIdIdx: index("holdings_provider_id_idx").on(t.providerId),
+  accountIdIdx: index("holdings_account_id_idx").on(t.accountId),
+}));
 
 export const snapshots = pgTable("snapshots", {
   userId: text("user_id").notNull(),
@@ -109,7 +121,11 @@ export const transactions = pgTable("transactions", {
   date: text("date").notNull(),
   note: text("note"),
   createdAt: integer("created_at").notNull(),
-});
+}, (t) => ({
+  userIdIdx: index("transactions_user_id_idx").on(t.userId),
+  portfolioIdIdx: index("transactions_portfolio_id_idx").on(t.portfolioId),
+  holdingIdIdx: index("transactions_holding_id_idx").on(t.holdingId),
+}));
 
 export const watchlistItems = pgTable("watchlist_items", {
   id: text("id").primaryKey(),
@@ -128,4 +144,12 @@ export const goals = pgTable("goals", {
   targetValue: money("target_value").notNull(),
   targetDate: text("target_date").notNull(),
   createdAt: integer("created_at").notNull(),
-});
+}, (t) => ({ userIdIdx: index("goals_user_id_idx").on(t.userId) }));
+
+export const quoteDaily = pgTable("quote_daily", {
+  symbol: text("symbol").notNull(),
+  date: text("date").notNull(),
+  price: money("price").notNull(),
+  currency: text("currency"),
+  updatedAt: integer("updated_at").notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.symbol, t.date] }) }));
