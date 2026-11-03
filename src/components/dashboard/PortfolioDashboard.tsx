@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Account, Portfolio, Provider } from "@/lib/store";
 import { fmtGBP, fmtPct, fmtRelative } from "@/lib/format";
@@ -10,7 +9,6 @@ type PortfolioDashboardProps = {
   portfolio: Portfolio;
   accounts: Account[];
   providers: Provider[];
-  color: string | null;
   dateFormat: string;
   value: number;
   cost: number;
@@ -24,11 +22,13 @@ type PortfolioDashboardProps = {
   children: ReactNode;
 };
 
+const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
+const SUB = "mt-2 text-[11px] text-zinc-600";
+
 export function PortfolioDashboard({
   portfolio,
   accounts,
   providers,
-  color,
   dateFormat,
   value,
   cost,
@@ -41,43 +41,88 @@ export function PortfolioDashboard({
   onDelete,
   children,
 }: PortfolioDashboardProps) {
-  const accent = color ?? "#60a5fa";
   const parentName = portfolio.providerId
     ? providers.find((provider) => provider.id === portfolio.providerId)?.name
     : portfolio.accountId ? accounts.find((account) => account.id === portfolio.accountId)?.name : null;
   const backLabel = parentName ?? "Overview";
+  const holdingCount = portfolio.holdings.length;
+  const latestRefresh = Math.max(...portfolio.holdings.map((holding) => holding.lastRefreshedAt ?? 0), 0) || null;
+  const gainColor = gain >= 0 ? "text-emerald-400" : "text-red-400";
 
   return (
     <DashboardLevel label={`${portfolio.name} portfolio`}>
-      <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)`, background: `linear-gradient(to bottom right, color-mix(in srgb, ${accent} 16.5%, transparent), color-mix(in srgb, ${accent} 7%, transparent))` }}>
-        <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full blur-3xl" style={{ background: `color-mix(in srgb, ${accent} 15%, transparent)` }} />
-        <div className="relative flex flex-wrap items-start justify-between gap-6">
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">{portfolio.name}</h1>
-              <Badge variant="outline" className="border-white/10 bg-white/5 capitalize text-zinc-300">{portfolio.type}</Badge>
-              {portfolio.accountId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{accounts.find((account) => account.id === portfolio.accountId)?.name ?? ""}</Badge>}
-              {portfolio.providerId && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-500">{providers.find((provider) => provider.id === portfolio.providerId)?.name ?? ""}</Badge>}
+      <div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-[11px] text-zinc-500 transition-colors hover:text-white"
+        >
+          ← {backLabel}
+        </button>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{portfolio.name}</h1>
+              <span className="text-[11px] capitalize text-zinc-500">{portfolio.type}</span>
+              {portfolio.accountId && (
+                <span className="text-[11px] text-zinc-600">
+                  {accounts.find((account) => account.id === portfolio.accountId)?.name ?? ""}
+                </span>
+              )}
             </div>
-            <p className="mt-2 text-sm text-zinc-500">{portfolio.holdings.length} holdings • {portfolio.type} • prices updated {fmtRelative(Math.max(...portfolio.holdings.map((holding) => holding.lastRefreshedAt ?? 0), 0) || null, dateFormat)} • {staleCount} stale / unverified</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="border-white/10 bg-white/5" onClick={onBack}>← {backLabel}</Button>
-            <Button variant="outline" className="border-white/10 bg-white/5" onClick={onEdit}><Pencil className="h-4 w-4" /> Edit</Button>
-            <Button onClick={onAddHolding}><Plus className="h-4 w-4" /> Add holding</Button>
-            <Button variant="ghost" className="border border-white/5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+              onClick={onEdit}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </Button>
+            <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onAddHolding}>
+              <Plus className="h-3.5 w-3.5" />
+              Add holding
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Delete portfolio"
+              className="rounded-full px-2.5 text-zinc-500 hover:bg-red-500/10 hover:text-red-400 sm:px-3"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Delete</span>
+            </Button>
           </div>
         </div>
-        <div className="relative mt-8 grid grid-cols-1 gap-4 min-[360px]:grid-cols-2">
-          <div className="rounded-xl border-l-4 bg-white p-4 text-black" style={{ borderLeftColor: accent }}>
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Value</div>
-            <div className="mt-1 text-2xl font-bold">{fmtGBP(value)}</div>
-            <div className="mt-1 text-xs text-zinc-600">Cost {fmtGBP(cost)}</div>
+
+        <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.4fr_1fr_1fr] lg:gap-0 lg:py-7">
+          <div className="col-span-2 lg:col-span-1 lg:pr-8">
+            <p className={LABEL}>Total value</p>
+            <p className="mt-2 text-[38px] font-semibold leading-none tracking-tight tabular-nums text-white sm:text-[42px]">
+              {fmtGBP(value)}
+            </p>
+            <p className={SUB}>Cost basis {fmtGBP(cost)}</p>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Unrealized gain</div>
-            <div className="flex items-center gap-2 text-2xl font-bold" style={{ color: gain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(gain)} <span className="text-sm">{fmtPct(gainPct)}</span></div>
-            <div className="mt-1 text-xs text-zinc-500">Current positions only</div>
+
+          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
+            <p className={LABEL}>Unrealized gain</p>
+            <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${gainColor}`}>
+              {gain >= 0 ? "+" : "−"}{fmtGBP(Math.abs(gain))}
+              <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(gainPct)}</span>
+            </p>
+            <p className={SUB}>Current positions</p>
+          </div>
+
+          <div className="lg:border-l lg:border-white/[0.06] lg:pl-8">
+            <p className={LABEL}>Holdings</p>
+            <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{holdingCount}</p>
+            <p className={SUB}>
+              Updated {fmtRelative(latestRefresh, dateFormat)}
+              {staleCount > 0 && <span className="text-amber-300/80"> · {staleCount} stale</span>}
+            </p>
           </div>
         </div>
       </div>
