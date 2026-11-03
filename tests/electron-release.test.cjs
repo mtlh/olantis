@@ -35,6 +35,16 @@ test("desktop version is stamped from the release run number", () => {
   assert.match(workflow, /version="0\.1\.\$\{\{ github\.run_number \}\}"/);
 });
 
+test("desktop release is skipped unless desktop files changed", () => {
+  const trigger = workflow.slice(0, workflow.indexOf("permissions:"));
+
+  assert.match(trigger, /paths:/, "the release must be path-filtered instead of rebuilding on every push");
+  assert.match(trigger, /- "electron\/\*\*"/);
+  assert.match(trigger, /- "public\/brand\/\*\*"/);
+  assert.doesNotMatch(trigger, /- "src\/\*\*"/, "web-only changes ship through Vercel, not a new installer");
+  assert.match(trigger, /workflow_dispatch:/, "a skipped release still needs a manual way to rebuild");
+});
+
 test("the packaged shell ships the electron-updater dependency", () => {
   assert.ok(desktopPackage.dependencies?.["electron-updater"], "electron-updater must be a desktop dependency to be packaged");
   assert.equal(rootPackage.build.beforeBuild, undefined, "electron-builder has to install the desktop dependencies itself");
