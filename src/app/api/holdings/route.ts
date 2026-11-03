@@ -1,21 +1,8 @@
 import { getDb } from "@/lib/db";
 import { holdings, portfolios, accounts, providers, transactions } from "@/lib/db/schema";
-import { eq, inArray, or } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
-
-async function loadOwnedHoldings(db: ReturnType<typeof getDb>, userId: string): Promise<typeof holdings.$inferSelect[]> {
-  const p = await db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId));
-  const pids = p.map((x) => x.id);
-  const a = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.userId, userId));
-  const aids = a.map((x) => x.id);
-  const pr = await db.select({ id: providers.id }).from(providers).where(eq(providers.userId, userId));
-  const prids = pr.map((x) => x.id);
-  const clauses = [eq(holdings.userId, userId)];
-  if (pids.length) clauses.push(inArray(holdings.portfolioId, pids));
-  if (prids.length) clauses.push(inArray(holdings.providerId, prids));
-  if (aids.length) clauses.push(inArray(holdings.accountId, aids));
-  return db.select().from(holdings).where(or(...clauses));
-}
+import { loadOwnedHoldings } from "@/lib/ownership";
 
 export async function GET(req: Request) {
   const userId = await getUserId();
@@ -27,14 +14,10 @@ export async function GET(req: Request) {
   const db = getDb();
   let rows: typeof holdings.$inferSelect[] = [];
   try {
-    rows = await loadOwnedHoldings(db, userId);
+    rows = await loadOwnedHoldings(db, userId, { portfolioId, providerId, accountId });
   } catch (error) {
     return Response.json({ error: "Unable to load holdings", detail: error instanceof Error ? error.message : String(error) }, { status: 503 });
   }
-  rows = rows.filter((h) => h.shares > 0);
-  if (portfolioId) rows = rows.filter((h) => h.portfolioId === portfolioId);
-  if (providerId) rows = rows.filter((h) => h.providerId === providerId);
-  if (accountId) rows = rows.filter((h) => h.accountId === accountId);
   return Response.json(rows);
 }
 
@@ -174,6 +157,7 @@ export async function PATCH(req: Request) {
   let skipped = 0;
   let manualSkipped = 0;
   let nextAllowedAt: number | null = null;
+  const toUpdate: { id: string; price: number; currency: string; ts: number }[] = [];
   for (const h of all) {
     const upd = symbols[h.symbol];
     if (!upd) continue;
@@ -185,8 +169,11 @@ export async function PATCH(req: Request) {
       if (nextAllowedAt === null || wait < nextAllowedAt) nextAllowedAt = wait;
       continue;
     }
-    await db.update(holdings).set({ currentPrice: upd.price, currency: upd.currency, lastRefreshedAt: now }).where(eq(holdings.id, h.id));
+    toUpdate.push({ id: h.id, price: upd.price, currency: upd.currency, ts: now });
     updated++;
+  }
+  if (toUpdate.length) {
+    await db.execute(sql`UPDATE holdings SET current_price = v.price, currency = v.currency, last_refreshed_at = v.ts FROM (VALUES ${sql.join(toUpdate.map((u) => sql`(${u.id}, ${u.price}, ${u.currency}, ${u.ts})`), sql`, `)}) AS v(id, price, currency, ts) WHERE holdings.id = v.id`);
   }
   if (!force && updated === 0 && skipped > 0) {
     return Response.json({ ok: false, error: "daily limit", message: "Prices already refreshed within 24h", nextAllowedAt, skipped }, { status: 429 });

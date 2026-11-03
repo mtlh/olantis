@@ -12,6 +12,7 @@ import {
   userSettings,
 } from "@/lib/db/schema";
 import { getLatestFxRates } from "@/lib/fx";
+import { windowSeries } from "@/lib/snapshot-window";
 import type { FxRates } from "@/lib/format";
 import type {
   Account,
@@ -44,37 +45,49 @@ export type WorkspaceBootstrap = {
   fx: { date: string | null; rates: FxRates };
 };
 
-function sortSeries<T extends { date: string }>(rows: T[]): T[] {
-  return rows.sort((a, b) => a.date.localeCompare(b.date));
-}
-
 export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceBootstrap> {
   const db = getDb();
 
   // Wave 1 — every query that only needs the user id runs at once. Neon is
   // HTTP-based, so each await is a network round trip; parallelising here turns
   // eight sequential-ish trips into one.
-  const [
-    accountRows,
-    providerRows,
-    portfolioRows,
-    totalSnapshots,
-    perPortfolioSnapshots,
-    perHoldingSnapshots,
-    transactionRows,
-    settingsRows,
-    fx,
-  ] = await Promise.all([
-    db.select().from(accounts).where(eq(accounts.userId, userId)),
-    db.select().from(providersTable).where(eq(providersTable.userId, userId)),
-    db.select().from(portfoliosTable).where(eq(portfoliosTable.userId, userId)),
-    db.select().from(snapshotsTable).where(eq(snapshotsTable.userId, userId)),
-    db.select().from(portfolioSnapshots).where(eq(portfolioSnapshots.userId, userId)),
-    db.select().from(holdingSnapshots).where(eq(holdingSnapshots.userId, userId)),
-    db.select().from(transactionsTable).where(eq(transactionsTable.userId, userId)),
-    db.select().from(userSettings).where(eq(userSettings.userId, userId)),
+  type AccountRow = typeof accounts.$inferSelect;
+  type ProviderRow = typeof providersTable.$inferSelect;
+  type PortfolioRow = typeof portfoliosTable.$inferSelect;
+  type TransactionRow = typeof transactionsTable.$inferSelect;
+  type SettingsRow = typeof userSettings.$inferSelect;
+
+  const [batchRes, fx] = await Promise.all([
+    db.batch([
+      db.select().from(accounts).where(eq(accounts.userId, userId)),
+      db.select().from(providersTable).where(eq(providersTable.userId, userId)),
+      db.select().from(portfoliosTable).where(eq(portfoliosTable.userId, userId)),
+      db.select({ date: snapshotsTable.date, value: snapshotsTable.value }).from(snapshotsTable).where(eq(snapshotsTable.userId, userId)),
+      db.select({ portfolioId: portfolioSnapshots.portfolioId, date: portfolioSnapshots.date, value: portfolioSnapshots.value }).from(portfolioSnapshots).where(eq(portfolioSnapshots.userId, userId)),
+      db.select({ holdingId: holdingSnapshots.holdingId, date: holdingSnapshots.date, value: holdingSnapshots.value }).from(holdingSnapshots).where(eq(holdingSnapshots.userId, userId)),
+      db.select().from(transactionsTable).where(eq(transactionsTable.userId, userId)),
+      db.select().from(userSettings).where(eq(userSettings.userId, userId)),
+    ]),
     getLatestFxRates().catch(() => ({ date: null, rates: {} as FxRates })),
   ]);
+  const typed = batchRes as unknown as [
+    AccountRow[],
+    ProviderRow[],
+    PortfolioRow[],
+    { date: string; value: number }[],
+    { portfolioId: string; date: string; value: number }[],
+    { holdingId: string; date: string; value: number }[],
+    TransactionRow[],
+    SettingsRow[],
+  ];
+  const accountRows = typed[0];
+  const providerRows = typed[1];
+  const portfolioRows = typed[2];
+  const totalSnapshots = typed[3];
+  const perPortfolioSnapshots = typed[4];
+  const perHoldingSnapshots = typed[5];
+  const transactionRows = typed[6];
+  const settingsRows = typed[7];
 
   // Wave 2 — holdings can belong to the user directly, or to one of their
   // accounts/providers/portfolios (legacy rows), so it needs the ids above.
@@ -105,7 +118,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   const portfolioNameById = new Map(portfolioRows.map((p) => [p.id, p.name]));
   for (const [id, entry] of Object.entries(byPortfolio)) {
     entry.name = portfolioNameById.get(id) ?? id.slice(0, 6);
-    sortSeries(entry.data);
+    entry.data = windowSeries(entry.data) as typeof entry.data;
   }
 
   const byHolding: NonNullable<SnapResponse["byHolding"]> = {};
@@ -120,12 +133,12 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
       entry.symbol = h.symbol;
       entry.name = h.name;
     }
-    sortSeries(entry.data);
+    entry.data = windowSeries(entry.data) as typeof entry.data;
   }
 
-  const total: Snapshot[] = sortSeries(
+  const total: Snapshot[] = windowSeries(
     totalSnapshots.map((row) => ({ date: row.date, value: row.value }) as Snapshot),
-  );
+  ) as Snapshot[];
 
   const transactions = transactionRows
     .slice()

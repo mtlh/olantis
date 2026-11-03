@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db";
 import { holdings, portfolios, transactions, providers, accounts } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
 
 export async function GET(req: Request) {
@@ -10,6 +10,12 @@ export async function GET(req: Request) {
   const portfolioId = searchParams.get("portfolioId");
   const holdingId = searchParams.get("holdingId");
   const symbol = searchParams.get("symbol");
+  const limitParam = searchParams.get("limit");
+  let limit = 1000;
+  if (limitParam) {
+    const n = Number(limitParam);
+    if (Number.isFinite(n) && n > 0) limit = Math.min(Math.floor(n), 5000);
+  }
   const db = getDb();
   let rows: typeof transactions.$inferSelect[] = [];
   try {
@@ -17,9 +23,8 @@ export async function GET(req: Request) {
     if (portfolioId) conds.push(eq(transactions.portfolioId, portfolioId));
     if (holdingId) conds.push(eq(transactions.holdingId, holdingId));
     if (symbol) conds.push(eq(transactions.symbol, symbol.toUpperCase()));
-    rows = await db.select().from(transactions).where(and(...conds));
+    rows = await db.select().from(transactions).where(and(...conds)).orderBy(desc(transactions.date), desc(transactions.createdAt)).limit(limit);
   } catch (error) { return Response.json({ error: "Unable to load transactions", detail: error instanceof Error ? error.message : String(error) }, { status: 503 }); }
-  rows.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
   return Response.json(rows);
 }
 
