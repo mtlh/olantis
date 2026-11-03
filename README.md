@@ -33,6 +33,8 @@ This starts the local Next.js server on port 3000, waits for it to become ready,
 
 Try the full unauthenticated flow with **Try demo**. To test WorkOS sign-in, configure valid local WorkOS and database environment variables first. Electron keeps its own persistent session, separate from your regular browser.
 
+Sign-in runs inside the desktop window. WorkOS, AuthKit, and the identity providers AuthKit hands off to (Google, Microsoft, Apple, GitHub) are trusted in-app navigations in `electron/url-policy.cjs`, so the one-time sign-in cookie never has to cross into a browser that does not share the desktop session. Any other link opens in your default browser.
+
 For a no-interaction local launch check, run `npm run electron:smoke`. It starts the same local Next.js server, opens the Electron window, checks that the Olantis landing page rendered, and exits with a pass/fail code.
 
 ## Build desktop installers
