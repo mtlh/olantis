@@ -1,16 +1,56 @@
 "use client";
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceDot } from "recharts";
-import { History, ArrowUpRight, ArrowDownRight, Wallet, Plus, Minus, FolderPlus } from "lucide-react";
+import type { ReactNode } from "react";
+import { ArrowDownRight, ArrowUpRight, FolderPlus, Minus, Plus, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
-import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, gbpAxisFormatter, priceAxisFormatter, paddedDomain, numericValues, filterByRange, type MoneyHolding } from "@/lib/format";
-import { useChartZoom, ZoomSelectionArea, ZoomResetButton } from "@/components/ChartZoom";
+import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, filterByRange, type MoneyHolding } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
+import { ValueTimeChart, type ValueTimeChartDot, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
 
 type PriceRow = { date: string; price: number };
+
+const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
+const SUB = "mt-2 text-[11px] text-zinc-600";
+
+function shortDate(iso: string, locale: string) {
+  const date = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString(locale, { day: "numeric", month: "short" });
+}
+
+function ChartPlaceholder({
+  title,
+  range,
+  onRangeChange,
+  message,
+  detail,
+  icon,
+  className = "",
+}: {
+  title: string;
+  range: ChartRange;
+  onRangeChange: (range: ChartRange) => void;
+  message: string;
+  detail?: string;
+  icon?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`panel flex flex-col ${className}`}>
+      <div className="flex flex-row items-center justify-between gap-3 p-4">
+        <h2 className="text-sm font-medium text-white">{title}</h2>
+        <ChartRangeSelector range={range} onRangeChange={onRangeChange} segmented />
+      </div>
+      <div className="grid min-h-[320px] flex-1 place-items-center px-6 pb-6 text-center">
+        <div>
+          {icon}
+          <p className="text-sm text-zinc-400">{message}</p>
+          {detail && <p className="mt-1 text-xs text-zinc-600">{detail}</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function StockDetail({ holding, portfolioId, portfolioValue, portfolioName, color, onBack, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioValue: number; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
   const { settings } = useSettings();
@@ -78,15 +118,15 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
     () => (hasValueSeries ? filterByRange(snapSeriesFull ?? [], range) : null),
     [hasValueSeries, snapSeriesFull, range]
   );
-  const chartData = useMemo(() => {
-    if (hasValueSeries) return (snapSeries ?? []).map((p) => ({ date: chartDateLabel(p.date), price: p.price }));
-    return (prices ?? []).map((p) => ({ date: chartDateLabel(p.date), price: p.price }));
+  const chartRows = useMemo<ValueTimeChartRow[]>(() => {
+    const series = hasValueSeries ? snapSeries ?? [] : prices ?? [];
+    return series.map((point) => ({ date: chartDateLabel(point.date), dateISO: point.date, total: point.price }));
   }, [hasValueSeries, snapSeries, prices]);
   const loading = !hasValueSeries && isListed && prices === null;
 
-  const dots = useMemo(() => {
-    if (!chartData.length) return [];
-    const map = new Map(chartData.map((d) => [d.date, d.price]));
+  const dots = useMemo<ValueTimeChartDot[]>(() => {
+    if (!chartRows.length) return [];
+    const map = new Map(chartRows.map((row) => [row.date, row.total]));
     return transactions
       .map((t: Transaction) => {
         const key = chartDateLabel(t.date);
@@ -94,24 +134,8 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
         if (y == null) return null;
         return { x: key, y, type: t.type, date: t.date, symbol: t.symbol };
       })
-      .filter((x): x is { x: string; y: number; type: "buy" | "sell"; date: string; symbol: string } => x !== null);
-  }, [chartData, transactions]);
-
-  const chartZoom = useChartZoom(chartData);
-  const axisValues = useMemo(() => numericValues(chartZoom.visible), [chartZoom.visible]);
-  const axisFmt = useMemo(
-    () => (hasValueSeries ? gbpAxisFormatter(axisValues) : priceAxisFormatter(axisValues, holding.currency)),
-    [hasValueSeries, axisValues, holding.currency]
-  );
-  const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
-
-  // Trade markers honour the user's "Show trade markers on charts" preference.
-  const shownDots = useMemo(() => (settings.showTradeMarkers ? dots : []), [settings.showTradeMarkers, dots]);
-  // Markers outside the zoomed period would land outside the X domain, so filter them too.
-  const visibleDots = useMemo(() => {
-    const dates = new Set(chartZoom.visible.map((d) => d.date));
-    return shownDots.filter((d) => dates.has(d.x));
-  }, [shownDots, chartZoom.visible]);
+      .filter((x): x is ValueTimeChartDot => x !== null);
+  }, [chartRows, transactions]);
 
   const val = holdingValueGBP(holding as MoneyHolding, settings.fxRates);
   const cost = holdingCostGBP(holding as MoneyHolding, settings.fxRates);
@@ -122,140 +146,129 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
     ? { amount: prices.at(-1)!.price - prices.at(-2)!.price, percent: ((prices.at(-1)!.price / prices.at(-2)!.price) - 1) * 100, date: prices.at(-1)!.date }
     : null;
   const isManual = !isListed;
+  const gainTone = gain >= 0 ? "text-emerald-400" : "text-red-400";
+  const moveTone = latestMarketMove ? (latestMarketMove.amount >= 0 ? "text-emerald-400" : "text-red-400") : "text-zinc-600";
+  const chartTitle = hasValueSeries ? "Value over time" : "Market price";
 
   return (
     <>
-      <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: color + "40", background: `linear-gradient(to bottom right, ${color}2A, ${color}12)` }}>
-        <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl" style={{ background: color + "26" }} />
-        <div className="relative flex flex-wrap items-start justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="w-12 h-12 rounded-xl grid place-items-center font-bold text-sm bg-white/10 border border-white/10 text-white">{holding.symbol.slice(0, 3)}</div>
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">{holding.symbol}</h1>
-              {holding.exchange && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-300">{holding.exchange}</Badge>}
-              {portfolioName && <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-400">{portfolioName}</Badge>}
-            </div>
-            <p className="text-sm mt-2 text-zinc-500">{holding.name}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {onBuy && onSell && (
-              <>
-                <Button variant="outline" className="bg-white/5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10" onClick={onBuy}><Plus className="w-4 h-4" /> Buy</Button>
-                <Button variant="outline" className="bg-white/5 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={onSell}><Minus className="w-4 h-4" /> Sell</Button>
-              </>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-[10px] font-semibold tracking-wide text-zinc-300">{holding.symbol.slice(0, 3)}</span>
+            <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{holding.symbol}</h1>
+            {(holding.exchange || portfolioName) && (
+              <span className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-600">
+                {holding.exchange && <span>{holding.exchange}</span>}
+                {holding.exchange && portfolioName && <span className="text-zinc-700">·</span>}
+                {portfolioName && <span>{portfolioName}</span>}
+              </span>
             )}
-            {!portfolioId && onAddToPortfolio && (
-              <Button variant="outline" size="sm" className="bg-white/5 border-amber-500/30 text-amber-400 hover:bg-amber-500/10 self-center" onClick={onAddToPortfolio} title="Move this holding into a portfolio"><FolderPlus className="w-4 h-4" /> Add to portfolio</Button>
-            )}
-            <Button variant="outline" className="bg-white/5 border-white/10" onClick={onBack}>← Back{portfolioName ? ` to ${portfolioName}` : ""}</Button>
           </div>
+          <p className="mt-2 text-xs text-zinc-500">{holding.name}</p>
         </div>
-        <div className="grid grid-cols-2 gap-4 mt-8 md:grid-cols-3 2xl:grid-cols-5">
-          <div className="p-4 rounded-xl bg-white text-black border-l-4" style={{ borderLeftColor: color }}>
-            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Value</div>
-            <div className="text-2xl font-bold mt-1">{fmtGBP(val)}</div>
-            <div className="text-xs text-zinc-600 mt-1">Cost {fmtGBP(cost)}</div>
-          </div>
-          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Unrealized gain</div>
-            <div className="text-2xl font-bold flex items-center gap-2" style={{ color: gain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(gain)} <span className="text-sm">{fmtPct(pct)}</span></div>
-            <div className="text-xs text-zinc-500 mt-1">Current position only</div>
-          </div>
-          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Shares</div>
-            <div className="text-2xl font-bold text-white">{holding.shares}</div>
-            <div className="text-xs text-zinc-500 mt-1">Avg {fmtPrice(holding.avgPrice, holding.currency)}</div>
-          </div>
-          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Price</div>
-            <div className="text-2xl font-bold text-white">{fmtPrice(holding.currentPrice, holding.currency)}</div>
-            <div className="text-xs text-zinc-500 mt-1">{holding.currency} · updated {fmtRelative(holding.lastRefreshedAt, settings.dateFormat)}</div>
-          </div>
-          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Parent weight</div>
-            <div className="text-2xl font-bold text-white">{weightPct == null ? "—" : `${weightPct.toFixed(1)}%`}</div>
-            <div className="text-xs text-zinc-500 mt-1">{portfolioName ?? "Total tracked"} · {fmtGBP(portfolioValue)}</div>
-          </div>
-          <div className="p-4 rounded-xl bg-white/[0.06] border border-white/10">
-            <div className="text-[11px] tracking-widest uppercase font-semibold text-zinc-500">Latest market move</div>
-            {latestMarketMove ? <>
-              <div className="text-2xl font-bold" style={{ color: latestMarketMove.amount >= 0 ? "#34d399" : "#f87171" }}>{latestMarketMove.amount >= 0 ? "+" : "−"}{fmtPrice(Math.abs(latestMarketMove.amount), holding.currency)}</div>
-              <div className="text-xs text-zinc-500 mt-1">{fmtPct(latestMarketMove.percent)} · {latestMarketMove.date}</div>
-            </> : <div className="text-sm text-zinc-500 mt-1">No recent quote history</div>}
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {onBuy && onSell && (
+            <>
+              <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onBuy}><Plus className="h-3.5 w-3.5" /> Buy</Button>
+              <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onSell}><Minus className="h-3.5 w-3.5" /> Sell</Button>
+            </>
+          )}
+          {!portfolioId && onAddToPortfolio && (
+            <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onAddToPortfolio} title="Move this holding into a portfolio"><FolderPlus className="h-3.5 w-3.5" /> Add to portfolio</Button>
+          )}
+          <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onBack}>← Back</Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card className="xl:col-span-2 glass-card">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-white">{hasValueSeries ? "Value over time" : "Performance"}</CardTitle>
-              <CardDescription>{hasValueSeries ? "Tracked position value" : "Market price"} • {chartData.length} points • {holding.symbol}{dots.length ? ` • ${dots.length} trades` : ""}</CardDescription>
-            </div>
-            <div className="flex items-center gap-1">
-              <ChartRangeSelector range={range} onRangeChange={pickRange} />
-              {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isManual && !hasValueSeries ? (
-              <div className="h-[320px] grid place-items-center text-center">
-                <div>
-                  <Wallet className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-                  <p className="text-sm text-zinc-400">Manual holding — no market price history</p>
-                  <p className="text-xs text-zinc-600 mt-1">Value tracked on the portfolio chart.</p>
-                </div>
-              </div>
-            ) : loading ? (
-              <div className="h-[320px] grid place-items-center text-sm text-zinc-500">Loading price history…</div>
-            ) : chartData.length === 0 ? (
-              <div className="h-[320px] grid place-items-center text-sm text-zinc-500">No price data available for {holding.symbol}.</div>
-            ) : (
-              <div className="h-[320px] select-none">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <ZoomSelectionArea labels={chartZoom.selectionLabels} />
-                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                    <YAxis domain={yDomain ?? ["auto", "auto"]} tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={70} />
-                    <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(v) => (hasValueSeries ? fmtGBP(Number(v)) : fmtPrice(Number(v), holding.currency))} />
-                    <Area type="monotone" dataKey="price" name={holding.symbol} stroke={color} fill={color} fillOpacity={0.14} strokeWidth={2.5} dot={false} />
-                    {visibleDots.map((d) => (
-                      <ReferenceDot key={`${d.date}-${d.symbol}-${d.x}`} x={d.x} y={d.y} r={5} fill={d.type === "buy" ? "#10b981" : "#ef4444"} stroke="#fff" strokeWidth={1.5} />
-                    ))}
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-            {shownDots.length > 0 && !isManual && <div className="flex gap-3 mt-2 text-xs"><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Buy</span><span className="flex items-center gap-1.5 text-zinc-400"><span className="w-2 h-2 rounded-full bg-red-500" /> Sell</span><span className="text-zinc-600">Trades marked on chart</span></div>}
-          </CardContent>
-        </Card>
-        <Card className="glass-card overflow-hidden">
-          <CardHeader className="border-b border-white/5">
-            <CardTitle className="flex items-center gap-2 text-white"><History className="w-4 h-4" /> Trades {transactions.length ? <Badge variant="outline" className="border-white/10 text-zinc-500">{transactions.length}</Badge> : null}</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {transactions.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-sm text-zinc-400">No trades for {holding.symbol}</p>
-                <p className="text-xs text-zinc-600 mt-1">Record buys and sells to build your history.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-white/5 max-h-[400px] overflow-auto">
-                {transactions.slice(0, 50).map((t) => (
-                  <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03]">
-                    <span className={`w-7 h-7 rounded-lg grid place-items-center shrink-0 ${t.type === "buy" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>{t.type === "buy" ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm text-white font-medium">{t.type === "buy" ? "Buy" : "Sell"} • {t.shares} @ {fmtPrice(t.price, holding.currency)}</div>
-                    </div>
-                    <span className="text-xs text-zinc-600 tabular-nums">{new Date(t.date).toLocaleDateString(settings.dateFormat, { month: "short", day: "numeric" })}</span>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] lg:gap-0 lg:py-7">
+        <div className="col-span-2 lg:col-span-1 lg:pr-6">
+          <p className={LABEL}>Value</p>
+          <p className="mt-2 text-[38px] font-semibold leading-none tracking-tight tabular-nums text-white sm:text-[42px]">{fmtGBP(val)}</p>
+          <p className={SUB}>Cost basis {fmtGBP(cost)}{weightPct == null ? "" : ` · ${weightPct.toFixed(1)}% weight`}</p>
+        </div>
+
+        <div className="lg:border-l lg:border-white/[0.06] lg:px-6">
+          <p className={LABEL}>Unrealized gain</p>
+          <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${gainTone}`}>
+            <span className="whitespace-nowrap">{gain >= 0 ? "+" : ""}{fmtGBP(gain)}</span>
+            <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(pct)}</span>
+          </p>
+        </div>
+
+        <div className="lg:border-l lg:border-white/[0.06] lg:px-6">
+          <p className={LABEL}>Price</p>
+          <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{fmtPrice(holding.currentPrice, holding.currency)}</p>
+          <p className={SUB}>{holding.currency} · updated {fmtRelative(holding.lastRefreshedAt, settings.dateFormat)}</p>
+        </div>
+
+        <div className="lg:border-l lg:border-white/[0.06] lg:px-6">
+          <p className={LABEL}>Shares</p>
+          <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{holding.shares}</p>
+          <p className={SUB}>Avg {fmtPrice(holding.avgPrice, holding.currency)}</p>
+        </div>
+
+        <div className="lg:border-l lg:border-white/[0.06] lg:pl-6">
+          <p className={LABEL}>Latest move</p>
+          <p className={`mt-2 whitespace-nowrap text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${moveTone}`}>
+            {latestMarketMove ? `${latestMarketMove.amount >= 0 ? "+" : "−"}${fmtPrice(Math.abs(latestMarketMove.amount), holding.currency)}` : "—"}
+          </p>
+          <p className={SUB}>{latestMarketMove ? `${fmtPct(latestMarketMove.percent)} · ${shortDate(latestMarketMove.date, settings.dateFormat)}` : "No recent quote history"}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        {isManual && !hasValueSeries ? (
+          <ChartPlaceholder
+            title={chartTitle}
+            range={range}
+            onRangeChange={pickRange}
+            icon={<Wallet className="mx-auto mb-2 h-7 w-7 text-zinc-600" />}
+            message="Manual holding — no market price history"
+            detail="Value is tracked on the portfolio chart."
+            className="xl:col-span-2"
+          />
+        ) : loading ? (
+          <ChartPlaceholder title={chartTitle} range={range} onRangeChange={pickRange} message="Loading price history…" className="xl:col-span-2" />
+        ) : chartRows.length === 0 ? (
+          <ChartPlaceholder title={chartTitle} range={range} onRangeChange={pickRange} message={`No price data available for ${holding.symbol}.`} className="xl:col-span-2" />
+        ) : (
+          <ValueTimeChart
+            data={chartRows}
+            title={chartTitle}
+            range={range}
+            onRangeChange={pickRange}
+            color={color}
+            totalName={hasValueSeries ? "Value" : `${holding.symbol} price`}
+            currency={hasValueSeries ? undefined : holding.currency}
+            dots={dots}
+            showTradeMarkers={settings.showTradeMarkers}
+            surface="panel"
+            className="xl:col-span-2"
+          />
+        )}
+
+        <section aria-labelledby="holding-trades-heading" className="min-w-0">
+          <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
+            <h2 id="holding-trades-heading" className="text-sm font-medium text-white">Trades</h2>
+            <span className="text-[11px] text-zinc-600">{transactions.length ? `${transactions.length} recorded` : "None yet"}</span>
+          </div>
+          {transactions.length === 0 ? (
+            <p className="border-b border-white/[0.06] py-6 text-sm text-zinc-500">Buy or sell this holding to start a trade history.</p>
+          ) : (
+            <div className="max-h-[420px] divide-y divide-white/[0.05] overflow-auto">
+              {transactions.slice(0, 50).map((t) => (
+                <div key={t.id} className="flex items-center gap-3 px-1 py-3 transition-colors hover:bg-white/[0.025]">
+                  <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${t.type === "buy" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>{t.type === "buy" ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-white">{t.type === "buy" ? "Buy" : "Sell"} <span className="text-zinc-500">· {t.shares} @ {fmtPrice(t.price, holding.currency)}</span></div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  <span className="shrink-0 text-xs tabular-nums text-zinc-600">{new Date(t.date).toLocaleDateString(settings.dateFormat, { month: "short", day: "numeric" })}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </>
   );
