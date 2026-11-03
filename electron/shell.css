@@ -20,9 +20,10 @@ body {
   display: flex;
   align-items: center;
   padding-left: 15px;
-  /* Matches the app's own nav bar (bg-black/30 over #050507) so the desktop
-     chrome reads as one continuous top bar rather than a separate strip. */
-  background: rgba(0, 0, 0, 0.3);
+  /* Exactly the app's base colour (globals.css, APP_BACKGROUND) so the chrome
+     melts into the page instead of ending on a darker strip. The page holding
+     this colour for its first rows is what makes the join invisible. */
+  background: #050507;
   -webkit-app-region: drag;
 }
 
