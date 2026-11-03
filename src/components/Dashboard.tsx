@@ -3,7 +3,7 @@ import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders
 import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Plus, AlertTriangle } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
 import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
@@ -31,6 +31,7 @@ import { PriceFreshnessCard } from "@/components/dashboard/PriceFreshnessCard";
 import { PortfolioTradeHistory } from "@/components/dashboard/PortfolioTradeHistory";
 import { usePortfolioAllocation, type AllocationMode } from "@/components/dashboard/usePortfolioAllocation";
 import { useHoldingViewData } from "@/components/dashboard/useHoldingViewData";
+import { EMPTY_SELECTION, useDashboardSelection } from "@/components/dashboard/useDashboardSelection";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 
@@ -53,11 +54,10 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const pathname = usePathname();
   const section = requestedSection ?? (pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : pathname === "/settings" ? "settings" : "dashboard");
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const portfolioFromUrl = searchParams.get("portfolio");
-  const providerFromUrl = searchParams.get("provider");
-  const accountFromUrl = searchParams.get("account");
-  const holdingFromUrl = searchParams.get("holding");
+  // Seeded once from the URL so deep links open the right view, then owned by
+  // React state: selecting never navigates.
+  const { selection, select, clear: clearSelection } = useDashboardSelection();
+  const { portfolioId: activeId, providerId: providerFromUrl, accountId: accountFromUrl, holdingId: holdingFromUrl } = selection;
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
   const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
@@ -67,7 +67,6 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const { settings } = useSettings();
   const { snapshots, byPortfolio, byHolding } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
-  const activeId = portfolioFromUrl;
   const [tradeRequest, setTradeRequest] = useState<{ holding: Holding; type: "buy" | "sell" } | null>(null);
   const [wizardContext, setWizardContext] = useState<{ accountId: string | null; providerId: string | null } | null>(null);
   const [holdingDialog, setHoldingDialog] = useState<Holding | "new" | null>(null);
@@ -337,18 +336,17 @@ const pickRange = useCallback((r: ChartRange) => {
   const isLoading = !portfoliosReady;
 
   const selectPortfolio = useCallback((id: string | null) => {
-    if (id) router.push(`/dashboard?portfolio=${encodeURIComponent(id)}`);
-    else router.replace("/dashboard");
-  }, [router]);
+    select(id ? { ...EMPTY_SELECTION, portfolioId: id } : EMPTY_SELECTION);
+  }, [select]);
   const selectProvider = useCallback((id: string) => {
-    router.push(`/dashboard?provider=${encodeURIComponent(id)}`);
-  }, [router]);
+    select({ ...EMPTY_SELECTION, providerId: id });
+  }, [select]);
   const selectAccount = useCallback((id: string) => {
-    router.push(`/dashboard?account=${encodeURIComponent(id)}`);
-  }, [router]);
+    select({ ...EMPTY_SELECTION, accountId: id });
+  }, [select]);
   const selectHolding = useCallback((h: Holding) => {
-    router.push(`/dashboard?holding=${encodeURIComponent(h.id)}`);
-  }, [router]);
+    select({ ...EMPTY_SELECTION, holdingId: h.id });
+  }, [select]);
   const requestDeleteAccount = useCallback((account: Account) => setDeleteRequest({ kind: "account", item: account }), []);
   const requestDeleteProvider = useCallback((provider: Provider) => setDeleteRequest({ kind: "provider", item: provider }), []);
   const requestDeletePortfolio = useCallback((portfolio: Portfolio) => setDeleteRequest({ kind: "portfolio", item: portfolio }), []);
@@ -359,19 +357,19 @@ const pickRange = useCallback((r: ChartRange) => {
     if (deleteRequest.kind === "portfolio") {
       await remove(deleteRequest.item.id);
       await refreshAllHoldings();
-      if (portfolioFromUrl === deleteRequest.item.id) router.replace("/dashboard");
+      if (activeId === deleteRequest.item.id) clearSelection();
       toast({ title: "Portfolio deleted", variant: "success" });
     } else if (deleteRequest.kind === "account") {
       await handleRemoveAccount(deleteRequest.item.id);
-      if (accountFromUrl === deleteRequest.item.id) router.replace("/dashboard");
+      if (accountFromUrl === deleteRequest.item.id) clearSelection();
     } else if (deleteRequest.kind === "provider") {
       await handleRemoveProvider(deleteRequest.item.id);
-      if (providerFromUrl === deleteRequest.item.id) router.replace("/dashboard");
+      if (providerFromUrl === deleteRequest.item.id) clearSelection();
     } else {
       const holdingId = deleteRequest.item.id;
       await deleteHolding(holdingId);
       await refreshAllHoldings();
-      if (holdingViewId === holdingId) router.replace("/dashboard");
+      if (holdingFromUrl === holdingId) clearSelection();
       toast({ title: "Holding deleted", variant: "success" });
     }
   };
@@ -428,7 +426,7 @@ range={range}
                 const parentAccountId = viewPortfolio?.accountId ?? viewHolding.accountId;
                 if (parentProvider) selectProvider(parentProvider.id);
                 else if (parentAccountId) selectAccount(parentAccountId);
-                else router.replace("/dashboard");
+                else clearSelection();
               }}
               onBuy={() => openTrade(viewHolding, "buy")}
               onSell={() => openTrade(viewHolding, "sell")}
@@ -466,7 +464,7 @@ range={range}
               cost={accountData.cost}
               gain={accountData.gain}
               gainPct={accountData.gainPct}
-              onBack={() => router.replace("/dashboard")}
+              onBack={clearSelection}
               onRename={(name) => handleRenameAccount(activeAccount.id, name)}
               onCreateProvider={(name) => handleCreateProvider(name, activeAccount.id)}
               onNewPortfolio={() => openWizard(activeAccount.id, null)}
@@ -495,7 +493,7 @@ range={range}
               cost={providerData.cost}
               gain={providerData.gain}
               gainPct={providerData.gainPct}
-              onBack={() => activeProvider.accountId ? selectAccount(activeProvider.accountId) : router.replace("/dashboard")}
+              onBack={() => activeProvider.accountId ? selectAccount(activeProvider.accountId) : clearSelection()}
               onRename={(name) => handleRenameProvider(activeProvider.id, name)}
               onNewPortfolio={() => openWizard(activeProvider.accountId, activeProvider.id)}
               onDelete={() => requestDeleteProvider(activeProvider)}
@@ -520,7 +518,7 @@ range={range}
                 const parentProvider = providers.find((provider) => provider.id === active.providerId);
                 if (parentProvider) selectProvider(parentProvider.id);
                 else if (active.accountId) selectAccount(active.accountId);
-                else router.replace("/dashboard");
+                else clearSelection();
               }}
               onEdit={() => openEditPortfolio(active)}
               onAddHolding={openAdd}
