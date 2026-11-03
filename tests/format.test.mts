@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evenAxisTicks, filterByRange, gbpAxisFormatter, holdingCostGBP, holdingValueGBP, toGBP, valueChangeOverRange } from "../src/lib/format.ts";
+import {
+  carryForward,
+  combineHistories,
+  evenAxisTicks,
+  filterByRange,
+  gbpAxisFormatter,
+  holdingCostGBP,
+  holdingValueGBP,
+  seriesCursor,
+  toGBP,
+  todayISODate,
+  valueByDate,
+  valueChangeOverRange,
+  type DatedValue,
+} from "../src/lib/format.ts";
 
 test("converts supported quoted currencies into GBP", () => {
   assert.equal(toGBP(125, "GBX"), 1.25);
@@ -59,4 +73,102 @@ test("period value change uses the last saved value at or before the range start
     baselineValue: 30,
   });
   assert.equal(valueChangeOverRange([], "1M", 50), null);
+});
+
+// --- chart data merges -------------------------------------------------------
+//
+// Fixture: 8 portfolios over 320 snapshot days, each starting on its own day and
+// skipping days (weekends, app closed). The single-pass merges must reproduce the
+// per-date scans they replace, value for value.
+
+const FIXTURE_START = "2025-01-06";
+const FIXTURE_DAYS = 320;
+
+function isoDay(offset: number) {
+  return new Date(Date.parse(`${FIXTURE_START}T00:00:00Z`) + offset * 86400000).toISOString().slice(0, 10);
+}
+
+function lcg(seed: number) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function makeHistories(seriesCount: number, days: number): DatedValue[][] {
+  const random = lcg(42);
+  return Array.from({ length: seriesCount }, (_, series) => {
+    const history: DatedValue[] = [];
+    let value = 10_000 + series * 2_500;
+    for (let day = series * 7; day < days; day++) {
+      if (day > series * 7 && random() < 0.25) continue;
+      value *= 1 + (random() - 0.5) * 0.02;
+      history.push({ date: isoDay(day), value });
+    }
+    return history;
+  });
+}
+
+function dateAxis(histories: DatedValue[][]) {
+  return [...new Set(histories.flatMap((history) => history.map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
+}
+
+// The implementations these replace, kept here as the reference result.
+function referenceCombine(histories: DatedValue[][], currentValue: number): DatedValue[] {
+  const populated = histories.filter((history) => history.length > 0);
+  const dates = dateAxis(populated);
+  const combined = dates.map((date) => ({
+    date,
+    value: populated.reduce((sum, history) => {
+      const latest = [...history].reverse().find((point) => point.date <= date);
+      return sum + (latest?.value ?? 0);
+    }, 0),
+  }));
+  if (!combined.length) return [{ date: todayISODate(), value: currentValue }];
+  const today = todayISODate();
+  const lastDate = combined.at(-1)?.date;
+  if (lastDate && lastDate < today) combined.push({ date: today, value: currentValue });
+  return combined;
+}
+
+test("combineHistories matches the reverse+find merge it replaces", () => {
+  const histories = makeHistories(8, FIXTURE_DAYS);
+  histories.push([]); // empty histories must be ignored, not zero-fill the axis
+  const currentValue = 148_250.75;
+
+  const merged = combineHistories(histories, currentValue);
+  assert.deepEqual(merged, referenceCombine(histories, currentValue));
+  assert.ok(merged.length > FIXTURE_DAYS * 0.9, `axis too short: ${merged.length}`);
+  assert.equal(merged[0].date, isoDay(0));
+  assert.equal(merged.at(-1)!.date, todayISODate());
+  assert.equal(merged.at(-1)!.value, currentValue);
+});
+
+test("combineHistories falls back to today when no history has points", () => {
+  assert.deepEqual(combineHistories([[], []], 500), [{ date: todayISODate(), value: 500 }]);
+});
+
+test("forward cursors carry the last value like a reverse scan", () => {
+  const histories = makeHistories(8, FIXTURE_DAYS);
+  const cursors = histories.map((history) => seriesCursor(history));
+
+  for (const date of dateAxis(histories)) {
+    histories.forEach((history, index) => {
+      const scanned = [...history].reverse().find((point) => point.date <= date)?.value;
+      assert.equal(carryForward(cursors[index], date), scanned, `series ${index} on ${date}`);
+    });
+  }
+});
+
+test("date-keyed series maps join the overview axis exactly like find", () => {
+  const histories = makeHistories(8, FIXTURE_DAYS);
+  const seriesMaps = histories.map((history) => valueByDate(history));
+
+  for (const date of dateAxis(histories)) {
+    histories.forEach((history, index) => {
+      assert.equal(seriesMaps[index].get(date), history.find((point) => point.date === date)?.value);
+    });
+  }
+  assert.equal(valueByDate(histories[0]).get("1990-01-01"), undefined);
 });

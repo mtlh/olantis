@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { resolvePortfolioColor } from "@/lib/colors";
-import { chartDateLabel, filterByRange, holdingValueGBP, todayISODate, type FxRates } from "@/lib/format";
+import { chartDateLabel, filterByRange, holdingValueGBP, todayISODate, valueByDate, type FxRates } from "@/lib/format";
 import type { Account, Portfolio, Provider, Snapshot, Transaction } from "@/lib/store";
 import type { PerformanceSeries } from "@/components/dashboard/PerformanceChart";
 import type { ValueTimeChartDot, ValueTimeChartRow, ValueTimeChartSeries } from "@/components/dashboard/ValueTimeChart";
@@ -70,15 +70,17 @@ export function useDashboardChartData({
       return [{ date: chartDateLabel(dateISO), dateISO, total: totalValue }];
     }
 
+    const seriesMaps = Object.values(byPortfolio).map((info) => ({ name: info.name, values: valueByDate(info.data) }));
+
     return filteredSnapshots.map((snapshot) => {
       const row: ValueTimeChartRow = {
         date: chartDateLabel(snapshot.date),
         dateISO: snapshot.date,
         total: snapshot.value,
       };
-      for (const info of Object.values(byPortfolio)) {
-        const portfolioValue = info.data.find((point) => point.date === snapshot.date)?.value;
-        if (portfolioValue != null) row[info.name] = portfolioValue;
+      for (const series of seriesMaps) {
+        const portfolioValue = series.values.get(snapshot.date);
+        if (portfolioValue != null) row[series.name] = portfolioValue;
       }
       return row;
     });

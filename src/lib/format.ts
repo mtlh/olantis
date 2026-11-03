@@ -71,6 +71,60 @@ export function valueChangeOverRange(
   };
 }
 
+export type DatedValue = { date: string; value: number };
+
+/** Forward cursor over one ascending series. */
+export type SeriesCursor<T extends DatedValue = DatedValue> = { points: readonly T[]; index: number };
+
+export function seriesCursor<T extends DatedValue>(points: readonly T[]): SeriesCursor<T> {
+  return { points, index: -1 };
+}
+
+/**
+ * Latest value at or before `date`, carrying the previous value forward.
+ * Queries must be in non-decreasing date order and `points` must be ascending,
+ * which makes walking a merged date axis a single pass per series.
+ */
+export function carryForward<T extends DatedValue>(cursor: SeriesCursor<T>, date: string): number | undefined {
+  const { points } = cursor;
+  let index = cursor.index;
+  while (index + 1 < points.length && points[index + 1].date <= date) index++;
+  cursor.index = index;
+  return index >= 0 ? points[index].value : undefined;
+}
+
+/** Date → value lookup for exact-day joins; the first value for a date wins, like `Array.find`. */
+export function valueByDate<T extends DatedValue>(points: readonly T[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const point of points) if (!map.has(point.date)) map.set(point.date, point.value);
+  return map;
+}
+
+/**
+ * Merge ascending per-item histories onto one date axis. A history holds its
+ * last known value on days it has no snapshot; `currentValue` closes the series
+ * when the latest snapshot predates today.
+ */
+export function combineHistories(histories: ReadonlyArray<readonly DatedValue[]>, currentValue: number): DatedValue[] {
+  const populated = histories.filter((history) => history.length > 0);
+  const dates = new Set<string>();
+  for (const history of populated) for (const point of history) dates.add(point.date);
+  const orderedDates = [...dates].sort((a, b) => a.localeCompare(b));
+  if (!orderedDates.length) return [{ date: todayISODate(), value: currentValue }];
+
+  const cursors = populated.map((history) => seriesCursor(history));
+  const combined = orderedDates.map((date) => {
+    let value = 0;
+    for (const cursor of cursors) value += carryForward(cursor, date) ?? 0;
+    return { date, value };
+  });
+
+  const today = todayISODate();
+  const lastDate = combined[combined.length - 1].date;
+  if (lastDate < today) combined.push({ date: today, value: currentValue });
+  return combined;
+}
+
 export function fmtGBP(n: number): string {
   if (!Number.isFinite(n)) return "—";
   // Below £100 show pence — otherwise small balances all render as "£0".
