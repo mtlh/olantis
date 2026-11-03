@@ -7,5 +7,12 @@
   "main": "main.cjs",
   "dependencies": {
     "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.2.2",
+    "electron-builder": "^26.18.0"
+  },
+  "scripts": {
+    "build": "electron-builder --publish never"
   }
 }

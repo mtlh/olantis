@@ -1,10 +1,16 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 const require = createRequire(import.meta.url);
 const nextCli = require.resolve("next/dist/bin/next");
-const electronBinary = require("electron");
+
+// electron lives in the electron/ workspace now; the root package is free of
+// the desktop toolchain. Resolve the binary from there so `npm run electron:dev`
+// works without reinstalling anything at the root.
+const electronRequire = createRequire(path.join(process.cwd(), "electron", "package.json"));
+const electronBinary = electronRequire("electron");
 const appUrl = "http://localhost:3000";
 const smokeTest = process.argv.includes("--smoke-test");
 
@@ -69,6 +75,7 @@ try {
   electronApp = spawn(electronBinary, ["electron", ...(smokeTest ? ["--smoke-test"] : [])], {
     stdio: "inherit",
     env: { ...process.env, OLANTIS_ELECTRON_URL: appUrl },
+    cwd: path.join(process.cwd(), "electron"),
   });
 
   const exitCode = await new Promise((resolve, reject) => {
