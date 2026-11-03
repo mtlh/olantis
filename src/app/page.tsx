@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { DEMO_COOKIE, demoUserId } from "@/lib/auth";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import { DemoButton } from "@/components/DemoButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
 import { ArrowRight, BarChart3, Clock3, Layers, LineChart, Lock, ShieldCheck, Sparkles, Wallet, EyeOff, TrendingUp } from "lucide-react";
@@ -80,7 +81,7 @@ export default async function Home() {
               </p>
               <div className="flex flex-wrap gap-3 mt-7">
                 <a href="/login" className={buttonVariants({ size: "lg", className: "h-10 px-6 bg-white text-black hover:bg-zinc-200 font-semibold" })}>Sign in to dashboard <ArrowRight className="w-4 h-4" /></a>
-                <a href="/api/demo" className={buttonVariants({ variant: "outline", size: "lg", className: "h-10 px-6 bg-white/[0.06] border-white/10 hover:bg-white/10 text-white" })}>Try demo <ArrowRight className="w-4 h-4" /></a>
+                <DemoButton variant="outline" size="lg" className="h-10 px-6 bg-white/[0.06] border-white/10 hover:bg-white/10 text-white" />
               </div>
               <p className="text-xs text-zinc-600 mt-3">No credit card • Demo is instant • Set up in 60 seconds</p>
               <div className="flex flex-wrap items-center gap-6 mt-8 text-xs text-zinc-500">
@@ -185,7 +186,7 @@ export default async function Home() {
                 </div>
                 <div className="flex gap-3 mt-8">
                   <a href="/login" className={buttonVariants({ className: "bg-white text-black hover:bg-zinc-200" })}>Start now <ArrowRight className="w-4 h-4" /></a>
-                  <a href="/api/demo" className={buttonVariants({ variant: "outline", className: "bg-white/5 border-white/10 hover:bg-white/10 text-white" })}>Explore demo</a>
+                  <DemoButton variant="outline" className="bg-white/5 border-white/10 hover:bg-white/10 text-white" label="Explore demo" showArrow={false} />
                 </div>
               </div>
               <div className="bg-black/40 border-t lg:border-t-0 lg:border-l border-white/5 p-6 md:p-8 flex flex-col justify-center">
@@ -222,7 +223,7 @@ export default async function Home() {
             </div>
             <div className="flex gap-3 shrink-0">
               <a href="/login" className={buttonVariants({ size: "lg", className: "!bg-zinc-900 !text-white hover:!bg-black border border-zinc-900" })}>Sign in <ArrowRight className="w-4 h-4" /></a>
-              <a href="/api/demo" className={buttonVariants({ variant: "outline", size: "lg", className: "!bg-white !text-zinc-900 !border-zinc-300 hover:!bg-zinc-50" })}>Try demo</a>
+              <DemoButton variant="outline" size="lg" className="!bg-white !text-zinc-900 !border-zinc-300 hover:!bg-zinc-50" showArrow={false} />
             </div>
           </div>
         </section>
