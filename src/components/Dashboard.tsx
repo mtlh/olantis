@@ -323,7 +323,7 @@ const pickRange = useCallback((r: ChartRange) => {
       toast({title:`Updated ${j.updated} holdings`,description:j.skipped?`${j.skipped} skipped (24h limit)`:undefined,variant:"success"});
     } catch(e: unknown){ toast({title:"Refresh failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
     finally{setRefreshing(false);}
-  }, [portfolios, directHoldings, toast, setAllHoldings, setPortfolios]);
+  }, [portfolios, directHoldings, toast, applyHoldings]);
 
   // Stable identity so the memoised Sidebar does not re-render on every
   // Dashboard state change (range switch, dialog open, allocation mode, …).
