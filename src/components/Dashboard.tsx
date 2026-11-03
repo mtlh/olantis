@@ -370,8 +370,8 @@ const pickRange = useCallback((r: ChartRange) => {
               <WatchlistPanel />
             </section>
           ) : section === "goals" ? (
-            <section className="space-y-4">
-              <div><h1 className="text-3xl font-bold tracking-tight text-white">Goals</h1><p className="mt-1 text-sm text-zinc-500">Track your progress toward a portfolio target.</p></div>
+            <section className="space-y-6">
+              <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Goals</h1>
               <GoalPanel currentValue={totalValue} history={snapshots} dateFormat={settings.dateFormat} />
             </section>
           ) : section === "performance" ? (

@@ -213,7 +213,7 @@ async function seedDemo(userId: string) {
     sideWrites.push(db.insert(goals).values({
       id: crypto.randomUUID(),
       userId,
-      name: "Build a Â£50,000 portfolio",
+      name: "Build a £50,000 portfolio",
       targetValue: 50000,
       targetDate: targetDate.toISOString().slice(0, 10),
       createdAt: now,
