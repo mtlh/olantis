@@ -7,14 +7,14 @@ import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
 import { clearDemo } from "@/lib/demo-cleanup";
 
 /**
- * Demo mode â€” deliberately UNAUTHENTICATED.
+ * Demo mode — deliberately UNAUTHENTICATED.
  *
  * There is no sign-in, no WorkOS challenge and no shared secret protecting this
  * endpoint, and that is intentional: the demo must be reachable in one click.
  * Security comes from isolation rather than from an auth boundary:
  *
  *   - each visitor gets their own tenant `demo:<sessionId>` (see lib/auth.ts)
- *   - the dataset is PREDEFINED and deterministic â€” the same accounts,
+ *   - the dataset is PREDEFINED and deterministic — the same accounts,
  *     portfolios, holdings and history for everyone, generated from a seeded
  *     PRNG, with no upstream (Yahoo) calls on the seeding path
  *   - because tenants are per-session, one visitor can never read, overwrite
@@ -27,7 +27,7 @@ import { clearDemo } from "@/lib/demo-cleanup";
 // Deterministic predefined dataset
 // ---------------------------------------------------------------------------
 
-/** mulberry32 â€” small, fast, deterministic PRNG. */
+/** mulberry32 — small, fast, deterministic PRNG. */
 function mulberry32(seed: number) {
   return function () {
     seed |= 0;
@@ -169,9 +169,9 @@ async function seedDemo(userId: string) {
   const provT212: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Trading 212", createdAt: now };
   const provHL: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, name: "Hargreaves Lansdown", createdAt: now };
 
-  const p1: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA â€” Global Tracker", type: "live", createdAt: now };
-  const p2: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 â€” Growth", type: "live", createdAt: now };
-  const p3: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP â€” Retirement", type: "live", createdAt: now };
+  const p1: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA — Global Tracker", type: "live", createdAt: now };
+  const p2: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 — Growth", type: "live", createdAt: now };
+  const p3: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP — Retirement", type: "live", createdAt: now };
 
   const slotFor: Record<string, string> = { [p1.id]: "p1", [p2.id]: "p2", [p3.id]: "p3" };
   const hs: (typeof holdings.$inferInsert)[] = [];
@@ -181,7 +181,7 @@ async function seedDemo(userId: string) {
     }
   }
 
-  // Predefined history â€” deterministic, no network. Built before any insert so
+  // Predefined history — deterministic, no network. Built before any insert so
   // the writes can be batched instead of run one after another.
   const dates = weeklyDates(3);
   const n = dates.length;
