@@ -85,7 +85,12 @@
 * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.12) transparent; }
 html { background: #050507; }
 body {
-  background: radial-gradient(1200px 600px at 20% -10%, rgba(255,255,255,0.06), transparent 60%),
+  /* The desktop title bar (electron/shell.css) sits flush above the page, so
+     the base colour has to dominate the first rows and the glows have to ease
+     in below it. Without this the top radial glow is at full strength on the
+     very first painted row, meeting the title bar in a hard horizontal edge. */
+  background: linear-gradient(180deg, #050507 0, rgba(5,5,7,0) 160px),
+              radial-gradient(1200px 600px at 20% -10%, rgba(255,255,255,0.06), transparent 60%),
               radial-gradient(900px 500px at 90% 10%, rgba(255,255,255,0.04), transparent 60%),
               #050507;
   font-family: var(--font-geist-sans), system-ui, sans-serif;
