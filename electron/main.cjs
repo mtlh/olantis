@@ -6,6 +6,9 @@ const { isAllowedNavigation, isExternalWebUrl } = require("./url-policy.cjs");
 const DEFAULT_APP_URL = "https://olantis.vercel.app";
 const APP_URL = process.env.OLANTIS_ELECTRON_URL || DEFAULT_APP_URL;
 const TITLEBAR_HEIGHT = 46;
+// Matches the app's own background (globals.css) so no white frame can show
+// through while the remote page loads.
+const APP_BACKGROUND = "#050507";
 const iconPath = app.isPackaged
   ? path.join(process.resourcesPath, "brand-mark.png")
   : path.join(__dirname, "..", "public", "brand", "mark-512.png");
@@ -62,7 +65,7 @@ if (!app.requestSingleInstanceLock()) {
       minHeight: 620,
       show: false,
       frame: false,
-      backgroundColor: "#050507",
+      backgroundColor: APP_BACKGROUND,
       title: "Olantis — Portfolio Dashboard",
       icon: iconPath,
       webPreferences: {
@@ -82,6 +85,10 @@ if (!app.requestSingleInstanceLock()) {
         webSecurity: true,
       },
     });
+    // WebContentsView paints opaque white by default, and the remote page is
+    // still loading when the window appears. Keep the view's backdrop dark so
+    // launching shows black chrome instead of a white flash.
+    appView.setBackgroundColor(APP_BACKGROUND);
     mainWindow.contentView.addChildView(appView);
     syncAppBounds();
     mainWindow.on("resize", syncAppBounds);
