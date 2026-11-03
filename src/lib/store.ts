@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { DEFAULT_FX_RATES, holdingValueGBP, type FxRates } from "@/lib/format";
+import { DEFAULT_FX_RATES, holdingValueGBP, type FxRates, type ValueChange } from "@/lib/format";
 import { DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "@/lib/settings";
 
 export { DEFAULT_SETTINGS, normalizeSettings, type AppSettings };
@@ -11,7 +11,28 @@ export type Account = { id: string; name: string; color: string | null; sortOrde
 export type Provider = { id: string; name: string; color: string | null; accountId: string; sortOrder?: number | null; userId?: string; createdAt?: number };
 export type UserSettings = { userId: string; currency: string; dateFormat: string; defaultRange: string; showTradeMarkers: number };
 export type Snapshot = { date: string; value: number };
-export type SnapResponse = { total: Snapshot[]; byPortfolio: Record<string, { name: string; data: Snapshot[] }>; byHolding?: Record<string, { symbol: string; name: string; data: Snapshot[] }> };
+/** Per-range move of one holding, precomputed on the server (see lib/bootstrap.ts). */
+export type HoldingMoverChanges = {
+  change1M: ValueChange | null;
+  change3M: ValueChange | null;
+  change1Y: ValueChange | null;
+  changeMax: ValueChange | null;
+};
+export type SnapResponse = {
+  total: Snapshot[];
+  byPortfolio: Record<string, { name: string; data: Snapshot[] }>;
+  /**
+   * Full series for direct holdings only (no portfolioId), which drive the
+   * account/provider history. Portfolio holdings already ship through
+   * byPortfolio. `/api/snapshots?holdingId=` still returns any single series.
+   */
+  byHolding?: Record<string, { symbol: string; name: string; data: Snapshot[] }>;
+  /**
+   * 1M/3M/1Y/MAX move per holding so the dashboard's strongest/weakest movers
+   * do not need a full series for every holding in the payload.
+   */
+  moverChanges?: Record<string, HoldingMoverChanges>;
+};
 export type Transaction = { id: string; userId?: string; portfolioId?: string | null; holdingId?: string | null; symbol: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date: string; note?: string | null; createdAt: number };
 
 /**
@@ -271,7 +292,7 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
     return () => clearTimeout(t);
   }, [totalValue, portfolios.length, directHoldings.length, pfVals, hVals, refresh]);
 
-  return { snapshots: data.total, byPortfolio: data.byPortfolio, byHolding: data.byHolding, refresh };
+  return { snapshots: data.total, byPortfolio: data.byPortfolio, byHolding: data.byHolding, moverChanges: data.moverChanges, refresh };
 }
 
 export function useHoldings() {

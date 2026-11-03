@@ -2,12 +2,14 @@ import { getDb } from "@/lib/db";
 import { snapshots, portfolioSnapshots, holdingSnapshots, portfolios, holdings, providers, accounts } from "@/lib/db/schema";
 import { eq, inArray, and, gte, sql } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
-import { todayISODate, rangeCutoff } from "@/lib/format";
+import { DEFAULT_FX_RATES, holdingValueGBP, todayISODate, rangeCutoff, valueChangeOverRange, type FxRates } from "@/lib/format";
+import { getLatestFxRates } from "@/lib/fx";
 import { windowSeries } from "@/lib/snapshot-window";
+import type { HoldingMoverChanges } from "@/lib/store";
 
 export async function GET(req: Request) {
   const userId = await getUserId();
-  if (!userId) return Response.json({ total: [], byPortfolio: {}, byHolding: {} });
+  if (!userId) return Response.json({ total: [], byPortfolio: {}, byHolding: {}, moverChanges: {} });
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const holdingId = searchParams.get("holdingId");
@@ -58,12 +60,15 @@ export async function GET(req: Request) {
   const holdConds = [eq(holdingSnapshots.userId, userId)];
   if (cutoff) holdConds.push(gte(holdingSnapshots.date, cutoff));
 
-  const [totalRows, perPort, ps, perHolding, hs] = await db.batch([
-    db.select({ date: snapshots.date, value: snapshots.value }).from(snapshots).where(and(...totalConds)),
-    db.select({ portfolioId: portfolioSnapshots.portfolioId, date: portfolioSnapshots.date, value: portfolioSnapshots.value }).from(portfolioSnapshots).where(and(...portConds)),
-    db.select({ id: portfolios.id, name: portfolios.name }).from(portfolios).where(eq(portfolios.userId, userId)),
-    db.select({ holdingId: holdingSnapshots.holdingId, date: holdingSnapshots.date, value: holdingSnapshots.value }).from(holdingSnapshots).where(and(...holdConds)),
-    db.select({ id: holdings.id, symbol: holdings.symbol, name: holdings.name, userId: holdings.userId }).from(holdings).where(eq(holdings.userId, userId)),
+  const [[totalRows, perPort, ps, perHolding, hs], fx] = await Promise.all([
+    db.batch([
+      db.select({ date: snapshots.date, value: snapshots.value }).from(snapshots).where(and(...totalConds)),
+      db.select({ portfolioId: portfolioSnapshots.portfolioId, date: portfolioSnapshots.date, value: portfolioSnapshots.value }).from(portfolioSnapshots).where(and(...portConds)),
+      db.select({ id: portfolios.id, name: portfolios.name }).from(portfolios).where(eq(portfolios.userId, userId)),
+      db.select({ holdingId: holdingSnapshots.holdingId, date: holdingSnapshots.date, value: holdingSnapshots.value }).from(holdingSnapshots).where(and(...holdConds)),
+      db.select({ id: holdings.id, symbol: holdings.symbol, name: holdings.name, shares: holdings.shares, currentPrice: holdings.currentPrice, currency: holdings.currency, portfolioId: holdings.portfolioId }).from(holdings).where(eq(holdings.userId, userId)),
+    ]),
+    getLatestFxRates().catch(() => ({ date: null, rates: {} as FxRates })),
   ]);
 
   const nameById = new Map((ps as { id: string; name: string }[]).map((p) => [p.id, p.name]));
@@ -78,19 +83,36 @@ export async function GET(req: Request) {
     if (applyWindow) byPortfolio[k].data = windowSeries(byPortfolio[k].data);
   }
 
-  const byHolding: Record<string, { symbol: string; name: string; data: { date: string; value: number }[] }> = {};
+  type HoldingRow = { id: string; symbol: string; name: string; shares: number; currentPrice: number; currency: string; portfolioId: string | null };
+  const holdingById = new Map((hs as HoldingRow[]).map((h) => [h.id, h]));
+  const allByHolding: Record<string, { symbol: string; name: string; data: { date: string; value: number }[] }> = {};
   for (const r of perHolding as { holdingId: string; date: string; value: number }[]) {
     const key = r.holdingId;
-    if (!byHolding[key]) byHolding[key] = { symbol: "", name: "", data: [] };
-    byHolding[key].data.push({ date: r.date, value: r.value });
+    if (!allByHolding[key]) allByHolding[key] = { symbol: "", name: "", data: [] };
+    allByHolding[key].data.push({ date: r.date, value: r.value });
   }
-  const holdingNameById = new Map((hs as { id: string; symbol: string; name: string }[]).map((h) => [h.id, h]));
-  for (const key of Object.keys(byHolding)) {
-    const entry = byHolding[key];
-    const h = holdingNameById.get(key);
-    if (h) { entry.symbol = h.symbol; entry.name = h.name; }
+  // Mirror lib/bootstrap.ts: only direct holdings keep a full series, and every
+  // holding gets its mover changes precomputed so the client never has to scan
+  // a per-holding series for the dashboard movers.
+  const fxRates = { ...DEFAULT_FX_RATES, ...fx.rates } as FxRates;
+  const byHolding: Record<string, { symbol: string; name: string; data: { date: string; value: number }[] }> = {};
+  const moverChanges: Record<string, HoldingMoverChanges> = {};
+  for (const key of Object.keys(allByHolding)) {
+    const entry = allByHolding[key];
+    const h = holdingById.get(key);
     entry.data.sort((a, b) => a.date.localeCompare(b.date));
     if (applyWindow) entry.data = windowSeries(entry.data);
+    if (!h || !(h.shares > 0)) continue;
+    entry.symbol = h.symbol;
+    entry.name = h.name;
+    if (!h.portfolioId) byHolding[key] = entry;
+    const currentValue = holdingValueGBP(h, fxRates);
+    moverChanges[key] = {
+      change1M: valueChangeOverRange(entry.data, "1M", currentValue),
+      change3M: valueChangeOverRange(entry.data, "3M", currentValue),
+      change1Y: valueChangeOverRange(entry.data, "1Y", currentValue),
+      changeMax: valueChangeOverRange(entry.data, "MAX", currentValue),
+    };
   }
 
   const totalArr = (totalRows as { date: string; value: number }[]).map((r) => ({ date: r.date, value: r.value }));
@@ -98,7 +120,7 @@ export async function GET(req: Request) {
   const finalTotal = applyWindow ? windowSeries(totalArr) : totalArr;
 
   return Response.json(
-    { total: finalTotal, byPortfolio, byHolding },
+    { total: finalTotal, byPortfolio, byHolding, moverChanges },
     { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=300" } },
   );
 }
