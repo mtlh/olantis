@@ -5,19 +5,13 @@ import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus, AlertTriangle } from "lucide-react";
-import { TradeDialog } from "@/components/TradeDialog";
-import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
+import dynamic from "next/dynamic";
 import { IndividualDashboard } from "@/components/dashboard/IndividualDashboard";
 import { AccountDashboard } from "@/components/dashboard/AccountDashboard";
 import { MainDashboard } from "@/components/dashboard/MainDashboard";
 import { PortfolioDashboard } from "@/components/dashboard/PortfolioDashboard";
 import { ProviderDashboard } from "@/components/dashboard/ProviderDashboard";
-import { WatchlistPanel } from "@/components/WatchlistPanel";
-import { GoalPanel } from "@/components/GoalPanel";
-import { SettingsView } from "@/components/Settings";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
-import { AssignHoldingDialog } from "@/components/dashboard/AssignHoldingDialog";
-import { EditPortfolioDialog } from "@/components/dashboard/EditPortfolioDialog";
 import { HoldingsTable } from "@/components/dashboard/HoldingsTable";
 import { useAccountProviderDashboardData } from "@/components/dashboard/useAccountProviderDashboardData";
 import { usePortfolioOverviewInsights } from "@/components/dashboard/usePortfolioOverviewInsights";
@@ -39,8 +33,80 @@ import { resolvePortfolioColor } from "@/lib/colors";
 import { fmtPrice, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, valueChangeOverRange } from "@/lib/format";
 import { AllocationCard } from "@/components/dashboard/shared/AllocationCard";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
-import { HoldingDialog, type HoldingFormData } from "@/components/dashboard/HoldingDialog";
-import { DeleteConfirmationDialog } from "@/components/dashboard/shared/DeleteConfirmationDialog";
+import type { HoldingFormData } from "@/components/dashboard/HoldingDialog";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Sections and dialogs that are not part of the default dashboard view each get
+// their own chunk, so the first paint of a workspace route never parses views it
+// does not show. The placeholders copy each section's stable frame (heading,
+// hairlines, card edges) so a late chunk cannot move what is already on screen.
+const SettingsView = dynamic(() => import("@/components/Settings").then((module) => module.SettingsView), { loading: () => <SettingsFallback /> });
+const WatchlistPanel = dynamic(() => import("@/components/WatchlistPanel").then((module) => module.WatchlistPanel), { loading: () => <WatchlistFallback /> });
+const GoalPanel = dynamic(() => import("@/components/GoalPanel").then((module) => module.GoalPanel), { loading: () => <GoalsFallback /> });
+const CreatePortfolioWizard = dynamic(() => import("@/components/CreatePortfolioWizard").then((module) => module.CreatePortfolioWizard), { ssr: false, loading: () => <WizardFallback /> });
+const HoldingDialog = dynamic(() => import("@/components/dashboard/HoldingDialog").then((module) => module.HoldingDialog), { ssr: false });
+const TradeDialog = dynamic(() => import("@/components/TradeDialog").then((module) => module.TradeDialog), { ssr: false });
+const AssignHoldingDialog = dynamic(() => import("@/components/dashboard/AssignHoldingDialog").then((module) => module.AssignHoldingDialog), { ssr: false });
+const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPortfolioDialog").then((module) => module.EditPortfolioDialog), { ssr: false });
+const DeleteConfirmationDialog = dynamic(() => import("@/components/dashboard/shared/DeleteConfirmationDialog").then((module) => module.DeleteConfirmationDialog), { ssr: false });
+
+// One skeleton shape for every deferred section: a fixed leading block plus a
+// few rows, so the placeholder occupies the same frame the real section will.
+function SectionFallback({ rows = 4, header = true }: { rows?: number; header?: boolean }) {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      {header && (
+        <div className="grid grid-cols-2 gap-6 border-y border-white/[0.06] py-7 sm:gap-x-10 lg:grid-cols-3 lg:gap-0">
+          {[0, 1, 2].map((index) => (
+            <div key={index} className={index === 0 ? "col-span-2 lg:col-span-1 lg:pr-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
+              <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
+              <Skeleton className="mt-3 h-8 w-28 bg-white/[0.05]" />
+              <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.05]" />
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="divide-y divide-white/[0.05]">
+        {Array.from({ length: rows }, (_, index) => (
+          <div key={index} className="flex items-center justify-between gap-3 py-3">
+            <Skeleton className="h-4 w-28 bg-white/[0.05]" />
+            <Skeleton className="h-4 w-16 bg-white/[0.05]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SettingsFallback() {
+  return (
+    <section className="space-y-6 pb-16 xl:pb-0">
+      <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Settings</h1>
+      <SectionFallback rows={6} />
+    </section>
+  );
+}
+
+function WatchlistFallback() {
+  return <SectionFallback rows={4} />;
+}
+
+function GoalsFallback() {
+  return (
+    <div className="space-y-8" aria-busy="true">
+      <SectionFallback rows={2} />
+      <div className="panel p-4">
+        <Skeleton className="h-3.5 w-32 bg-white/[0.05]" />
+        <Skeleton className="mt-4 h-[280px] w-full bg-white/[0.05] sm:h-[320px]" />
+      </div>
+    </div>
+  );
+}
+
+function WizardFallback() {
+  return <SectionFallback rows={5} />;
+}
+
 type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };
 type DeleteRequest =
   | { kind: "account"; item: Account }
