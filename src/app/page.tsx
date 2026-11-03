@@ -11,6 +11,25 @@ import { Logo } from "@/components/Logo";
 const CHART =
   "M0 152 C22 148 38 155 60 143 C82 131 98 139 122 125 C146 111 162 119 186 106 C210 93 226 100 250 85 C274 70 290 76 314 58 C332 45 344 34 358 24 C368 17 380 12 389 8";
 
+/**
+ * The hero ring: the mark at hero scale. A hairline circle that wraps the
+ * headline and the demo card, left open where the chart ends, so the chart's
+ * bead sits in the break like the ring's green dot.
+ */
+const RING_R = 49.9;
+const RING_GAP_DEG = 0.75;
+/** The chart's last point sits 24.7° above the ring's centre: 555 right, 255 up. */
+const RING_HIT_DEG = (Math.atan2(255, 555) * 180) / Math.PI;
+
+function ringPoint(deg: number) {
+  const rad = (deg * Math.PI) / 180;
+  return `${(50 + RING_R * Math.cos(rad)).toFixed(2)} ${(50 - RING_R * Math.sin(rad)).toFixed(2)}`;
+}
+
+const RING_PATH = `M${ringPoint(RING_HIT_DEG + RING_GAP_DEG)} A${RING_R} ${RING_R} 0 1 0 ${ringPoint(
+  RING_HIT_DEG - RING_GAP_DEG,
+)}`;
+
 const ACCOUNTS = [
   { name: "ISA", detail: "Global Tracker", value: "£42,800", color: "#60a5fa" },
   { name: "SIPP", detail: "S&P 500", value: "£18,200", color: "#34d399" },
@@ -91,19 +110,18 @@ export default async function Home() {
           </div>
 
           <div className="rise relative" style={{ animationDelay: "220ms" }}>
-            {/* The mark, blown up: a closed ring whose top-right point is the chart's last point. */}
+            {/* The mark, blown up: a white ring around the hero, open at the chart's last point. */}
             <div
               aria-hidden
-              className="pointer-events-none absolute top-[8px] left-[97.25%] -z-10 hidden w-[270%] -translate-x-[69.09%] -translate-y-[30.91%] lg:block"
+              className="pointer-events-none absolute top-[8px] left-[97.25%] z-0 hidden w-[242.8%] -translate-x-[95.5%] -translate-y-[29.1%] xl:block"
             >
-              <svg viewBox="0 0 100 100" className="aspect-square w-full">
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="27"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.06)"
-                  strokeWidth="0.12"
+              <svg viewBox="0 0 100 100" fill="none" className="aspect-square w-full">
+                <path
+                  d={RING_PATH}
+                  stroke="#fff"
+                  strokeOpacity="0.28"
+                  strokeWidth="0.1"
+                  strokeLinecap="round"
                 />
               </svg>
             </div>
