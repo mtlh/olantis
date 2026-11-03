@@ -1001,7 +1001,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             )}
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
-              <Input ref={searchInputRef} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
+              <Input ref={searchInputRef} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" aria-label="Search portfolios and holdings" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
               {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
             </div>
           </div>

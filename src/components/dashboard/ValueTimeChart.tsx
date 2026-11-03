@@ -132,7 +132,7 @@ export function ValueTimeChart({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[320px] select-none">
+        <div className="h-[320px] select-none" role="img" aria-label={`${title} chart`}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
               {/* Grid lines follow the Y ticks (which `evenAxisTicks` keeps on
