@@ -47,6 +47,59 @@ body {
   letter-spacing: -0.01em;
 }
 
+.nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.nav-button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #c4c4cb;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.nav-button:hover:not(:disabled) {
+  color: #fafafa;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nav-button:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.nav-button:disabled {
+  cursor: default;
+  color: #4c4c55;
+}
+
+.nav-button:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 1px;
+}
+
+.nav-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .window-controls {
   height: 100%;
   display: flex;

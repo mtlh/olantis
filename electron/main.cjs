@@ -44,6 +44,35 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on("olantis:window:close", (event) => shellWindowFor(event)?.close());
   ipcMain.handle("olantis:window:is-maximized", (event) => Boolean(shellWindowFor(event)?.isMaximized()));
 
+  function navigationHistory() {
+    return appView?.webContents.navigationHistory;
+  }
+
+  function sendNavigationState() {
+    const history = navigationHistory();
+    if (!mainWindow || mainWindow.isDestroyed() || !history) return;
+    mainWindow.webContents.send("olantis:nav:state", {
+      canGoBack: history.canGoBack(),
+      canGoForward: history.canGoForward(),
+    });
+  }
+
+  ipcMain.on("olantis:nav:back", (event) => {
+    if (!shellWindowFor(event)) return;
+    const history = navigationHistory();
+    if (history?.canGoBack()) history.goBack();
+  });
+  ipcMain.on("olantis:nav:forward", (event) => {
+    if (!shellWindowFor(event)) return;
+    const history = navigationHistory();
+    if (history?.canGoForward()) history.goForward();
+  });
+  ipcMain.handle("olantis:nav:state", (event) => {
+    if (!shellWindowFor(event)) return { canGoBack: false, canGoForward: false };
+    const history = navigationHistory();
+    return { canGoBack: Boolean(history?.canGoBack()), canGoForward: Boolean(history?.canGoForward()) };
+  });
+
   function syncAppBounds() {
     if (!mainWindow || !appView) return;
     const { width, height } = mainWindow.getContentBounds();
@@ -123,6 +152,11 @@ if (!app.requestSingleInstanceLock()) {
     };
     appView.webContents.on("will-navigate", handleAppNavigation);
     appView.webContents.on("will-redirect", handleAppNavigation);
+    // Keep the titlebar arrows in step with the embedded app's history,
+    // including client-side Next.js route changes.
+    for (const eventName of ["did-navigate", "did-navigate-in-page", "did-finish-load"]) {
+      appView.webContents.on(eventName, sendNavigationState);
+    }
 
     if (process.argv.includes("--smoke-test")) {
       const shellLoaded = new Promise((resolve) => mainWindow.webContents.once("did-finish-load", resolve));
@@ -130,7 +164,7 @@ if (!app.requestSingleInstanceLock()) {
         try {
           await shellLoaded;
           const integratedToolbar = await mainWindow.webContents.executeJavaScript(
-            '["minimize-button", "maximize-button", "close-button"].every((id) => document.getElementById(id))',
+            '["back-button", "forward-button", "minimize-button", "maximize-button", "close-button"].every((id) => document.getElementById(id))',
           );
           const renderedApp = await appView.webContents.executeJavaScript(
             'document.readyState === "complete" && document.body.innerText.trim().length > 0',

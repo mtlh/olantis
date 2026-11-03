@@ -3,6 +3,20 @@ const iconPath = new URLSearchParams(window.location.search).get("icon");
 
 if (iconPath) document.getElementById("brand-icon").src = iconPath;
 
+const backButton = document.getElementById("back-button");
+const forwardButton = document.getElementById("forward-button");
+
+backButton.addEventListener("click", () => desktop.goBack());
+forwardButton.addEventListener("click", () => desktop.goForward());
+
+function updateNavButtons({ canGoBack, canGoForward }) {
+  backButton.disabled = !canGoBack;
+  forwardButton.disabled = !canGoForward;
+}
+
+desktop.navState().then(updateNavButtons);
+desktop.onNavStateChange(updateNavButtons);
+
 document.getElementById("minimize-button").addEventListener("click", () => desktop.minimize());
 document.getElementById("maximize-button").addEventListener("click", () => desktop.toggleMaximize());
 document.getElementById("close-button").addEventListener("click", () => desktop.close());
