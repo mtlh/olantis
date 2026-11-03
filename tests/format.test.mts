@@ -5,6 +5,11 @@ import {
   combineHistories,
   evenAxisTicks,
   filterByRange,
+  fmtGBP,
+  fmtMoney,
+  fmtPrice,
+  fmtSnapshotDate,
+  fmtTimestamp,
   gbpAxisFormatter,
   holdingCostGBP,
   holdingValueGBP,
@@ -171,4 +176,60 @@ test("date-keyed series maps join the overview axis exactly like find", () => {
     });
   }
   assert.equal(valueByDate(histories[0]).get("1990-01-01"), undefined);
+});
+
+test("cached GBP formatter keeps whole-pound and pence output", () => {
+  assert.equal(fmtGBP(1234.567), "£1,235");
+  assert.equal(fmtGBP(-1234.567), "-£1,235");
+  // Under £100 pence are kept so small balances do not collapse to "£0".
+  assert.equal(fmtGBP(12.5), "£12.50");
+  assert.equal(fmtGBP(-12.5), "-£12.50");
+  assert.equal(fmtGBP(0), "£0");
+  assert.equal(fmtGBP(Number.NaN), "—");
+  assert.equal(fmtGBP(Number.POSITIVE_INFINITY), "—");
+  assert.equal(fmtGBP(Number.NEGATIVE_INFINITY), "—");
+});
+
+test("cached price formatter keeps GBP/USD/EUR and pence output", () => {
+  assert.equal(fmtPrice(1234.567, "GBP"), "£1,234.57");
+  assert.equal(fmtPrice(12.5, "GBP"), "£12.50");
+  assert.equal(fmtPrice(0, "GBP"), "£0.00");
+  assert.equal(fmtPrice(1234.567, "USD"), "$1234.57");
+  assert.equal(fmtPrice(1234.567, "EUR"), "€1234.57");
+  assert.equal(fmtMoney(1234.567, "GBP"), "£1,234.57");
+  // GBX/GBp quote pence: rounded whole pence, no currency symbol.
+  assert.equal(fmtPrice(1234.4, "GBX"), "1,234p");
+  assert.equal(fmtPrice(1234.4, "GBp"), "1,234p");
+  assert.equal(fmtPrice(12.5, "GBX"), "13p");
+  assert.equal(fmtPrice(-12.5, "GBX"), "-12p");
+  assert.equal(fmtPrice(0, "GBX"), "0p");
+  // Unknown and missing currencies keep the plain two-decimal form.
+  assert.equal(fmtPrice(1234.567, "SEK"), "1234.57 SEK");
+  assert.equal(fmtPrice(1234.567), "1234.57");
+  assert.equal(fmtPrice(Number.NaN, "GBP"), "£NaN");
+});
+
+test("repeated formatting calls return identical strings", () => {
+  const calls: Array<() => string> = [
+    () => fmtGBP(1234.567),
+    () => fmtGBP(12.5),
+    () => fmtPrice(98.765, "GBP"),
+    () => fmtPrice(1234.4, "GBX"),
+    () => fmtSnapshotDate("2026-01-05"),
+    () => fmtTimestamp(1767225600),
+  ];
+  for (const call of calls) {
+    const first = call();
+    for (let i = 0; i < 5; i++) assert.equal(call(), first);
+  }
+});
+
+test("cached date formatters match the uncached Intl output", () => {
+  assert.equal(fmtSnapshotDate("2026-01-05"), "5 Jan 2026");
+  assert.equal(fmtSnapshotDate("2026-01-05", "en-US"), "Jan 5, 2026");
+  assert.equal(fmtSnapshotDate("nope"), "nope");
+
+  const ts = 1767225600;
+  assert.equal(fmtTimestamp(ts, "en-GB"), new Date(ts * 1000).toLocaleString("en-GB"));
+  assert.equal(fmtTimestamp(ts, "en-US"), new Date(ts * 1000).toLocaleString("en-US"));
 });

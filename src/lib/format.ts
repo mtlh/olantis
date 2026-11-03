@@ -125,12 +125,37 @@ export function combineHistories(histories: ReadonlyArray<readonly DatedValue[]>
   return combined;
 }
 
+// Constructing an Intl formatter costs ~30 µs, these run per table cell, sidebar
+// row and chart tick — so build each shape once and reuse it.
+const numberFormats = new Map<string, Intl.NumberFormat>();
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+
+function numberFormat(locale: string, options?: Intl.NumberFormatOptions): Intl.NumberFormat {
+  const key = `${locale}|${options?.style ?? ""}|${options?.currency ?? ""}|${options?.minimumFractionDigits ?? ""}|${options?.maximumFractionDigits ?? ""}`;
+  let formatter = numberFormats.get(key);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(locale, options);
+    numberFormats.set(key, formatter);
+  }
+  return formatter;
+}
+
+function dateFormat(locale: string, options?: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = `${locale}|${options?.year ?? ""}|${options?.month ?? ""}|${options?.day ?? ""}|${options?.hour ?? ""}|${options?.minute ?? ""}|${options?.second ?? ""}|${options?.hour12 ?? ""}`;
+  let formatter = dateFormats.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, options);
+    dateFormats.set(key, formatter);
+  }
+  return formatter;
+}
+
 export function fmtGBP(n: number): string {
   if (!Number.isFinite(n)) return "—";
   // Below £100 show pence — otherwise small balances all render as "£0".
   const abs = Math.abs(n);
   const digits = abs > 0 && abs < 100 ? 2 : 0;
-  return new Intl.NumberFormat("en-GB", {
+  return numberFormat("en-GB", {
     style: "currency",
     currency: "GBP",
     minimumFractionDigits: digits,
@@ -149,9 +174,9 @@ export const SUPPORTED_CURRENCIES = ["GBP", "USD", "EUR"] as const;
 export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
 export function fmtPrice(n: number, currency?: string | null): string {
-  if (currency === "GBX" || currency === "GBp") return `${Math.round(n).toLocaleString("en-GB")}p`;
+  if (currency === "GBX" || currency === "GBp") return `${numberFormat("en-GB").format(Math.round(n))}p`;
   if (currency === "GBP") {
-    return new Intl.NumberFormat("en-GB", {
+    return numberFormat("en-GB", {
       style: "currency",
       currency: "GBP",
       maximumFractionDigits: 2,
@@ -160,6 +185,25 @@ export function fmtPrice(n: number, currency?: string | null): string {
   if (currency === "USD") return `$${Number(n).toFixed(2)}`;
   if (currency === "EUR") return `€${Number(n).toFixed(2)}`;
   return `${Number(n).toFixed(2)}${currency ? ` ${currency}` : ""}`;
+}
+
+/** ISO day ("2026-01-05") → "5 Jan 2026" in the user's locale. */
+export function fmtSnapshotDate(iso: string, locale = "en-GB"): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return dateFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(new Date(year, month - 1, day));
+}
+
+/** Unix seconds → localised date and time (holding row tooltip; same text as `toLocaleString`). */
+export function fmtTimestamp(ts: number, locale = "en-GB"): string {
+  return dateFormat(locale, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+  }).format(new Date(ts * 1000));
 }
 
 export function fmtPct(n: number): string {
