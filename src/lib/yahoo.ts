@@ -1,5 +1,6 @@
 import YahooFinance from "yahoo-finance2";
-import { cached } from "@/lib/http-cache";
+import { cached, withRetry, getCachedEntry, setCachedEntry, isFresh } from "@/lib/http-cache";
+import { readQuoteDaily, writeQuoteDaily } from "@/lib/quote-cache";
 
 const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
@@ -43,32 +44,85 @@ export async function fetchQuotes(
   const out: QuoteMap = {};
   const key = (symbol: string, exchange?: string) =>
     opts?.disambiguate ? quoteKey(symbol, exchange) : symbol.toUpperCase();
-  // Keep upstream quote bursts bounded while allowing portfolios larger than
-  // one Yahoo batch. Each batch settles independently so one bad ticker never
-  // prevents the rest from refreshing.
-  for (let offset = 0; offset < symbols.length; offset += 20) {
-    await Promise.allSettled(
-      symbols.slice(offset, offset + 20).map(async ({ symbol, exchange }) => {
-      const ys = toYahooSymbol(symbol, exchange);
-      try {
-        // Cache per Yahoo symbol so repeated refreshes across holdings/requests
-        // share one upstream call and survive 429s with the last good price.
-        const q = await cached("quote", ys, async () => {
-          const raw = (await yf.quote(ys)) as unknown as YahooQuoteResult;
-          return { price: raw.regularMarketPrice ?? null, currency: raw.currency || "USD" };
-        });
-        const price = q.price;
-        const currency = q.currency;
-        if (!price) return;
-        const entry = { price, currency };
-        const up = symbol.toUpperCase();
-        out[up] = entry;
-        if (symbol !== up) out[symbol] = entry;
-        out[key(symbol, exchange)] = entry;
-        if (opts?.disambiguate) out[quoteKey(up, exchange)] = entry;
-      } catch {
-        /* symbol not found */
+
+  const applyEntry = (symbol: string, exchange: string | undefined, entry: { price: number; currency: string }) => {
+    const up = symbol.toUpperCase();
+    out[up] = entry;
+    if (symbol !== up) out[symbol] = entry;
+    out[key(symbol, exchange)] = entry;
+    if (opts?.disambiguate) out[quoteKey(up, exchange)] = entry;
+  };
+
+  // First pass: resolve symbols already covered by a fresh in-memory or L2 cache
+  // entry, so they never trigger an upstream call.
+  const toFetch: Array<{ symbol: string; exchange?: string }> = [];
+  for (const { symbol, exchange } of symbols) {
+    const ys = toYahooSymbol(symbol, exchange);
+    if (isFresh("quote", ys)) {
+      const mem = getCachedEntry<{ price: number | null; currency: string }>("quote", ys);
+      if (mem?.value?.price) {
+        applyEntry(symbol, exchange, { price: mem.value.price, currency: mem.value.currency });
+        continue;
       }
+    }
+    const l2 = await readQuoteDaily(ys);
+    if (l2) {
+      setCachedEntry("quote", ys, { price: l2.price, currency: l2.currency });
+      applyEntry(symbol, exchange, l2);
+      continue;
+    }
+    toFetch.push({ symbol, exchange });
+  }
+
+  // Second pass: batch upstream calls, 20-50 symbols per request.
+  const BATCH_SIZE = 40;
+  for (let offset = 0; offset < toFetch.length; offset += BATCH_SIZE) {
+    const batch = toFetch.slice(offset, offset + BATCH_SIZE);
+    const ysList = batch.map(({ symbol, exchange }) => toYahooSymbol(symbol, exchange));
+    let rawBySymbol: Record<string, YahooQuoteResult> = {};
+    try {
+      const res = await withRetry(async () => yf.quote(ysList));
+      const arr = Array.isArray(res) ? res : Object.values(res ?? {});
+      for (const r of arr as unknown as YahooQuoteResult[]) {
+        const s = (r as unknown as { symbol?: string }).symbol;
+        if (s) rawBySymbol[String(s).toUpperCase()] = r as YahooQuoteResult;
+      }
+    } catch {
+      rawBySymbol = {};
+    }
+
+    await Promise.allSettled(
+      batch.map(async ({ symbol, exchange }) => {
+        const ys = toYahooSymbol(symbol, exchange);
+        const raw = rawBySymbol[ys.toUpperCase()];
+        try {
+          let price: number | null = null;
+          let currency = "USD";
+          if (raw) {
+            price = raw.regularMarketPrice ?? null;
+            currency = raw.currency || "USD";
+          } else {
+            // Fallback: try a single cached/L2 value already present.
+            const mem = getCachedEntry<{ price: number | null; currency: string }>("quote", ys);
+            if (mem?.value?.price) {
+              price = mem.value.price;
+              currency = mem.value.currency;
+            } else {
+              const l2 = await readQuoteDaily(ys);
+              if (l2) {
+                price = l2.price;
+                currency = l2.currency;
+              }
+            }
+          }
+          if (!price) return;
+          const entry = { price, currency };
+          setCachedEntry("quote", ys, { price, currency });
+          if (price) await writeQuoteDaily(ys, price, currency);
+          applyEntry(symbol, exchange, entry);
+        } catch {
+          /* symbol not found */
+        }
       })
     );
   }
