@@ -151,7 +151,7 @@ const pickRange = useCallback((r: ChartRange) => {
     if (!window.confirm("Delete this trade and recalculate the position?")) return;
     try {
       await removeTx(id);
-      await Promise.all([refreshPortfolios(), refreshTx()]);
+      await Promise.all([refreshPortfolios(), refreshAllHoldings(), refreshTx()]);
       toast({ title: "Trade deleted", description: "The affected position was recalculated.", variant: "success" });
     } catch (error) {
       toast({ title: "Could not delete trade", description: error instanceof Error ? error.message : String(error), variant: "error" });
@@ -232,17 +232,24 @@ const pickRange = useCallback((r: ChartRange) => {
       if (patch.providerId !== undefined) body.providerId = patch.providerId;
       const r = await fetch("/api/portfolios", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(await r.text());
+      const derivedAccountId = patch.providerId
+        ? (providers.find((p) => p.id === patch.providerId)?.accountId ?? patch.accountId ?? null)
+        : (patch.accountId ?? null);
       setPortfolios((prev) => prev.map((p) => {
         if (p.id !== id) return p;
         const next = { ...p };
         if (patch.name !== undefined) next.name = patch.name;
         if (patch.type !== undefined) next.type = patch.type as "live" | "manual";
-        if (patch.accountId !== undefined) next.accountId = patch.accountId;
-        if (patch.providerId !== undefined) next.providerId = patch.providerId;
+        if (patch.providerId !== undefined) {
+          next.providerId = patch.providerId;
+          next.accountId = derivedAccountId;
+        } else if (patch.accountId !== undefined) {
+          next.accountId = patch.accountId;
+        }
         return next;
       }));
     }
-  }, [setPortfolios]);
+  }, [setPortfolios, providers]);
   const handleRemoveAccount = async (id: string) => {
     try { await removeAccount(id); await refreshProviders(); await refreshPortfolios(); toast({title:"Account deleted",variant:"success"});} catch(e: unknown){toast({title:"Delete failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
   };

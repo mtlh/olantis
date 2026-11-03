@@ -104,7 +104,7 @@ export function useAccounts() {
   useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   const create = useCallback(async (name: string) => {
     const r = await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) }) as { id: string };
-    setAccounts((prev) => [...prev, { id: r.id, name, color: null, userId: undefined }]);
+    setAccounts((prev) => [...prev, { id: r.id, name, color: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) }]);
   }, []);
   const remove = useCallback(async (id: string) => {
     await api(`/api/accounts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -138,7 +138,7 @@ export function useProviders() {
   useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   const create = useCallback(async (name: string, accountId: string, color?: string | null) => {
     const r = await api("/api/providers", { method: "POST", body: JSON.stringify({ name, accountId, color: color ?? null }) }) as { id: string };
-    setProviders((prev) => [...prev, { id: r.id, name, color: color ?? null, accountId, sortOrder: null, userId: undefined, createdAt: undefined } as Provider]);
+    setProviders((prev) => [...prev, { id: r.id, name, color: color ?? null, accountId, sortOrder: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) } as Provider]);
     return r;
   }, []);
   const remove = useCallback(async (id: string) => {
@@ -177,7 +177,7 @@ export function usePortfolios() {
 
   const create = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
     const r = await api("/api/portfolios", { method: "POST", body: JSON.stringify({ name, type, accountId: accountId ?? null, providerId: providerId ?? null }) }) as { id: string };
-    setPortfolios((prev) => [...prev, { id: r.id, name, type, accountId: accountId ?? null, providerId: providerId ?? null, color: null, holdings: [], sortOrder: null, userId: undefined, createdAt: undefined } as Portfolio]);
+    setPortfolios((prev) => [...prev, { id: r.id, name, type, accountId: accountId ?? null, providerId: providerId ?? null, color: null, holdings: [], sortOrder: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) } as Portfolio]);
     return r;
   };
   const remove = async (id: string) => {
@@ -186,11 +186,11 @@ export function usePortfolios() {
   };
   const move = async (id: string, accountId: string | null, providerId?: string | null) => {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ id, accountId, providerId: providerId ?? null }) });
-    setPortfolios((prev) => prev.map((p) => {
-      if (p.id !== id) return p;
-      const finalAccountId: string | null = accountId;
-      return { ...p, accountId: finalAccountId, providerId: providerId ?? null };
-    }));
+    if (providerId) {
+      await refresh();
+    } else {
+      setPortfolios((prev) => prev.map((p) => (p.id === id ? { ...p, accountId, providerId: providerId ?? null } : p)));
+    }
   };
   const setColor = async (id: string, color: string | null) => {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ id, color }) });
