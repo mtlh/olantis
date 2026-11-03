@@ -4,7 +4,7 @@ import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Plus, AlertTriangle, Minus, History } from "lucide-react";
+import { Plus, AlertTriangle } from "lucide-react";
 import { TradeDialog } from "@/components/TradeDialog";
 import { CreatePortfolioWizard } from "@/components/CreatePortfolioWizard";
 import { IndividualDashboard } from "@/components/dashboard/IndividualDashboard";
@@ -31,8 +31,6 @@ import { PortfolioTradeHistory } from "@/components/dashboard/PortfolioTradeHist
 import { usePortfolioAllocation, type AllocationMode } from "@/components/dashboard/usePortfolioAllocation";
 import { useHoldingViewData } from "@/components/dashboard/useHoldingViewData";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 
 import { resolvePortfolioColor } from "@/lib/colors";
@@ -503,7 +501,6 @@ range={range}
                 <ValueTimeChart
                   data={chartData}
                   title="Performance"
-                  detail={active.name}
                   range={range}
                   onRangeChange={pickRange}
                   color={portfolioChartColor}
@@ -559,37 +556,39 @@ range={range}
               onNewPortfolio={() => openWizard(null)}
               onCreateFirstPortfolio={() => { void handleCreate("ISA", "live", accounts[0]?.id ?? null); }}
             >
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <ValueTimeChart
                   data={chartData}
                   title="Value over time"
-                  detail="Overall + per-portfolio"
                   range={range}
                   onRangeChange={pickRange}
                   series={overviewSeries}
                   dots={chartDots}
                   showTradeMarkers={settings.showTradeMarkers}
                   showSeriesToggle
-                  className="xl:col-span-2"
+                  surface="panel"
+                  className="lg:col-span-2"
                 />
                 <AllocationCard
                   allocation={allocation}
                   mode={allocMode}
                   onModeChange={setAllocMode}
+                  surface="panel"
                   emptyContent={<div><p className="text-sm text-zinc-500">No holdings</p><p className="mt-1 text-xs text-zinc-600">Create a portfolio and add holdings</p><Button size="sm" className="mt-3" onClick={() => openWizard(null)}><Plus className="h-3.5 w-3.5" />New portfolio</Button></div>}
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-8 xl:grid-cols-3 xl:gap-0">
                 <AccountBreakdownCard
-                    accounts={overviewBreakdown}
-                    totalValue={totalValue}
-                    onOpenAccount={selectAccount}
-                    onOpenProvider={selectProvider}
-                    onOpenPortfolio={selectPortfolio}
-                  />
+                  accounts={overviewBreakdown}
+                  totalValue={totalValue}
+                  onOpenAccount={selectAccount}
+                  onOpenProvider={selectProvider}
+                  onOpenPortfolio={selectPortfolio}
+                />
 
-                <div className="space-y-4">
+                <div className="flex flex-col divide-y divide-white/[0.06] xl:col-span-1 xl:border-l xl:border-white/[0.06] xl:pl-8">
+                  <DashboardGoalCard currentValue={totalValue} onViewGoals={() => router.push("/goals")} />
                   <PriceFreshnessCard
                     staleHoldings={staleHoldings}
                     dateFormat={settings.dateFormat}
@@ -597,37 +596,35 @@ range={range}
                     onSelectHolding={selectHolding}
                     onRefresh={() => { void refreshPrices(); }}
                   />
-
-                  <DashboardGoalCard currentValue={totalValue} onViewGoals={() => router.push("/goals")} />
                 </div>
               </div>
-
-              {overviewTx.transactions.length > 0 && (
-                <Card className="glass-card overflow-hidden">
-                  <CardHeader className="flex flex-row items-center justify-between border-b border-white/5">
-                    <CardTitle className="flex items-center gap-2 text-white"><History className="w-4 h-4" /> Recent trades <Badge variant="outline" className="border-white/10 text-zinc-500">{overviewTx.transactions.length}</Badge></CardTitle>
-                    <span className="text-xs text-zinc-500">Across all portfolios</span>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="divide-y divide-white/5 max-h-[240px] overflow-auto">
-                      {overviewTx.transactions.slice(0, 20).map((t) => (
-                        <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                          <span className={`w-6 h-6 rounded-lg grid place-items-center ${t.type === "buy" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>{t.type === "buy" ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}</span>
-                          <span className="font-medium text-white">{t.symbol}</span><span className={t.type === "buy" ? "text-emerald-400" : "text-red-400"}>{t.type === "buy" ? "Buy" : "Sell"}</span><span className="text-zinc-400">{t.shares} @ £{Number(t.price).toFixed(2)}</span><span className="ml-auto text-xs text-zinc-600">{t.date}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
               <PortfolioInsightsSection
                 insights={accountInsights}
                 periodMovers={periodMovers}
                 totalValue={totalValue}
                 range={range}
-                dateFormat={settings.dateFormat}
               />
+
+              {overviewTx.transactions.length > 0 && (
+                <section>
+                  <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
+                    <h2 className="text-sm font-medium text-white">Recent trades</h2>
+                    <span className="text-[11px] text-zinc-600">{overviewTx.transactions.length} trades</span>
+                  </div>
+                  <div className="max-h-[240px] divide-y divide-white/[0.05] overflow-auto">
+                    {overviewTx.transactions.slice(0, 20).map((t) => (
+                      <div key={t.id} className="flex items-center gap-3 px-1 py-2.5 text-sm">
+                        <span className={`grid h-6 w-6 place-items-center rounded-full text-xs ${t.type === "buy" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>{t.type === "buy" ? "+" : "−"}</span>
+                        <span className="font-medium text-white">{t.symbol}</span>
+                        <span className={t.type === "buy" ? "text-emerald-400" : "text-red-400"}>{t.type === "buy" ? "Buy" : "Sell"}</span>
+                        <span className="text-zinc-500">{t.shares} @ £{Number(t.price).toFixed(2)}</span>
+                        <span className="ml-auto text-[11px] text-zinc-600">{t.date}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
             </MainDashboard>
           )}
 

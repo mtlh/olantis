@@ -274,7 +274,7 @@ async function clearDemo(userId: string) {
  * Housekeeping: drop abandoned demo tenants so per-session isolation does not
  * grow the database without bound. Called opportunistically from `/api/demo`.
  */
-export async function pruneDemoSessions(olderThanDays = 7): Promise<number> {
+async function pruneDemoSessions(olderThanDays = 7): Promise<number> {
   const db = getDb();
   const cutoff = Math.floor(Date.now() / 1000) - olderThanDays * 86400;
   try {
