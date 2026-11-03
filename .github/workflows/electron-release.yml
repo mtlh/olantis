@@ -4,6 +4,19 @@ on:
   push:
     branches:
       - master
+    # The desktop app is a thin shell around the deployed site, so a web-only
+    # change ships through Vercel and needs no new installer. Skip the whole
+    # workflow unless something that ends up in the packaged app changed.
+    paths:
+      - ".github/workflows/electron-release.yml"
+      - "electron/**"
+      - "public/brand/**"
+      - "scripts/electron-dev.mjs"
+      - "scripts/verify-electron-update-manifest.mjs"
+      - "package.json"
+      - "package-lock.json"
+  # Manual escape hatch for rebuilding installers from an unchanged master.
+  workflow_dispatch:
 
 permissions:
   contents: write
