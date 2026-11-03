@@ -49,6 +49,12 @@ export type WorkspaceBootstrap = {
   transactions: Transaction[];
   settings: Record<string, unknown>;
   fx: { date: string | null; rates: FxRates };
+  /**
+   * True when the snapshot history above already contains today's row, i.e.
+   * the server handed the client today's values. A plain page view must not
+   * write them again — only a real value change should.
+   */
+  snapshotsFresh: boolean;
 };
 
 const WorkspaceBootstrapContext = createContext<WorkspaceBootstrap | null>(null);
@@ -237,8 +243,14 @@ export function usePortfolios() {
     await refresh();
   };
   const updatePrices = async (prices: Record<string, { price: number; currency: string }>) => {
-    await api("/api/holdings", { method: "PATCH", body: JSON.stringify({ symbols: prices }) });
-    await refresh();
+    const r = await api("/api/holdings", { method: "PATCH", body: JSON.stringify({ symbols: prices }) }) as { holdings?: Holding[] };
+    // The route echoes the rows it touched, so apply them without a re-read.
+    const rows = Array.isArray(r.holdings) ? r.holdings : [];
+    if (rows.length) {
+      const byId = new Map(rows.map((h) => [h.id, h]));
+      setPortfolios((prev) => prev.map((p) => ({ ...p, holdings: p.holdings.map((h) => byId.get(h.id) ?? h) })));
+    }
+    return rows;
   };
   return { portfolios, ready, error, create, remove, move, setColor, upsertHolding, deleteHolding, moveHolding, updatePrices, refresh, setPortfolios };
 }
@@ -281,6 +293,13 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
     const day = new Date().toISOString().slice(0, 10);
     const prev = lastPosted.current;
     if (prev && prev.day === day && Math.abs(prev.value - totalValue) < 0.01) return;
+    if (!prev && boot?.snapshotsFresh) {
+      // The server render already contained today's snapshot, so this page view
+      // has nothing new to record. Seed the guard with the value we were given;
+      // a later price/trade change will still POST.
+      lastPosted.current = { day, value: totalValue };
+      return;
+    }
     const t = setTimeout(() => {
       lastPosted.current = { day, value: totalValue };
       fetch("/api/snapshots", {
@@ -290,7 +309,7 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
       }).catch(() => {});
     }, SNAPSHOT_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [totalValue, portfolios.length, directHoldings.length, pfVals, hVals, refresh]);
+  }, [totalValue, portfolios.length, directHoldings.length, pfVals, hVals, refresh, boot]);
 
   return { snapshots: data.total, byPortfolio: data.byPortfolio, byHolding: data.byHolding, moverChanges: data.moverChanges, refresh };
 }
@@ -350,12 +369,23 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
   const create = async (payload: { portfolioId?: string | null; holdingId?: string | null; symbol?: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date?: string; note?: string }) => {
-    await api("/api/transactions", { method: "POST", body: JSON.stringify(payload) });
-    await refresh();
+    const r = await api("/api/transactions", { method: "POST", body: JSON.stringify(payload) }) as { transaction?: Transaction; holding?: Holding | null };
+    // Paint the new trade immediately; the caller reconciles in parallel.
+    const created = r.transaction;
+    const visible = created && (!portfolioId || created.portfolioId === portfolioId)
+      && (!symbol || created.symbol === symbol.toUpperCase())
+      && (!holdingId || created.holdingId === holdingId);
+    if (created && visible) {
+      setTransactions((prev) => [created, ...prev.filter((t) => t.id !== created.id)]
+        .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt));
+    }
+    return { holding: r.holding ?? null };
   };
   const remove = async (id: string) => {
-    await api(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-    await refresh();
+    const r = await api(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" }) as { holding?: Holding | null };
+    // Drop the row now so the list and the recalculated position update together.
+    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    return { holding: r.holding ?? null };
   };
   return { transactions, ready, refresh, create, remove };
 }

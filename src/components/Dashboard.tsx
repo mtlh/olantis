@@ -136,12 +136,29 @@ const pickRange = useCallback((r: ChartRange) => {
   const transactions = displayTx;
 
   const openTrade = (holding: Holding, type: "buy" | "sell") => setTradeRequest({ holding, type });
+  // Merge rows returned by a mutation into both holdings views so the table,
+  // portfolio totals and trade list update before the reconciliation reads land.
+  const applyHoldings = useCallback((rows: Holding[]) => {
+    if (!rows.length) return;
+    const byId = new Map(rows.map((h) => [h.id, h]));
+    const removed = new Set(rows.filter((h) => h.shares <= 0).map((h) => h.id));
+    setAllHoldings((prev) => {
+      const next = prev.filter((h) => !removed.has(h.id)).map((h) => byId.get(h.id) ?? h);
+      for (const h of rows) if (h.shares > 0 && !prev.some((p) => p.id === h.id)) next.push(h);
+      return next;
+    });
+    setPortfolios((prev) => prev.map((p) => {
+      const next = p.holdings.filter((h) => !removed.has(h.id)).map((h) => byId.get(h.id) ?? h);
+      for (const h of rows) if (h.portfolioId === p.id && h.shares > 0 && !p.holdings.some((x) => x.id === h.id)) next.push(h);
+      return next.length === p.holdings.length && next.every((h, i) => h === p.holdings[i]) ? p : { ...p, holdings: next };
+    }));
+  }, [setAllHoldings, setPortfolios]);
   const handleTrade = async (data: { shares: number; price: number; date: string }) => {
     if (!tradeRequest) { toast({ title: "Cannot trade", description: "No holding selected", variant: "error" }); return; }
     try {
-      await createTx({ portfolioId: tradeRequest.holding.portfolioId ?? null, holdingId: tradeRequest.holding.id, type: tradeRequest.type, shares: data.shares, price: data.price, date: data.date });
-      await refreshPortfolios();
-      await refreshTx();
+      const result = await createTx({ portfolioId: tradeRequest.holding.portfolioId ?? null, holdingId: tradeRequest.holding.id, type: tradeRequest.type, shares: data.shares, price: data.price, date: data.date });
+      applyHoldings(result.holding ? [result.holding] : []);
+      await Promise.all([refreshPortfolios(), refreshTx()]);
       toast({ title: tradeRequest.type === "buy" ? "Buy recorded" : "Sell recorded", description: `${tradeRequest.type === "buy" ? "+" : "-"}${data.shares} ${tradeRequest.holding.symbol} @ ${fmtPrice(data.price, tradeRequest.holding.currency)}`, variant: "success" });
     } catch (e: unknown) { toast({ title: "Trade failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); throw e; }
   };
@@ -149,7 +166,8 @@ const pickRange = useCallback((r: ChartRange) => {
   const handleDeleteTransaction = async (id: string) => {
     if (!window.confirm("Delete this trade and recalculate the position?")) return;
     try {
-      await removeTx(id);
+      const result = await removeTx(id);
+      applyHoldings(result.holding ? [result.holding] : []);
       await Promise.all([refreshPortfolios(), refreshAllHoldings(), refreshTx()]);
       toast({ title: "Trade deleted", description: "The affected position was recalculated.", variant: "success" });
     } catch (error) {
@@ -299,14 +317,12 @@ const pickRange = useCallback((r: ChartRange) => {
       const patch = await fetch("/api/holdings",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols:quotes})});
       const j = await patch.json();
       if(!patch.ok){ toast({title:j.message||j.error||"Refresh limited",description:j.nextAllowedAt?`Next allowed ${new Date(j.nextAllowedAt*1000).toLocaleTimeString()}`:undefined,variant:"error"}); return; }
-      const rows = await fetch("/api/holdings").then((r) => r.json());
-      const list = Array.isArray(rows) ? rows : [];
-      setAllHoldings(list as Holding[]);
-      setPortfolios((prev) => prev.map((p) => ({ ...p, holdings: list.filter((h: Holding) => h.portfolioId === p.id) })));
+      // PATCH echoes the rows it touched, so there is no follow-up GET.
+      applyHoldings(Array.isArray(j.holdings) ? j.holdings as Holding[] : []);
       toast({title:`Updated ${j.updated} holdings`,description:j.skipped?`${j.skipped} skipped (24h limit)`:undefined,variant:"success"});
     } catch(e: unknown){ toast({title:"Refresh failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
     finally{setRefreshing(false);}
-  }, [portfolios, directHoldings, toast, setAllHoldings, setPortfolios]);
+  }, [portfolios, directHoldings, toast, applyHoldings]);
 
   // Stable identity so the memoised Sidebar does not re-render on every
   // Dashboard state change (range switch, dialog open, allocation mode, …).
