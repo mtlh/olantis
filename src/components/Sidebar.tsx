@@ -1,8 +1,9 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
-import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -43,11 +44,14 @@ function TreeToggle({ open, onToggle, label, className = "" }: {
   );
 }
 
-// Sidebar width is remembered per device (localStorage), not per account.
+// A collapsed rail keeps navigation one click away without stealing width from
+// the charts. The choice is remembered per device, like the sidebar width.
 const SIDEBAR_WIDTH_KEY = "olantis.sidebar-width";
+const SIDEBAR_COLLAPSED_KEY = "olantis.sidebar-collapsed";
 const SIDEBAR_DEFAULT_WIDTH = 360;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 560;
+const SIDEBAR_COLLAPSED_WIDTH = 68;
 
 function clampSidebarWidth(value: number) {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(value)));
@@ -111,7 +115,152 @@ function useSidebarWidth() {
   return { width, widthRef, applyWidth, persistWidth };
 }
 
-function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo, onRefreshPrices, refreshing }: {
+const sidebarCollapsedListeners = new Set<() => void>();
+
+function readStoredSidebarCollapsed() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function subscribeSidebarCollapsed(listener: () => void) {
+  sidebarCollapsedListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    sidebarCollapsedListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function writeStoredSidebarCollapsed(collapsed: boolean) {
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    // The toggle still works for this session when storage is unavailable.
+  }
+  sidebarCollapsedListeners.forEach((listener) => listener());
+}
+
+function useSidebarCollapsed() {
+  const collapsed = useSyncExternalStore(subscribeSidebarCollapsed, readStoredSidebarCollapsed, () => false);
+  const setCollapsed = useCallback((next: boolean) => writeStoredSidebarCollapsed(next), []);
+  return { collapsed, setCollapsed };
+}
+
+type RailTipRow = { label: string; value: string };
+
+// Icon-only rows need their detail somewhere. A portal keeps the card clear of
+// the sidebar's scroll container, which would otherwise clip it.
+function RailTip({ title, subtitle, rows, children }: {
+  title: string;
+  subtitle?: string;
+  rows?: RailTipRow[];
+  children: ReactNode;
+}) {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  const show = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = 232;
+    const gap = 10;
+    const left = rect.right + gap + width > window.innerWidth - 8
+      ? Math.max(8, rect.left - width - gap)
+      : rect.right + gap;
+    // Estimate the card height so it can be centred on the icon without a
+    // transform (transformed fixed layers rasterise badly in some Chromium
+    // screenshots and hurt text sharpness).
+    const estimatedHeight = 54 + (subtitle ? 16 : 0) + (rows?.length ? 14 + rows.length * 18 : 0);
+    const top = Math.min(
+      window.innerHeight - estimatedHeight - 8,
+      Math.max(8, rect.top + rect.height / 2 - estimatedHeight / 2),
+    );
+    setCoords({ top, left });
+  }, [rows, subtitle]);
+
+  const hide = useCallback(() => setCoords(null), []);
+
+  useEffect(() => {
+    if (!coords) return;
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+    };
+  }, [coords, hide]);
+
+  return (
+    <span
+      ref={anchorRef}
+      className="mx-auto block w-fit"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocusCapture={show}
+      onBlurCapture={hide}
+    >
+      {children}
+      {coords && createPortal(
+        <div
+          role="tooltip"
+          style={{ position: "fixed", top: coords.top, left: coords.left, width: 232 }}
+          className="pointer-events-none z-[100] rounded-xl border border-white/10 bg-zinc-900 p-3 text-left shadow-2xl"
+        >
+          <span aria-hidden className="absolute left-[-5px] top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-white/10 bg-zinc-900" />
+          <p className="truncate text-xs font-semibold text-zinc-100">{title}</p>
+          {subtitle && <p className="mt-0.5 truncate text-[10px] uppercase tracking-[0.12em] text-zinc-500">{subtitle}</p>}
+          {!!rows?.length && (
+            <div className="mt-2 space-y-1 border-t border-white/[0.06] pt-2">
+              {rows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-3 text-[11px]">
+                  <span className="text-zinc-500">{row.label}</span>
+                  <span className="tabular-nums text-zinc-300">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </span>
+  );
+}
+
+function RailButton({ icon, label, subtitle, rows, active, onClick, href, color, level = 0 }: {
+  icon: ReactNode;
+  label: string;
+  subtitle?: string;
+  rows?: RailTipRow[];
+  active?: boolean;
+  onClick?: () => void;
+  href?: string;
+  color?: string;
+  level?: number;
+}) {
+  const sizeClass = level === 0 ? "h-9 w-9" : level === 1 ? "h-8 w-8" : "h-7 w-7";
+  const className = `grid shrink-0 place-items-center rounded-lg border border-transparent text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${sizeClass} ${active ? "bg-white/[0.09] text-white" : ""}`;
+  const style = { color: color ?? undefined, borderColor: active ? "rgba(255,255,255,0.12)" : "transparent" };
+
+  return (
+    <RailTip title={label} subtitle={subtitle} rows={rows}>
+      {href ? (
+        <Link href={href} onClick={onClick} aria-label={label} aria-current={active ? "page" : undefined} className={className} style={style}>
+          {icon}
+        </Link>
+      ) : (
+        <button type="button" onClick={onClick} aria-label={label} aria-pressed={active} className={className} style={style}>
+          {icon}
+        </button>
+      )}
+    </RailTip>
+  );
+}
+
+function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo, onRefreshPrices, refreshing, rail = false }: {
   activeId: string | null;
   onSelect: (id: string | null) => void;
   onClose: () => void;
@@ -119,86 +268,129 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
   isDemo?: boolean;
   onRefreshPrices?: () => void;
   refreshing?: boolean;
+  rail?: boolean;
 }) {
   const pathname = usePathname();
   const page = pathname.split("/").filter(Boolean)[0] ?? "dashboard";
   const goDashboard = () => { onSelect(null); onClose(); };
-  const navLink = (href: string, label: string, active: boolean, icon: ReactNode) => (
-    <Link
-      href={href}
-      onClick={onClose}
-      className={buttonVariants({ variant: active ? "secondary" : "ghost", size: "icon-sm", className: TOOL_BUTTON_CLASS })}
-      aria-label={label}
-      title={label}
-      aria-current={active ? "page" : undefined}
-    >
-      {icon}
-    </Link>
+  const navLink = (href: string, label: string, active: boolean, icon: ReactNode, detail: string) => {
+    const link = (
+      <Link
+        href={href}
+        onClick={onClose}
+        className={buttonVariants({ variant: active ? "secondary" : "ghost", size: "icon-sm", className: TOOL_BUTTON_CLASS })}
+        aria-label={label}
+        title={rail ? undefined : label}
+        aria-current={active ? "page" : undefined}
+      >
+        {icon}
+      </Link>
+    );
+    return rail ? <RailTip title={label} subtitle={detail}>{link}</RailTip> : link;
+  };
+  const withTip = (title: string, subtitle: string, node: ReactNode, rows?: RailTipRow[]) => rail
+    ? <RailTip title={title} subtitle={subtitle} rows={rows}>{node}</RailTip>
+    : node;
+
+  const dashboardButton = page === "dashboard" ? (
+    withTip("Dashboard", "Portfolio overview",
+      <Button
+        variant={activeId === null ? "secondary" : "ghost"}
+        size="icon-sm"
+        className={TOOL_BUTTON_CLASS}
+        onClick={goDashboard}
+        aria-label="Dashboard"
+        title={rail ? undefined : "Dashboard"}
+      >
+        <LayoutDashboard className={TOOL_ICON_CLASS} />
+      </Button>,
+    )
+  ) : navLink("/dashboard", "Dashboard", false, <LayoutDashboard className={TOOL_ICON_CLASS} />, "Portfolio overview");
+
+  const clockButton = (
+    <div className="group relative">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className={TOOL_BUTTON_CLASS}
+        aria-label={`Prices update daily at 06:00 UTC. Last refresh ${lastRefreshLabel}.`}
+      >
+        <Clock className={TOOL_ICON_CLASS} />
+      </Button>
+      {!rail && (
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-52 rounded-xl border border-white/10 bg-zinc-900/95 p-3 text-left opacity-0 shadow-xl backdrop-blur transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          <p className="text-xs font-semibold text-zinc-200">Prices update daily</p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">Scheduled for 06:00 UTC</p>
+          <div className="mt-2 flex items-center justify-between border-t border-white/[0.06] pt-2 text-[11px]">
+            <span className="text-zinc-600">Last refresh</span>
+            <span className="tabular-nums text-zinc-300">{lastRefreshLabel}</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
+
+  const refreshButton = onRefreshPrices && (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={TOOL_BUTTON_CLASS}
+      onClick={onRefreshPrices}
+      disabled={refreshing}
+      aria-label="Refresh prices"
+      title={rail ? undefined : "Refresh prices"}
+    >
+      <RefreshCw className={`${TOOL_ICON_CLASS} ${refreshing ? "animate-spin" : ""}`} />
+    </Button>
+  );
+
+  const signOutLink = (
+    <a
+      href={isDemo ? "/api/demo?clear=1" : "/logout"}
+      className={buttonVariants({ variant: "ghost", size: "icon-sm", className: isDemo ? "text-amber-400 hover:text-amber-300" : TOOL_BUTTON_CLASS })}
+      aria-label={isDemo ? "Exit demo" : "Sign out"}
+      title={rail ? undefined : isDemo ? "Exit demo" : "Sign out"}
+    >
+      <LogOut className={TOOL_ICON_CLASS} />
+    </a>
+  );
+
+  if (rail) {
+    return (
+      <div className="border-t p-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div className="flex flex-col items-center gap-1">
+          {dashboardButton}
+          {navLink("/performance", "Performance", page === "performance", <TrendingUp className={TOOL_ICON_CLASS} />, "Growth over time")}
+          {navLink("/watchlist", "Watchlist", page === "watchlist", <Eye className={TOOL_ICON_CLASS} />, "Markets you follow")}
+          {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />, "Savings targets")}
+          {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
+          <div className="my-1 h-px w-6 bg-white/10" />
+          {withTip("Prices update daily", "Scheduled for 06:00 UTC", clockButton, [{ label: "Last refresh", value: lastRefreshLabel }])}
+          {refreshButton && withTip("Refresh prices", "Pull the latest quotes", refreshButton)}
+          {withTip(isDemo ? "Exit demo" : "Sign out", isDemo ? "Return to the landing page" : "End your session", signOutLink)}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="border-t p-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
       <div className="flex items-center gap-1">
         {page === "dashboard" ? (
-          <Button
-            variant={activeId === null ? "secondary" : "ghost"}
-            size="icon-sm"
-            className={TOOL_BUTTON_CLASS}
-            onClick={goDashboard}
-            aria-label="Dashboard"
-            title="Dashboard"
-          >
-            <LayoutDashboard className={TOOL_ICON_CLASS} />
-          </Button>
-        ) : navLink("/dashboard", "Dashboard", false, <LayoutDashboard className={TOOL_ICON_CLASS} />)}
-        {navLink("/performance", "Performance", page === "performance", <TrendingUp className={TOOL_ICON_CLASS} />)}
-        {navLink("/watchlist", "Watchlist", page === "watchlist", <Eye className={TOOL_ICON_CLASS} />)}
-        {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />)}
-        {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />)}
+          dashboardButton
+        ) : navLink("/dashboard", "Dashboard", false, <LayoutDashboard className={TOOL_ICON_CLASS} />, "Portfolio overview")}
+        {navLink("/performance", "Performance", page === "performance", <TrendingUp className={TOOL_ICON_CLASS} />, "Growth over time")}
+        {navLink("/watchlist", "Watchlist", page === "watchlist", <Eye className={TOOL_ICON_CLASS} />, "Markets you follow")}
+        {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />, "Savings targets")}
+        {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
 
         <div className="ml-auto flex items-center gap-1">
-          <div className="group relative">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className={TOOL_BUTTON_CLASS}
-              aria-label={`Prices update daily at 06:00 UTC. Last refresh ${lastRefreshLabel}.`}
-            >
-              <Clock className={TOOL_ICON_CLASS} />
-            </Button>
-            <div
-              role="tooltip"
-              className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-52 rounded-xl border border-white/10 bg-zinc-900/95 p-3 text-left opacity-0 shadow-xl backdrop-blur transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-            >
-              <p className="text-xs font-semibold text-zinc-200">Prices update daily</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500">Scheduled for 06:00 UTC</p>
-              <div className="mt-2 flex items-center justify-between border-t border-white/[0.06] pt-2 text-[11px]">
-                <span className="text-zinc-600">Last refresh</span>
-                <span className="tabular-nums text-zinc-300">{lastRefreshLabel}</span>
-              </div>
-            </div>
-          </div>
-          {onRefreshPrices && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className={TOOL_BUTTON_CLASS}
-              onClick={onRefreshPrices}
-              disabled={refreshing}
-              aria-label="Refresh prices"
-              title="Refresh prices"
-            >
-              <RefreshCw className={`${TOOL_ICON_CLASS} ${refreshing ? "animate-spin" : ""}`} />
-            </Button>
-          )}
-          <a
-            href={isDemo ? "/api/demo?clear=1" : "/logout"}
-            className={buttonVariants({ variant: "ghost", size: "icon-sm", className: isDemo ? "text-amber-400 hover:text-amber-300" : TOOL_BUTTON_CLASS })}
-            aria-label={isDemo ? "Exit demo" : "Sign out"}
-            title={isDemo ? "Exit demo" : "Sign out"}
-          >
-            <LogOut className={TOOL_ICON_CLASS} />
-          </a>
+          {clockButton}
+          {refreshButton}
+          {signOutLink}
         </div>
       </div>
     </div>
@@ -261,7 +453,23 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const [resizingSidebar, setResizingSidebar] = useState(false);
   const { width: sidebarWidth, widthRef: sidebarWidthRef, applyWidth: applySidebarWidth, persistWidth: persistSidebarWidth } = useSidebarWidth();
+  const { collapsed: sidebarCollapsed, setCollapsed: setSidebarCollapsed } = useSidebarCollapsed();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const focusSearchOnExpandRef = useRef(false);
   const resizePointerIdRef = useRef<number | null>(null);
+
+  const toggleSidebar = () => setSidebarCollapsed(!sidebarCollapsed);
+  const expandSearch = () => {
+    focusSearchOnExpandRef.current = true;
+    setSidebarCollapsed(false);
+  };
+
+  useEffect(() => {
+    if (sidebarCollapsed || !focusSearchOnExpandRef.current) return;
+    focusSearchOnExpandRef.current = false;
+    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!resizingSidebar) return;
@@ -578,19 +786,228 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   }, [directQuery]);
 
 
-  const inner = (
+  const renderRailTree = () => {
+    if (loading) {
+      return (
+        <div className="space-y-2 pt-1">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="mx-auto h-9 w-9 rounded-lg bg-white/5" />)}
+        </div>
+      );
+    }
+    if (accounts.length === 0 && unassigned.length === 0) {
+      return (
+        <div className="pt-1">
+          <RailButton
+            icon={<Plus className="h-4 w-4" />}
+            label="New account"
+            subtitle="No accounts yet"
+            rows={[{ label: "Next", value: "Create one" }]}
+            onClick={() => setShowAccountDialog(true)}
+          />
+        </div>
+      );
+    }
+
+    const portfolioTotal = (portfolio: Portfolio) => portfolio.holdings.reduce((sum, holding) => sum + holdingValueGBP(holding, settings.fxRates), 0);
+    const holdingRow = (holding: Holding) => (
+      <RailButton
+        key={holding.id}
+        level={3}
+        icon={<span className="text-[9px] font-semibold uppercase">{holding.symbol.slice(0, 3)}</span>}
+        label={holding.symbol}
+        subtitle={holding.name}
+        rows={[
+          { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
+          { label: "Value", value: fmtGBP(holdingValueGBP(holding, settings.fxRates)) },
+        ]}
+        onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }}
+      />
+    );
+
+    return (
+      <div className="space-y-2 pt-1">
+        {filteredAccounts.map((acc) => {
+          const accColor = accColorFor(acc);
+          const accountActive = activeAccountId === acc.id;
+          const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
+          const accountProviders = providersByAccount.get(acc.id) ?? [];
+          const provs = filteredProviders(accountProviders, accountNameMatches);
+          const direct = filteredPortfolios(directByAccount.get(acc.id) ?? [], accountNameMatches);
+          const accountDirectHoldings = directHoldings.filter((holding) => holding.accountId === acc.id && !holding.providerId && !holding.portfolioId && (accountNameMatches || matchesHolding(holding)));
+          const portfolioCount = accountProviders.reduce((sum, pr) => sum + (portfoliosByProvider.get(pr.id)?.length ?? 0), 0) + (directByAccount.get(acc.id)?.length ?? 0);
+
+          return (
+            <div key={acc.id} className="space-y-1 border-b border-white/[0.05] pb-2 last:border-b-0 last:pb-1">
+              <RailButton
+                icon={<Folder className="h-[17px] w-[17px]" />}
+                label={acc.name}
+                subtitle="Account"
+                rows={[
+                  { label: "Value", value: fmtGBP(accountTotals(acc.id)) },
+                  { label: "Providers", value: String(accountProviders.length) },
+                  { label: "Portfolios", value: String(portfolioCount) },
+                ]}
+                active={accountActive}
+                color={accColor}
+                onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }}
+              />
+
+              {provs.map((pr) => {
+                const providerIndex = accountProviders.findIndex((item) => item.id === pr.id);
+                const provColor = pr.color || portfolioTint(accColor, Math.max(0, providerIndex));
+                const providerNameMatches = accountNameMatches || !searchTerm || pr.name.toLowerCase().includes(searchTerm);
+                const providerPortfolios = portfoliosByProvider.get(pr.id) ?? [];
+                const ps = filteredPortfolios(providerPortfolios, providerNameMatches);
+                const providerDirectHoldings = directHoldings.filter((holding) => holding.providerId === pr.id && !holding.portfolioId && (providerNameMatches || matchesHolding(holding)));
+
+                return (
+                  <div key={pr.id} className="space-y-1">
+                    <RailButton
+                      level={1}
+                      icon={<Briefcase className="h-3.5 w-3.5" />}
+                      label={pr.name}
+                      subtitle={`${acc.name} · Provider`}
+                      rows={[
+                        { label: "Value", value: fmtGBP(providerTotals(pr.id)) },
+                        { label: "Portfolios", value: String(providerPortfolios.length) },
+                      ]}
+                      active={activeProviderId === pr.id}
+                      color={provColor}
+                      onClick={() => { onSelectProvider?.(pr.id); setMobileOpen(false); }}
+                    />
+                    {ps.map((p) => {
+                      const portfolioIndex = providerPortfolios.findIndex((item) => item.id === p.id);
+                      return (
+                        <RailButton
+                          key={p.id}
+                          level={2}
+                          icon={<Layers className="h-3.5 w-3.5" />}
+                          label={p.name}
+                          subtitle={`${pr.name} · ${p.type}`}
+                          rows={[
+                            { label: "Value", value: fmtGBP(portfolioTotal(p)) },
+                            { label: "Holdings", value: String(p.holdings.length) },
+                          ]}
+                          active={activeId === p.id}
+                          color={p.color || portfolioTint(provColor, Math.max(0, portfolioIndex))}
+                          onClick={() => { onSelect(p.id); setMobileOpen(false); }}
+                        />
+                      );
+                    })}
+                    {providerDirectHoldings.map(holdingRow)}
+                  </div>
+                );
+              })}
+
+              {direct.map((p) => {
+                const portfolioIndex = (directByAccount.get(acc.id) ?? []).findIndex((item) => item.id === p.id);
+                return (
+                  <RailButton
+                    key={p.id}
+                    level={2}
+                    icon={<Layers className="h-3.5 w-3.5" />}
+                    label={p.name}
+                    subtitle={`${acc.name} · ${p.type}`}
+                    rows={[
+                      { label: "Value", value: fmtGBP(portfolioTotal(p)) },
+                      { label: "Holdings", value: String(p.holdings.length) },
+                    ]}
+                    active={activeId === p.id}
+                    color={p.color || portfolioTint(accColor, Math.max(0, portfolioIndex))}
+                    onClick={() => { onSelect(p.id); setMobileOpen(false); }}
+                  />
+                );
+              })}
+              {accountDirectHoldings.map(holdingRow)}
+            </div>
+          );
+        })}
+
+        {unassigned.length > 0 && (
+          <div className="space-y-1 border-t border-white/[0.05] pt-2">
+            <div className="py-1 text-center text-[9px] uppercase tracking-[0.14em] text-zinc-600">Unassigned</div>
+            {filteredPortfolios(unassigned).map((p) => {
+              const portfolioIndex = unassigned.findIndex((item) => item.id === p.id);
+              return (
+                <RailButton
+                  key={p.id}
+                  icon={<Layers className="h-3.5 w-3.5" />}
+                  label={p.name}
+                  subtitle={p.type}
+                  rows={[
+                    { label: "Value", value: fmtGBP(portfolioTotal(p)) },
+                    { label: "Holdings", value: String(p.holdings.length) },
+                    { label: "Account", value: "Unassigned" },
+                  ]}
+                  active={activeId === p.id}
+                  color={p.color || PALETTE[Math.max(0, portfolioIndex) % PALETTE.length].value}
+                  onClick={() => { onSelect(p.id); setMobileOpen(false); }}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderSidebar = (rail: boolean, isDesktop = true) => (
     <>
       <div className="px-5 py-5 border-b flex items-center justify-between xl:hidden" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         <Logo size={36} />
         <Button variant="ghost" size="icon" className="xl:hidden !size-11" aria-label="Close menu" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
       </div>
-      <nav className="flex-1 overflow-y-auto p-3 xl:pt-5">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
-          <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
-          {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
-        </div>
+      <nav className={`flex-1 overflow-y-auto ${rail ? "p-2 xl:pt-4" : "p-3 xl:pt-5"}`}>
+        {rail ? (
+          <div className="flex flex-col items-center gap-1.5">
+            <RailTip title="Expand sidebar" subtitle="Show account tree">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={toggleSidebar}
+                aria-label="Expand sidebar"
+                aria-expanded={false}
+                className="text-zinc-500 hover:text-white"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+            </RailTip>
+            <RailTip title="Search" subtitle="Portfolios & holdings">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={expandSearch}
+                aria-label="Search portfolios and holdings"
+                className="text-zinc-500 hover:text-white"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </RailTip>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            {isDesktop && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={toggleSidebar}
+                aria-label="Collapse sidebar"
+                aria-expanded
+                title="Collapse sidebar"
+                className="shrink-0 text-zinc-500 hover:text-white"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            )}
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
+              <Input ref={searchInputRef} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
+              {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
+            </div>
+          </div>
+        )}
 
+        {rail ? <div className="mt-3">{renderRailTree()}</div> : (
         <div className="mt-3">
           <div className="flex items-center justify-between px-1 mb-2">
             <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Accounts</span>
@@ -777,6 +1194,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           </div>
           )}
         </div>
+        )}
 
       </nav>
       <SidebarToolRow
@@ -787,6 +1205,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         isDemo={isDemo}
         onRefreshPrices={onRefreshPrices}
         refreshing={refreshing}
+        rail={rail}
       />
 
       <Dialog open={showAccountDialog} onOpenChange={setShowAccountDialog}>
@@ -946,9 +1365,10 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
       <Button ref={mobileMenuTriggerRef} variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 !size-11 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu" aria-expanded={mobileOpen}><Menu className="w-4 h-4"/></Button>
       <aside
         className="hidden xl:flex relative shrink-0 flex-col h-screen sticky top-0 border-r bg-black"
-        style={{ width: sidebarWidth, borderColor: "rgba(255,255,255,0.07)" }}
+        style={{ width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth, borderColor: "rgba(255,255,255,0.07)" }}
       >
-        {inner}
+        {renderSidebar(sidebarCollapsed)}
+        {!sidebarCollapsed && (
         <div
           role="separator"
           aria-orientation="vertical"
@@ -974,10 +1394,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             }`}
           />
         </div>
+        )}
       </aside>
       {mobileOpen && (
         <div ref={mobileMenuRef} className="fixed inset-0 z-50 xl:hidden flex" role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1}>
-          <div className="w-[85vw] max-w-[380px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{inner}</div>
+          <div className="w-[85vw] max-w-[380px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{renderSidebar(false, false)}</div>
           <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
         </div>
       )}
