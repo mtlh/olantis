@@ -12,6 +12,33 @@ test("desktop navigation stays on Olantis and permits WorkOS sign-in redirects",
   assert.equal(isAllowedNavigation("https://sso.company.example/login", productionUrl, "https://api.workos.com/sso"), true);
 });
 
+test("identity providers sign in inside the app window", () => {
+  const googleSignIn = "https://accounts.google.com/v3/signin/identifier?client_id=abc";
+  assert.equal(isAllowedNavigation(googleSignIn, productionUrl, "https://spirited-turf-10-staging.authkit.app/"), true);
+  // The provider's own form posts and checkpoints must not be handed to a
+  // browser that has none of this flow's session cookies.
+  assert.equal(isAllowedNavigation("https://accounts.google.com/v3/signin/challenge", productionUrl, googleSignIn), true);
+  assert.equal(isAllowedNavigation("https://auth.workos.com/sso/oauth/google/callback", productionUrl, googleSignIn), true);
+  assert.equal(isAllowedNavigation("https://olantis.vercel.app/callback?code=abc&state=def", productionUrl, googleSignIn), true);
+  assert.equal(
+    isAllowedNavigation("https://login.microsoftonline.com/common/oauth2/v2.0/authorize", productionUrl, "https://spirited-turf-10-staging.authkit.app/"),
+    true,
+  );
+  assert.equal(isAllowedNavigation("https://github.com/login/oauth/authorize", productionUrl, "https://spirited-turf-10-staging.authkit.app/"), true);
+});
+
+test("identity provider trust stays scoped to the sign-in chain", () => {
+  assert.equal(isAllowedNavigation("https://accounts.google.com/v3/signin/identifier", productionUrl), true);
+  assert.equal(isAllowedNavigation("https://github.com/login/oauth/authorize", productionUrl), true);
+  // Ordinary GitHub pages still open in the system browser.
+  assert.equal(isAllowedNavigation("https://github.com/mtlh/olantis", productionUrl), false);
+  assert.equal(isAllowedNavigation("https://example.com/pricing", productionUrl), false);
+  // Provider hops while a sign-in is in flight stay in the app window, since
+  // handing them to a browser would drop the flow's cookies on the floor.
+  assert.equal(isAllowedNavigation("https://idmsa.apple.com/IDMSWebAuth/signin", productionUrl, "https://appleid.apple.com/"), true);
+  assert.equal(isAllowedNavigation("http://accounts.google.com/v3/signin/identifier", productionUrl), false);
+});
+
 test("desktop navigation rejects insecure and lookalike origins", () => {
   assert.equal(isAllowedNavigation("http://olantis.vercel.app/dashboard", productionUrl), false);
   assert.equal(isAllowedNavigation("https://olantis.vercel.app.attacker.test/", productionUrl), false);
