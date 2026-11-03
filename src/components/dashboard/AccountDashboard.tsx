@@ -1,20 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Briefcase, Layers, Plus, Trash2 } from "lucide-react";
 import { AllocationCard, type AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
-import { ZoomResetButton, ZoomSelectionArea, useChartZoom } from "@/components/ChartZoom";
-import { Badge } from "@/components/ui/badge";
+import { ValueTimeChart, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import type { Snapshot } from "@/lib/store";
-import { chartDateLabel, filterByRange, fmtGBP, fmtPct, fmtRelative, gbpAxisFormatter, numericValues, paddedDomain, todayISODate, valueChangeOverRange } from "@/lib/format";
+import { chartDateLabel, filterByRange, fmtGBP, fmtPct, fmtRelative, todayISODate, valueChangeOverRange } from "@/lib/format";
 
 export type AccountProviderSummary = {
   id: string;
@@ -70,7 +67,26 @@ type AccountDashboardProps = {
   onOpenHolding: (id: string) => void;
 };
 
-type AccountChartRow = { date: string; dateISO: string; total: number };
+const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
+const SUB = "mt-2 text-[11px] text-zinc-600";
+
+function formatSnapshotDate(iso: string) {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function shareOfAccount(value: number, total: number) {
+  return total > 0 ? `${(value / total * 100).toFixed(1)}%` : "0.0%";
+}
+
+function SignedGain({ value, className = "" }: { value: number; className?: string }) {
+  return (
+    <span className={`tabular-nums ${value >= 0 ? "text-emerald-400" : "text-red-400"} ${className}`}>
+      {value >= 0 ? "+" : "−"}{fmtGBP(Math.abs(value))}
+    </span>
+  );
+}
 
 export function AccountDashboard({
   name,
@@ -105,16 +121,15 @@ export function AccountDashboard({
   const [providerName, setProviderName] = useState("");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
-  const chartData = useMemo<AccountChartRow[]>(() => {
+  const chartData = useMemo<ValueTimeChartRow[]>(() => {
     const rows = filterByRange(history, range);
     if (!rows.length) return [{ date: chartDateLabel(todayISODate()), dateISO: todayISODate(), total: value }];
     return rows.map((row) => ({ date: chartDateLabel(row.date), dateISO: row.date, total: row.value }));
   }, [history, range, value]);
-  const chartZoom = useChartZoom(chartData);
   const periodChange = useMemo(() => valueChangeOverRange(history, range, value), [history, range, value]);
-  const axisValues = useMemo(() => numericValues(chartZoom.visible), [chartZoom.visible]);
-  const axisFmt = useMemo(() => gbpAxisFormatter(axisValues), [axisValues]);
-  const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
+  const gainColor = gain >= 0 ? "text-emerald-400" : "text-red-400";
+  const changeColor = periodChange && periodChange.amount >= 0 ? "text-emerald-400" : "text-red-400";
+  const hasChildren = providers.length + portfolios.length + directHoldings.length > 0;
 
   const saveName = async () => {
     const trimmed = editName.trim();
@@ -148,121 +163,167 @@ export function AccountDashboard({
 
   return (
     <DashboardLevel label={`${name} account`}>
-      <div className="relative overflow-hidden rounded-2xl border p-6 md:p-8" style={{ borderColor: `color-mix(in srgb, ${color} 25%, transparent)`, background: `linear-gradient(to bottom right, color-mix(in srgb, ${color} 16.5%, transparent), color-mix(in srgb, ${color} 7%, transparent))` }}>
-        <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full blur-3xl" style={{ background: `color-mix(in srgb, ${color} 15%, transparent)` }} />
-        <div className="relative flex flex-wrap items-start justify-between gap-6">
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">{name}</h1>
-              <Badge variant="outline" className="border-white/10 bg-white/5 text-zinc-300">Account</Badge>
-            </div>
-            <p className="mt-2 text-sm text-zinc-500">{providers.length} {providers.length === 1 ? "provider" : "providers"} • {portfolioCount} {portfolioCount === 1 ? "portfolio" : "portfolios"} • {holdingCount} {holdingCount === 1 ? "holding" : "holdings"} • prices updated {fmtRelative(latestRefresh, dateFormat)} • {staleCount} stale / unverified</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="border-white/10 bg-white/5" onClick={onBack}>← Overview</Button>
-            <Button variant="outline" className="border-white/10 bg-white/5" onClick={() => { setEditName(name); setEditOpen(true); }}>Edit</Button>
-            <Button variant="outline" className="border-white/10 bg-white/5" onClick={() => setProviderOpen(true)}><Briefcase className="h-4 w-4" /> Add provider</Button>
-            <Button onClick={onNewPortfolio}><Plus className="h-4 w-4" /> Add portfolio</Button>
-            <Button variant="ghost" className="border border-white/5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
-          </div>
-        </div>
-        <div className="relative mt-8 grid grid-cols-1 gap-4 min-[520px]:grid-cols-3">
-          <div className="rounded-xl border-l-4 bg-white p-4 text-black" style={{ borderLeftColor: color }}>
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Value</div>
-            <div className="mt-1 text-2xl font-bold">{fmtGBP(value)}</div>
-            <div className="mt-1 text-xs text-zinc-600">Cost {fmtGBP(cost)}</div>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Unrealized gain</div>
-            <div className="flex items-center gap-2 text-2xl font-bold" style={{ color: gain >= 0 ? "#34d399" : "#f87171" }}>{fmtGBP(gain)} <span className="text-sm">{fmtPct(gainPct)}</span></div>
-            <div className="mt-1 text-xs text-zinc-500">Current positions only</div>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Value change · {range}</div>
-            {periodChange ? <>
-              <div className="mt-1 text-2xl font-bold tabular-nums" style={{ color: periodChange.amount >= 0 ? "#34d399" : "#f87171" }}>{periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))} <span className="text-sm">{periodChange.percent == null ? "" : fmtPct(periodChange.percent)}</span></div>
-              <div className="mt-1 text-xs text-zinc-500">Since {periodChange.fromDate} · trades can affect value</div>
-            </> : <div className="mt-1 text-sm text-zinc-500">More history needed</div>}
+      <div>
+        <button type="button" onClick={onBack} className="text-[11px] text-zinc-500 transition-colors hover:text-white">← Overview</button>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <h1 className="min-w-0 text-[28px] font-semibold leading-none tracking-tight text-white">{name}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={() => { setEditName(name); setEditOpen(true); }}>Edit</Button>
+            <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={() => setProviderOpen(true)}>
+              <Briefcase className="h-3.5 w-3.5" /> Add provider
+            </Button>
+            <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onNewPortfolio}>
+              <Plus className="h-3.5 w-3.5" /> Add portfolio
+            </Button>
+            <Button variant="ghost" size="sm" aria-label="Delete account" className="rounded-full px-2.5 text-zinc-500 hover:bg-red-500/10 hover:text-red-400 sm:px-3" onClick={onDelete}>
+              <Trash2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Delete</span>
+            </Button>
           </div>
         </div>
+        <p className="mt-2 text-xs text-zinc-500">
+          {providers.length} {providers.length === 1 ? "provider" : "providers"}
+          <span className="mx-1.5 text-zinc-700">·</span>{portfolioCount} {portfolioCount === 1 ? "portfolio" : "portfolios"}
+          <span className="mx-1.5 text-zinc-700">·</span>{holdingCount} {holdingCount === 1 ? "holding" : "holdings"}
+        </p>
+        <p className="mt-1 text-[11px] text-zinc-600 lg:hidden">
+          Prices updated {fmtRelative(latestRefresh, dateFormat)}{staleCount > 0 ? ` · ${staleCount} stale` : ""}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <Card className="glass-card xl:col-span-3">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-white">Performance</CardTitle>
-              <CardDescription>{history.length} points • {name}</CardDescription>
-            </div>
-            <div className="flex items-center gap-1">
-              {(["1M", "3M", "1Y", "MAX"] as const).map((item) => <Button key={item} variant={range === item ? "secondary" : "ghost"} size="xs" onClick={() => setRange(item)}>{item}</Button>)}
-              {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[320px] select-none">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                  <ZoomSelectionArea labels={chartZoom.selectionLabels} />
-                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                  <YAxis domain={yDomain ?? ["auto", "auto"]} tickFormatter={axisFmt} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
-                  <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }} formatter={(point) => fmtGBP(Number(point))} />
-                  <Area type="monotone" dataKey="total" name={name} stroke={color} fill={color} fillOpacity={0.14} strokeWidth={2.5} dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-        <div className="min-w-0 xl:col-span-2">
-          <AllocationCard allocation={allocation} mode="holding" onModeChange={() => {}} layout="fill" showModeSelector={false} compactChart emptyMessage="No holdings in this account yet" />
+      <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.3fr_1fr_1fr_0.75fr] lg:gap-0 lg:py-7">
+        <div className="col-span-2 lg:col-span-1 lg:pr-8">
+          <p className={LABEL}>Value</p>
+          <p className="mt-2 text-[38px] font-semibold leading-none tracking-tight tabular-nums text-white sm:text-[42px]">{fmtGBP(value)}</p>
+          <p className={SUB}>Cost basis {fmtGBP(cost)}</p>
         </div>
-      </div>
 
-      <Card className="glass-card overflow-hidden">
-        <CardHeader className="border-b border-white/5">
-          <CardTitle className="text-white">Providers & portfolios</CardTitle>
-          <CardDescription>Open a provider or portfolio to see its full dashboard.</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {providers.length === 0 && portfolios.length === 0 && directHoldings.length === 0 ? (
-            <div className="p-10 text-center text-sm text-zinc-500">No providers, portfolios, or holdings in this account yet.</div>
+        <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
+          <p className={LABEL}>Unrealized gain</p>
+          <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${gainColor}`}>
+            {gain >= 0 ? "+" : ""}{fmtGBP(gain)}
+            <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(gainPct)}</span>
+          </p>
+        </div>
+
+        <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
+          <p className={LABEL}>Change · {range}</p>
+          {periodChange ? (
+            <>
+              <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${changeColor}`}>
+                {periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))}
+                <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{periodChange.percent == null ? "" : fmtPct(periodChange.percent)}</span>
+              </p>
+              <p className={SUB}>Since {formatSnapshotDate(periodChange.fromDate)}</p>
+            </>
           ) : (
-            <div className="divide-y divide-white/5">
+            <>
+              <p className="mt-2 text-2xl font-semibold tracking-tight text-zinc-600">—</p>
+              <p className={SUB}>More history needed</p>
+            </>
+          )}
+        </div>
+
+        <div className="hidden lg:block lg:border-l lg:border-white/[0.06] lg:pl-8">
+          <p className={LABEL}>Prices</p>
+          <p className={`mt-2 text-2xl font-semibold tracking-tight ${staleCount > 0 ? "text-amber-300/90" : "text-white"}`}>
+            {staleCount > 0 ? `${staleCount} stale` : "Up to date"}
+          </p>
+          <p className={SUB}>Updated {fmtRelative(latestRefresh, dateFormat)}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+        <ValueTimeChart
+          data={chartData}
+          title="Value over time"
+          range={range}
+          onRangeChange={setRange}
+          color={color}
+          totalName={name}
+          surface="panel"
+          className="min-w-0 lg:col-span-3"
+        />
+        <div className="min-w-0 lg:col-span-2">
+          <AllocationCard allocation={allocation} mode="holding" onModeChange={() => {}} layout="fill" showModeSelector={false} compactChart surface="panel" emptyMessage="No holdings in this account yet" />
+        </div>
+      </div>
+
+      <section aria-labelledby="account-tree-heading">
+        <div className="flex items-baseline justify-between gap-3 pb-3">
+          <h2 id="account-tree-heading" className="text-sm font-medium text-white">Providers &amp; portfolios</h2>
+        </div>
+
+        {!hasChildren ? (
+          <p className="border-y border-white/[0.06] py-6 text-sm text-zinc-500">Create a provider or portfolio to start tracking this account.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600 sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
+              <span>Name</span>
+              <span className="text-right">Value</span>
+              <span className="hidden whitespace-nowrap text-right sm:block">Unrealized P/L</span>
+            </div>
+            <div className="divide-y divide-white/[0.05]">
               {providers.map((provider) => (
-                <button key={provider.id} type="button" onClick={() => onOpenProvider(provider.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04]">
-                  <Briefcase className="h-4 w-4 shrink-0" style={{ color: provider.color }} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-white">{provider.name}</span>
-                    <span className="block text-xs text-zinc-500">{provider.portfoliosCount} {provider.portfoliosCount === 1 ? "portfolio" : "portfolios"} • {provider.holdingsCount} {provider.holdingsCount === 1 ? "holding" : "holdings"} • {value > 0 ? `${(provider.value / value * 100).toFixed(1)}% of account` : "0% of account"} • unrealized {fmtGBP(provider.gain)}</span>
+                <button key={provider.id} type="button" onClick={() => onOpenProvider(provider.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <Briefcase className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-white">{provider.name}</span>
+                      <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">
+                        {provider.portfoliosCount} {provider.portfoliosCount === 1 ? "portfolio" : "portfolios"} · {provider.holdingsCount} {provider.holdingsCount === 1 ? "holding" : "holdings"}
+                        <span className="hidden sm:inline"> · {shareOfAccount(provider.value, value)} of account</span>
+                      </span>
+                    </span>
                   </span>
-                  <span className="text-sm font-medium tabular-nums text-white">{fmtGBP(provider.value)}</span>
+                  <span className="text-right">
+                    <span className="block text-sm tabular-nums text-zinc-200">{fmtGBP(provider.value)}</span>
+                    <SignedGain value={provider.gain} className="mt-0.5 block text-[11px] sm:hidden" />
+                  </span>
+                  <SignedGain value={provider.gain} className="hidden text-right text-xs sm:block" />
                 </button>
               ))}
               {portfolios.map((portfolio) => (
-                <button key={portfolio.id} type="button" onClick={() => onOpenPortfolio(portfolio.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04]">
-                  <Layers className="h-4 w-4 shrink-0" style={{ color: portfolio.color }} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-white">{portfolio.name}</span>
-                    <span className="block text-xs text-zinc-500">Direct portfolio • {portfolio.holdingsCount} holdings • {value > 0 ? `${(portfolio.value / value * 100).toFixed(1)}% of account` : "0% of account"} • unrealized {fmtGBP(portfolio.gain)}</span>
+                <button key={portfolio.id} type="button" onClick={() => onOpenPortfolio(portfolio.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <Layers className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-white">{portfolio.name}</span>
+                      <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">
+                        {portfolio.holdingsCount} {portfolio.holdingsCount === 1 ? "holding" : "holdings"}
+                        <span className="hidden sm:inline"> · {shareOfAccount(portfolio.value, value)} of account</span>
+                      </span>
+                    </span>
                   </span>
-                  <span className="text-sm font-medium tabular-nums text-white">{fmtGBP(portfolio.value)}</span>
+                  <span className="text-right">
+                    <span className="block text-sm tabular-nums text-zinc-200">{fmtGBP(portfolio.value)}</span>
+                    <SignedGain value={portfolio.gain} className="mt-0.5 block text-[11px] sm:hidden" />
+                  </span>
+                  <SignedGain value={portfolio.gain} className="hidden text-right text-xs sm:block" />
                 </button>
               ))}
               {directHoldings.map((holding) => (
-                <button key={holding.id} type="button" onClick={() => onOpenHolding(holding.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04]">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-[10px] font-bold text-zinc-300">{holding.symbol.slice(0, 3)}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-white">{holding.symbol}</span>
-                    <span className="block truncate text-xs text-zinc-500">Direct holding • {holding.name} • {value > 0 ? `${(holding.value / value * 100).toFixed(1)}% of account` : "0% of account"} • unrealized {fmtGBP(holding.gain)}</span>
+                <button key={holding.id} type="button" onClick={() => onOpenHolding(holding.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/[0.06] bg-white/[0.03] text-[9px] font-semibold tracking-wide text-zinc-400">{holding.symbol.slice(0, 3)}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-white">{holding.symbol}</span>
+                      <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">
+                        Holding · {holding.name}
+                        <span className="hidden sm:inline"> · {shareOfAccount(holding.value, value)} of account</span>
+                      </span>
+                    </span>
                   </span>
-                  <span className="text-sm font-medium tabular-nums text-white">{fmtGBP(holding.value)}</span>
+                  <span className="text-right">
+                    <span className="block text-sm tabular-nums text-zinc-200">{fmtGBP(holding.value)}</span>
+                    <SignedGain value={holding.gain} className="mt-0.5 block text-[11px] sm:hidden" />
+                  </span>
+                  <SignedGain value={holding.gain} className="hidden text-right text-xs sm:block" />
                 </button>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </>
+        )}
+      </section>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="border-white/10 bg-zinc-900 text-white">
