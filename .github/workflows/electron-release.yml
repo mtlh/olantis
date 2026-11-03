@@ -47,6 +47,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Stamp desktop version
+        shell: bash
+        run: |
+          version="0.1.${{ github.run_number }}"
+          npm pkg set "version=$version"
+          npm --prefix electron pkg set "version=$version"
+          echo "Building Olantis desktop $version"
       - run: npm run electron:dist
       - name: Attach installers to draft release
         shell: bash

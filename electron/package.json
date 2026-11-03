@@ -5,5 +5,7 @@
   "description": "Olantis portfolio dashboard for desktop",
   "author": "Olantis",
   "main": "main.cjs",
-  "dependencies": {}
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
 }
