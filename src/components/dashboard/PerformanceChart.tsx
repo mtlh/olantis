@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
 import { chartDateLabel, rangeCutoff, paddedDomain, fmtPct } from "@/lib/format";
@@ -16,6 +16,21 @@ export type PerformanceChartRow = {
 };
 
 export type PerformanceSeries = { key: string; name: string; color: string };
+
+const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
+const SUB = "mt-2 text-[11px] text-zinc-600";
+
+function tone(value: number | null | undefined) {
+  if (value == null) return "text-zinc-500";
+  if (value > 0) return "text-emerald-400";
+  if (value < 0) return "text-red-400";
+  return "text-zinc-300";
+}
+
+function drawdownLabel(value: number | null | undefined) {
+  if (value == null) return "—";
+  return `${value.toFixed(2)}%`;
+}
 
 export function PerformanceChart({
   snapshots,
@@ -138,6 +153,16 @@ export function PerformanceChart({
       return { key, name, periodChange, maxDrawdown };
     });
   }, [benchmarkName, rangedData, series]);
+  const totalSummary = periodSummary.find((item) => item.key === "total");
+  const benchmarkSummary = periodSummary.find((item) => item.key === "benchmark");
+  const seriesRows = periodSummary.filter((item) => item.key !== "total");
+  const leadingPortfolio = useMemo(() => {
+    const rows = periodSummary.filter((item) => item.key !== "total" && item.key !== "benchmark" && item.periodChange != null);
+    return rows.reduce<(typeof rows)[number] | null>(
+      (best, item) => (best == null || (item.periodChange as number) > (best.periodChange as number) ? item : best),
+      null,
+    );
+  }, [periodSummary]);
   const axisValues = useMemo(() => {
     const values: number[] = [0];
     for (const row of chartZoom.visible) {
@@ -157,23 +182,59 @@ export function PerformanceChart({
       return next;
     });
   };
+  const colorFor = (key: string) =>
+    key === "total" ? "#ffffff" : key === "benchmark" ? "#fbbf24" : (series.find((item) => item.key === key)?.color ?? "#71717a");
+  const hasData = rangedData.length > 0;
 
   return (
-    <section aria-label="Portfolio performance" className="flex min-h-[calc(100vh-7rem)] flex-col gap-5">
+    <section aria-label="Portfolio performance" className="flex min-h-[calc(100vh-7rem)] flex-col gap-6">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Performance</h1>
-        <p className="mt-1 text-sm text-zinc-500">Compare portfolio value movement with selected benchmarks. Figures are not adjusted for contributions, withdrawals, or trading activity.</p>
+        <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Performance</h1>
+        <p className="mt-2 text-xs text-zinc-500">Indexed value movement — not adjusted for contributions, withdrawals or trading.</p>
       </header>
 
-      <Card className="glass-card flex min-h-[480px] flex-1 flex-col overflow-hidden">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-white">Change over time</CardTitle>
-            <CardDescription>{rangedData.length} points · indexed to each series’ first saved observation</CardDescription>
+      {hasData && (
+        <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-y border-white/[0.06] py-6 sm:grid-cols-3 sm:gap-x-10 lg:grid-cols-[1.35fr_1fr_1fr_1fr] lg:gap-0 lg:py-7">
+          <div className="col-span-2 sm:col-span-3 lg:col-span-1 lg:pr-8">
+            <p className={LABEL}>Total portfolio · {range}</p>
+            <p className={`mt-2 text-[34px] font-semibold leading-none tracking-tight tabular-nums sm:text-[38px] ${tone(totalSummary?.periodChange)}`}>
+              {totalSummary?.periodChange == null ? "—" : fmtPct(totalSummary.periodChange)}
+            </p>
+            <p className={SUB}>Since {chartDateLabel(rangedData[0].dateISO)}</p>
           </div>
+
+          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
+            <p className={LABEL}>Largest pullback</p>
+            <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${totalSummary?.maxDrawdown != null && totalSummary.maxDrawdown < 0 ? "text-red-400" : "text-zinc-300"}`}>
+              {drawdownLabel(totalSummary?.maxDrawdown)}
+            </p>
+            <p className={SUB}>Peak to trough</p>
+          </div>
+
+          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
+            <p className={LABEL}>Leading portfolio</p>
+            <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${tone(leadingPortfolio?.periodChange)}`}>
+              {leadingPortfolio?.periodChange == null ? "—" : fmtPct(leadingPortfolio.periodChange)}
+            </p>
+            <p className={`${SUB} truncate`} title={leadingPortfolio?.name}>{leadingPortfolio?.name ?? "No portfolio history"}</p>
+          </div>
+
+          <div className="col-span-2 sm:col-span-1 lg:col-span-1 lg:border-l lg:border-white/[0.06] lg:pl-8">
+            <p className={LABEL}>{benchmarkName ?? "Benchmark"}</p>
+            <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${tone(benchmarkSummary?.periodChange)}`}>
+              {benchmarkSummary?.periodChange == null ? "—" : fmtPct(benchmarkSummary.periodChange)}
+            </p>
+            <p className={SUB}>{benchmarkName ? "Price only, no dividends" : "Not selected"}</p>
+          </div>
+        </div>
+      )}
+
+      <Card className="panel flex flex-1 flex-col overflow-hidden">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+          <CardTitle className="text-sm font-medium text-white">Change over time</CardTitle>
           <div className="flex flex-wrap items-center gap-1">
             <Select value={benchmark} onValueChange={(value) => onBenchmarkChange(value ?? "__none__")}>
-              <SelectTrigger className="h-8 w-28 bg-white/5 border-white/10 text-[11px]"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-28 border-white/[0.08] bg-transparent text-[11px] text-zinc-300"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Benchmark</SelectItem>
                 <SelectItem value="VWRL.L">VWRL</SelectItem>
@@ -182,13 +243,13 @@ export function PerformanceChart({
                 <SelectItem value="MSFT">Microsoft</SelectItem>
               </SelectContent>
             </Select>
-            <ChartRangeSelector range={range} onRangeChange={onRangeChange} />
+            <ChartRangeSelector range={range} onRangeChange={onRangeChange} segmented />
             {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
           </div>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col">
-          {rangedData.length === 0 ? (
-            <div className="grid flex-1 place-items-center text-center">
+          {!hasData ? (
+            <div className="grid flex-1 place-items-center py-16 text-center">
               <div>
                 <p className="text-sm text-zinc-400">{data.length === 0 ? "No snapshots yet" : `No snapshots in the last ${range === "MAX" ? "period" : range}`}</p>
                 <p className="mt-1 text-xs text-zinc-600">
@@ -200,7 +261,7 @@ export function PerformanceChart({
             </div>
           ) : (
             <>
-              <div className="h-[480px] w-full shrink-0 select-none md:h-[560px]">
+              <div className="h-[340px] w-full shrink-0 select-none sm:h-[420px] lg:h-[480px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -221,35 +282,49 @@ export function PerformanceChart({
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-              <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
-                {[{ key: "total", name: "Total", color: "#ffffff" }, ...series, ...(benchmarkName ? [{ key: "benchmark", name: benchmarkName, color: "#fbbf24" }] : [])].map((item) => (
-                  <button key={item.key} onClick={() => toggleSeries(item.key)} title={`${hiddenSeries.has(item.key) ? "Show" : "Hide"} ${item.name}`} className={`flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors ${!hiddenSeries.has(item.key) ? "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10" : "border-white/5 text-zinc-600 hover:text-zinc-400"}`}>
-                    <span className="h-0.5 w-3 rounded-full" style={{ background: item.color, opacity: hiddenSeries.has(item.key) ? 0.3 : 1 }} /> {item.name}
-                  </button>
-                ))}
-                {hiddenSeries.size > 0 && <button onClick={() => setHiddenSeries(new Set())} className="px-2 py-1 text-zinc-500 underline underline-offset-2 hover:text-white">Show all</button>}
+              <div className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1.5 text-[11px]">
+                {[{ key: "total", name: "Total", color: "#ffffff" }, ...series, ...(benchmarkName ? [{ key: "benchmark", name: benchmarkName, color: "#fbbf24" }] : [])].map((item) => {
+                  const hidden = hiddenSeries.has(item.key);
+                  return (
+                    <button key={item.key} type="button" onClick={() => toggleSeries(item.key)} title={`${hidden ? "Show" : "Hide"} ${item.name}`} className={`flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors ${hidden ? "text-zinc-600 hover:text-zinc-400" : "text-zinc-300 hover:text-white"}`}>
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: item.color, opacity: hidden ? 0.3 : 1 }} /> {item.name}
+                    </button>
+                  );
+                })}
+                {hiddenSeries.size > 0 && <button type="button" onClick={() => setHiddenSeries(new Set())} className="px-2 py-1 text-zinc-500 underline underline-offset-2 transition-colors hover:text-white">Show all</button>}
               </div>
-              <div className="mt-6 overflow-x-auto rounded-xl border border-white/[0.06]">
-                <table className="w-full min-w-[520px] text-sm">
-                  <thead className="bg-white/[0.025] text-left text-[10px] uppercase tracking-wider text-zinc-500">
-                    <tr><th className="px-4 py-3 font-medium">Series</th><th className="px-4 py-3 text-right font-medium">Change · {range}</th><th className="px-4 py-3 text-right font-medium">Largest pullback</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/[0.05]">
-                    {periodSummary.map((item) => (
-                      <tr key={item.key}>
-                        <td className="px-4 py-3 text-zinc-300">{item.name}</td>
-                        <td className="px-4 py-3 text-right tabular-nums" style={{ color: item.periodChange == null ? "#71717a" : item.periodChange >= 0 ? "#34d399" : "#f87171" }}>{item.periodChange == null ? "—" : fmtPct(item.periodChange)}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-zinc-400">{item.maxDrawdown == null ? "—" : fmtPct(item.maxDrawdown)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="mt-3 text-xs leading-relaxed text-zinc-600">Portfolio figures show value movement, not a flow-adjusted investment return. “Largest pullback” is based on saved observations. Benchmarks use price data and may exclude dividends.</p>
             </>
           )}
         </CardContent>
       </Card>
+
+      {hasData && seriesRows.length > 0 && (
+        <section aria-labelledby="performance-series-heading">
+          <div className="flex items-baseline justify-between gap-3 pb-2">
+            <h2 id="performance-series-heading" className="text-sm font-medium text-white">By series</h2>
+            <span className="text-[11px] text-zinc-600">Indexed · {range}</span>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600 sm:grid-cols-[minmax(0,1fr)_6rem_6rem]">
+            <span>Series</span>
+            <span className="text-right">Change</span>
+            <span className="text-right">Pullback</span>
+          </div>
+          <div className="divide-y divide-white/[0.05]">
+            {seriesRows.map((item) => (
+              <div key={item.key} className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] items-center gap-3 px-1 py-3 sm:grid-cols-[minmax(0,1fr)_6rem_6rem]">
+                <span className="flex min-w-0 items-center gap-2 text-sm text-zinc-400">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: colorFor(item.key) }} />
+                  <span className="truncate" title={item.name}>{item.name}</span>
+                </span>
+                <span className={`text-right text-sm tabular-nums ${tone(item.periodChange)}`}>{item.periodChange == null ? "—" : fmtPct(item.periodChange)}</span>
+                <span className="text-right text-sm tabular-nums text-zinc-400">{drawdownLabel(item.maxDrawdown)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <p className="text-xs leading-relaxed text-zinc-600">Figures show value movement, not a flow-adjusted investment return. “Largest pullback” is based on saved observations; benchmarks use price data and may exclude dividends.</p>
     </section>
   );
 }
