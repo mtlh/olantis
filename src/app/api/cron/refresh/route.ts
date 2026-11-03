@@ -64,17 +64,19 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   let skipped = 0;
   const failed = symbols.filter((s) => !lookupQuote(quotes, s.symbol, s.exchange)).map((s) => s.symbol);
 
-  const updates: Promise<unknown>[] = [];
+  const toUpdate: { id: string; price: number; currency: string; ts: number }[] = [];
   for (const h of refreshableHoldings) {
     if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
     const q = lookupQuote(quotes, h.symbol, h.exchange);
     if (!q) continue;
     if (!body.force && h.lastRefreshedAt && unixNow - h.lastRefreshedAt < REFRESH_GUARD_SECONDS) { skipped++; continue; }
-    updates.push(db.update(holdings).set({ currentPrice: q.price, currency: q.currency, lastRefreshedAt: unixNow }).where(eq(holdings.id, h.id)));
+    toUpdate.push({ id: h.id, price: q.price, currency: q.currency, ts: unixNow });
     applied.set(h.id, { price: q.price, currency: q.currency });
     updated++;
   }
-  await Promise.all(updates);
+  if (toUpdate.length) {
+    await db.execute(sql`UPDATE holdings SET current_price = v.price, currency = v.currency, last_refreshed_at = v.ts FROM (VALUES ${sql.join(toUpdate.map((u) => sql`(${u.id}, ${u.price}, ${u.currency}, ${u.ts})`), sql`, `)}) AS v(id, price, currency, ts) WHERE holdings.id = v.id`);
+  }
 
   const refreshedHoldings = targetHoldings.map((h) => {
     const a = applied.get(h.id);
@@ -98,11 +100,24 @@ async function createSnapshots(allHoldings: HoldingRow[], fxRates: Record<string
 
   const valGBP = (h: HoldingRow) => toGBP(h.shares * (h.currentPrice ?? 0), h.currency, fxRates);
 
+  // Hoist a single portfolios query for all users instead of one per user.
+  const allPortfolios = await db.select().from(portfolios);
+  const portfoliosByUser = new Map<string, typeof portfolios.$inferSelect[]>();
+  for (const p of allPortfolios) {
+    const arr = portfoliosByUser.get(p.userId) ?? [];
+    arr.push(p);
+    portfoliosByUser.set(p.userId, arr);
+  }
+
+  const snapshotRows: { userId: string; date: string; value: number }[] = [];
+  const portfolioSnapshotRows: { userId: string; portfolioId: string; date: string; value: number }[] = [];
+  const holdingSnapshotRows: { userId: string; holdingId: string; date: string; value: number }[] = [];
+
   for (const [userId, hs] of userHoldings) {
     const totalValue = hs.reduce((sum, h) => sum + valGBP(h), 0);
-    await db.insert(snapshots).values({ userId, date: today, value: totalValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: totalValue } });
+    snapshotRows.push({ userId, date: today, value: totalValue });
 
-    const userPortfolios = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
+    const userPortfolios = portfoliosByUser.get(userId) ?? [];
     const pidToHoldings = new Map<string, HoldingRow[]>();
     for (const h of hs) {
       if (!h.portfolioId) continue;
@@ -110,19 +125,24 @@ async function createSnapshots(allHoldings: HoldingRow[], fxRates: Record<string
       arr.push(h);
       pidToHoldings.set(h.portfolioId, arr);
     }
-    const pfRows: { userId: string; portfolioId: string; date: string; value: number }[] = [];
     for (const p of userPortfolios) {
       const phs = pidToHoldings.get(p.id) ?? [];
-      pfRows.push({ userId, portfolioId: p.id, date: today, value: phs.reduce((sum, h) => sum + valGBP(h), 0) });
-    }
-    if (pfRows.length) {
-      await db.insert(portfolioSnapshots).values(pfRows).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value` } });
+      portfolioSnapshotRows.push({ userId, portfolioId: p.id, date: today, value: phs.reduce((sum, h) => sum + valGBP(h), 0) });
     }
 
-    const hBatch = hs.map((h) => ({ userId, holdingId: h.id, date: today, value: valGBP(h) }));
-    if (hBatch.length) {
-      await db.insert(holdingSnapshots).values(hBatch).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value` } });
+    for (const h of hs) {
+      holdingSnapshotRows.push({ userId, holdingId: h.id, date: today, value: valGBP(h) });
     }
+  }
+
+  if (snapshotRows.length) {
+    await db.insert(snapshots).values(snapshotRows).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: sql`excluded.value` } });
+  }
+  if (portfolioSnapshotRows.length) {
+    await db.insert(portfolioSnapshots).values(portfolioSnapshotRows).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value` } });
+  }
+  if (holdingSnapshotRows.length) {
+    await db.insert(holdingSnapshots).values(holdingSnapshotRows).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value` } });
   }
 }
 
