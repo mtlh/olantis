@@ -2,14 +2,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";
-import { eq, and, like, lt } from "drizzle-orm";
-import {
-  DEMO_COOKIE,
-  LEGACY_DEMO_USER_ID,
-  demoUserId,
-  isDemoUserId,
-  newDemoSessionId,
-} from "@/lib/auth";
+import { eq } from "drizzle-orm";
+import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
+import { clearDemo } from "@/lib/demo-cleanup";
 
 /**
  * Demo mode — deliberately UNAUTHENTICATED.
@@ -256,43 +251,6 @@ async function seedDemo(userId: string) {
   ]);
 }
 
-async function clearDemo(userId: string) {
-  const db = getDb();
-  try { await db.delete(snapshots).where(eq(snapshots.userId, userId)); } catch { /* ignore */ }
-  try { await db.delete(portfolioSnapshots).where(eq(portfolioSnapshots.userId, userId)); } catch { /* ignore */ }
-  try {
-    const ps = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
-    for (const p of ps) await db.delete(holdings).where(eq(holdings.portfolioId, p.id));
-    await db.delete(portfolios).where(eq(portfolios.userId, userId));
-    await db.delete(providers).where(eq(providers.userId, userId));
-    await db.delete(accounts).where(eq(accounts.userId, userId));
-    await db.delete(userSettings).where(eq(userSettings.userId, userId));
-  } catch { /* ignore */ }
-}
-
-/**
- * Housekeeping: drop abandoned demo tenants so per-session isolation does not
- * grow the database without bound. Called opportunistically from `/api/demo`.
- */
-export async function pruneDemoSessions(olderThanDays = 7): Promise<number> {
-  const db = getDb();
-  const cutoff = Math.floor(Date.now() / 1000) - olderThanDays * 86400;
-  try {
-    const stale = await db
-      .select({ userId: accounts.userId })
-      .from(accounts)
-      .where(and(like(accounts.userId, "demo:%"), lt(accounts.createdAt, cutoff)));
-    const ids = [...new Set(stale.map((r) => r.userId))].filter(isDemoUserId);
-    for (const id of ids) await clearDemo(id);
-    // legacy single-tenant demo rows (pre per-session isolation)
-    const legacy = await db.select().from(accounts).where(eq(accounts.userId, LEGACY_DEMO_USER_ID));
-    if (legacy.length) await clearDemo(LEGACY_DEMO_USER_ID);
-    return ids.length + (legacy.length ? 1 : 0);
-  } catch {
-    return 0;
-  }
-}
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const clear = url.searchParams.get("clear");
@@ -317,8 +275,6 @@ export async function GET(req: Request) {
   });
 
   await seedDemo(userId);
-  // Fire-and-forget housekeeping; never block the redirect on it.
-  void pruneDemoSessions();
 
   redirect("/dashboard");
 }

@@ -5,6 +5,7 @@ import { holdings, snapshots, portfolioSnapshots, holdingSnapshots, portfolios }
 import { eq, sql, notLike, isNull, or } from "drizzle-orm";
 import { toGBP, todayISODate, DEFAULT_FX_RATES } from "@/lib/format";
 import { getLatestFxRates, refreshFxRates } from "@/lib/fx";
+import { pruneDemoSessions } from "@/lib/demo-cleanup";
 
 const REFRESH_GUARD_SECONDS = 23 * 60 * 60;
 
@@ -140,5 +141,9 @@ export async function GET(req: Request) {
     const quotes = await fetchQuotes([{ symbol: s }], { disambiguate: true });
     return Response.json({ success: true, quotes });
   }
-  return Response.json(await doRefresh({}));
+  const result = await doRefresh({});
+  // Demo housekeeping rides along with the scheduled refresh instead of running
+  // on every "Try demo" click.
+  await pruneDemoSessions();
+  return Response.json(result);
 }
