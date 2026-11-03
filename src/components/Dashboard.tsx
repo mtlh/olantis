@@ -286,7 +286,7 @@ const pickRange = useCallback((r: ChartRange) => {
   const [assignHolding, setAssignHolding] = useState<Holding | null>(null);
   const openAssign = (holding: Holding) => setAssignHolding(holding);
 
-  const refreshPrices = async()=>{
+  const refreshPrices = useCallback(async () => {
     const allHs = [...portfolios.flatMap(p=>p.holdings), ...directHoldings];
     if(allHs.length===0) return;
     setRefreshing(true);
@@ -307,7 +307,11 @@ const pickRange = useCallback((r: ChartRange) => {
       toast({title:`Updated ${j.updated} holdings`,description:j.skipped?`${j.skipped} skipped (24h limit)`:undefined,variant:"success"});
     } catch(e: unknown){ toast({title:"Refresh failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
     finally{setRefreshing(false);}
-  };
+  }, [portfolios, directHoldings, toast, setAllHoldings, setPortfolios]);
+
+  // Stable identity so the memoised Sidebar does not re-render on every
+  // Dashboard state change (range switch, dialog open, allocation mode, …).
+  const handleRefreshPrices = useCallback(() => { void refreshPrices(); }, [refreshPrices]);
 
   const handleWizardCreate = async (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => {
     const created = await handleCreate(name, type, accountId, providerId);
@@ -378,7 +382,7 @@ const pickRange = useCallback((r: ChartRange) => {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} onRefreshPrices={() => { void refreshPrices(); }} refreshing={refreshing} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} onRefreshPrices={handleRefreshPrices} refreshing={refreshing} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={requestDeleteAccount}
         onDeleteProvider={requestDeleteProvider}
         onDeletePortfolio={requestDeletePortfolio} />

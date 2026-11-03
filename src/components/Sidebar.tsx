@@ -149,7 +149,33 @@ function useSidebarCollapsed() {
   return { collapsed, setCollapsed };
 }
 
+// Tailwind's `xl` breakpoint. The account tree is only mounted in the container
+// that is actually visible, so a phone never renders a `display:none` copy.
+const DESKTOP_LAYOUT_QUERY = "(min-width: 80rem)";
+
+function subscribeDesktopLayout(listener: () => void) {
+  const query = window.matchMedia(DESKTOP_LAYOUT_QUERY);
+  query.addEventListener("change", listener);
+  return () => query.removeEventListener("change", listener);
+}
+
+function readDesktopLayout() {
+  return window.matchMedia(DESKTOP_LAYOUT_QUERY).matches;
+}
+
+function useDesktopLayout() {
+  // Assume desktop on the server so the xl layout hydrates without a flash;
+  // narrower viewports drop the tree on the first client check.
+  return useSyncExternalStore(subscribeDesktopLayout, readDesktopLayout, () => true);
+}
+
 type RailTipRow = { label: string; value: string };
+
+// Per-portfolio valuation is recomputed only when the portfolio data or the FX
+// rates change, not on every render of the tree.
+type PortfolioValuation = { total: number; holdings: Holding[]; values: Map<string, number> };
+
+const EMPTY_VALUATION: PortfolioValuation = { total: 0, holdings: [], values: new Map() };
 
 // Icon-only rows need their detail somewhere. A portal keeps the card clear of
 // the sidebar's scroll container, which would otherwise clip it.
@@ -433,6 +459,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [directTarget, setDirectTarget] = useState<{ accountId?: string | null; providerId?: string | null } | null>(null);
   const [directForm, setDirectForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", exchange: "", currentPrice: "", currency: "GBP" });
   const { settings } = useSettings();
+  const fxRates = settings.fxRates;
   const blankDirectForm = () => ({ symbol: "", name: "", shares: "", avgPrice: "", exchange: "", currentPrice: "", currency: settings.currency || "GBP" });
   const [editingDirectId, setEditingDirectId] = useState<string | null>(null);
   const [directSaving, setDirectSaving] = useState(false);
@@ -454,6 +481,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [resizingSidebar, setResizingSidebar] = useState(false);
   const { width: sidebarWidth, widthRef: sidebarWidthRef, applyWidth: applySidebarWidth, persistWidth: persistSidebarWidth } = useSidebarWidth();
   const { collapsed: sidebarCollapsed, setCollapsed: setSidebarCollapsed } = useSidebarCollapsed();
+  const desktopLayout = useDesktopLayout();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const focusSearchOnExpandRef = useRef(false);
   const resizePointerIdRef = useRef<number | null>(null);
@@ -571,7 +599,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const sortByOrder = <T extends { sortOrder?: number | null }>(list: T[]): T[] => [...list].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
 
-  const directHoldings = holdings ?? [];
+  const directHoldings = useMemo(() => holdings ?? [], [holdings]);
   const unassigned = useMemo(()=> sortByOrder(portfolios.filter(p=> !p.accountId && !p.providerId)), [portfolios]);
 
   const providersByAccount = useMemo(()=>{
@@ -593,6 +621,26 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     return m;
   },[portfolios]);
 
+  const portfolioValuations = useMemo(() => {
+    const valuations = new Map<string, PortfolioValuation>();
+    for (const portfolio of portfolios) {
+      const values = new Map<string, number>();
+      const ordered: { holding: Holding; value: number }[] = [];
+      let total = 0;
+      for (const holding of portfolio.holdings) {
+        const value = holdingValueGBP(holding, fxRates);
+        values.set(holding.id, value);
+        total += value;
+        ordered.push({ holding, value });
+      }
+      ordered.sort((a, b) => b.value - a.value);
+      valuations.set(portfolio.id, { total, holdings: ordered.map((entry) => entry.holding), values });
+    }
+    return valuations;
+  }, [portfolios, fxRates]);
+
+  const valuationFor = (portfolio: Portfolio) => portfolioValuations.get(portfolio.id) ?? EMPTY_VALUATION;
+
   const searchTerm = q.trim().toLowerCase();
   const matchesHolding = (holding: Holding) => holding.symbol.toLowerCase().includes(searchTerm) || holding.name.toLowerCase().includes(searchTerm);
   const matchesPortfolio = (portfolio: Portfolio) => portfolio.name.toLowerCase().includes(searchTerm) || portfolio.holdings.some(matchesHolding);
@@ -609,20 +657,33 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const filteredPortfolios = (list: Portfolio[], showAll = false) => sortByOrder(list.filter((portfolio) => !searchTerm || showAll || matchesPortfolio(portfolio)));
   const filteredProviders = (list: Provider[], showAll = false) => sortByOrder(list.filter((provider) => !searchTerm || showAll || matchesProvider(provider)));
   const accountIndex = useMemo(() => new Map(accounts.map((a, i) => [a.id, i])), [accounts]);
-  const accountTotals = (aid: string) => {
-    const direct = directByAccount.get(aid) ?? [];
-    const provs = providersByAccount.get(aid) ?? [];
-    let sum = direct.reduce((s,p)=> s + p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h, settings.fxRates),0),0);
-    for(const pr of provs){ const ps=portfoliosByProvider.get(pr.id)??[]; sum+= ps.reduce((s,p)=>s+p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h, settings.fxRates),0),0); }
-    sum += directHoldings.filter((h:Holding)=> h.accountId===aid && !h.providerId && !h.portfolioId).reduce((s,h:Holding)=> s+holdingValueGBP(h, settings.fxRates),0);
-    for(const pr of provs){ sum += directHoldings.filter((h:Holding)=> h.providerId===pr.id).reduce((s,h:Holding)=> s+holdingValueGBP(h, settings.fxRates),0); }
-    return sum;
-  };
-  const providerTotals = (pid: string) => {
-    let sum = (portfoliosByProvider.get(pid)??[]).reduce((s,p)=>s+p.holdings.reduce((a,h:Holding)=>a+holdingValueGBP(h, settings.fxRates),0),0);
-    sum += directHoldings.filter((h:Holding)=> h.providerId===pid).reduce((s,h:Holding)=> s+holdingValueGBP(h, settings.fxRates),0);
-    return sum;
-  };
+  // Totals are derived once per data change instead of re-filtering every
+  // holding for every account/provider on each render of the tree.
+  const { accountTotalsById, providerTotalsById } = useMemo(() => {
+    const totalFor = (portfolio: Portfolio) => portfolioValuations.get(portfolio.id)?.total ?? 0;
+    const providerTotals = new Map<string, number>();
+    for (const provider of providers) {
+      let sum = 0;
+      for (const portfolio of portfoliosByProvider.get(provider.id) ?? []) sum += totalFor(portfolio);
+      for (const holding of directHoldings) {
+        if (holding.providerId === provider.id) sum += holdingValueGBP(holding, fxRates);
+      }
+      providerTotals.set(provider.id, sum);
+    }
+    const accountTotals = new Map<string, number>();
+    for (const account of accounts) {
+      let sum = 0;
+      for (const portfolio of directByAccount.get(account.id) ?? []) sum += totalFor(portfolio);
+      for (const provider of providersByAccount.get(account.id) ?? []) sum += providerTotals.get(provider.id) ?? 0;
+      for (const holding of directHoldings) {
+        if (holding.accountId === account.id && !holding.providerId && !holding.portfolioId) {
+          sum += holdingValueGBP(holding, fxRates);
+        }
+      }
+      accountTotals.set(account.id, sum);
+    }
+    return { accountTotalsById: accountTotals, providerTotalsById: providerTotals };
+  }, [accounts, providers, providersByAccount, portfoliosByProvider, directByAccount, portfolioValuations, directHoldings, fxRates]);
   const accColorFor = (acc: Account) => acc.color || PALETTE[(accountIndex.get(acc.id) ?? 0) % PALETTE.length].value;
 
   const toggle = (id: string) => setExpanded((e) => ({ ...e, [id]: !(e[id] ?? true) }));
@@ -632,8 +693,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const validateName = (n: string) => n.trim().length >= 2 ? "" : "Min 2 characters";
 
   const renderPortfolioItem = (portfolio: Portfolio, color: string) => {
-    const total = portfolio.holdings.reduce((sum, holding) => sum + holdingValueGBP(holding, settings.fxRates), 0);
-    const holdingsInValueOrder = [...portfolio.holdings].sort((a, b) => holdingValueGBP(b, settings.fxRates) - holdingValueGBP(a, settings.fxRates));
+    const { total, holdings: holdingsInValueOrder, values } = valuationFor(portfolio);
     const isActive = activeId === portfolio.id;
     const selectedHolding = holdingsInValueOrder.some((holding) => holding.id === activeHoldingId);
     const searchMatchesHolding = !!searchTerm && holdingsInValueOrder.some(matchesHolding);
@@ -666,7 +726,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         {isOpen && (
           <div className="ml-8 border-l border-white/[0.06] pb-1 pl-2">
             {holdingsInValueOrder.length ? holdingsInValueOrder.map((holding) => {
-              const holdingValue = holdingValueGBP(holding, settings.fxRates);
+              const holdingValue = values.get(holding.id) ?? 0;
               const allocation = total > 0 ? holdingValue / total * 100 : 0;
               const isHoldingActive = holding.id === activeHoldingId;
               return (
@@ -808,7 +868,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
       );
     }
 
-    const portfolioTotal = (portfolio: Portfolio) => portfolio.holdings.reduce((sum, holding) => sum + holdingValueGBP(holding, settings.fxRates), 0);
+    const portfolioTotal = (portfolio: Portfolio) => valuationFor(portfolio).total;
     const holdingRow = (holding: Holding) => (
       <RailButton
         key={holding.id}
@@ -843,7 +903,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 label={acc.name}
                 subtitle="Account"
                 rows={[
-                  { label: "Value", value: fmtGBP(accountTotals(acc.id)) },
+                  { label: "Value", value: fmtGBP(accountTotalsById.get(acc.id) ?? 0) },
                   { label: "Providers", value: String(accountProviders.length) },
                   { label: "Portfolios", value: String(portfolioCount) },
                 ]}
@@ -868,7 +928,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                       label={pr.name}
                       subtitle={`${acc.name} · Provider`}
                       rows={[
-                        { label: "Value", value: fmtGBP(providerTotals(pr.id)) },
+                        { label: "Value", value: fmtGBP(providerTotalsById.get(pr.id) ?? 0) },
                         { label: "Portfolios", value: String(providerPortfolios.length) },
                       ]}
                       active={activeProviderId === pr.id}
@@ -1049,7 +1109,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             {filteredAccounts.map((acc) => {
               const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
               const isOpen = expanded[acc.id] ?? true;
-              const total = accountTotals(acc.id);
+              const total = accountTotalsById.get(acc.id) ?? 0;
               const accountActive = activeAccountId === acc.id;
               const accountProviders = providersByAccount.get(acc.id) ?? [];
               const provs = filteredProviders(accountProviders, accountNameMatches);
@@ -1091,7 +1151,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                         const ps = filteredPortfolios(providerPortfolios, providerNameMatches);
                         const providerDirectHoldings = directHoldings.filter((holding) => holding.providerId === pr.id && !holding.portfolioId && (providerNameMatches || matchesHolding(holding)));
                         const isProvOpen = expandedProv[pr.id] ?? true;
-                        const provTotal = providerTotals(pr.id);
+                        const provTotal = providerTotalsById.get(pr.id) ?? 0;
                         const provColor = pr.color || portfolioTint(accColorFor(acc), Math.max(0, providerIndex));
                         const providerActive = activeProviderId === pr.id;
                         return (
@@ -1367,36 +1427,40 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         className="hidden xl:flex relative shrink-0 flex-col h-screen sticky top-0 border-r bg-black"
         style={{ width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth, borderColor: "rgba(255,255,255,0.07)" }}
       >
-        {renderSidebar(sidebarCollapsed)}
-        {!sidebarCollapsed && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          aria-valuemin={SIDEBAR_MIN_WIDTH}
-          aria-valuemax={SIDEBAR_MAX_WIDTH}
-          aria-valuenow={sidebarWidth}
-          tabIndex={0}
-          title="Drag to resize · double-click to reset"
-          onPointerDown={startSidebarResize}
-          onPointerMove={moveSidebarResize}
-          onPointerUp={endSidebarResize}
-          onPointerCancel={endSidebarResize}
-          onLostPointerCapture={endSidebarResize}
-          onKeyDown={handleSidebarResizeKeyDown}
-          onDoubleClick={resetSidebarWidth}
-          className="group absolute inset-y-0 right-0 z-30 flex w-2 cursor-col-resize touch-none select-none items-center justify-center focus-visible:outline-none"
-        >
-          <span
-            aria-hidden
-            className={`h-full w-px transition-colors duration-150 ${
-              resizingSidebar ? "bg-white/45" : "bg-transparent group-hover:bg-white/20 group-focus-visible:bg-white/45"
-            }`}
-          />
-        </div>
-        )}
+        {desktopLayout ? (
+          <>
+            {renderSidebar(sidebarCollapsed)}
+            {!sidebarCollapsed && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              aria-valuemin={SIDEBAR_MIN_WIDTH}
+              aria-valuemax={SIDEBAR_MAX_WIDTH}
+              aria-valuenow={sidebarWidth}
+              tabIndex={0}
+              title="Drag to resize · double-click to reset"
+              onPointerDown={startSidebarResize}
+              onPointerMove={moveSidebarResize}
+              onPointerUp={endSidebarResize}
+              onPointerCancel={endSidebarResize}
+              onLostPointerCapture={endSidebarResize}
+              onKeyDown={handleSidebarResizeKeyDown}
+              onDoubleClick={resetSidebarWidth}
+              className="group absolute inset-y-0 right-0 z-30 flex w-2 cursor-col-resize touch-none select-none items-center justify-center focus-visible:outline-none"
+            >
+              <span
+                aria-hidden
+                className={`h-full w-px transition-colors duration-150 ${
+                  resizingSidebar ? "bg-white/45" : "bg-transparent group-hover:bg-white/20 group-focus-visible:bg-white/45"
+                }`}
+              />
+            </div>
+            )}
+          </>
+        ) : null}
       </aside>
-      {mobileOpen && (
+      {mobileOpen && !desktopLayout && (
         <div ref={mobileMenuRef} className="fixed inset-0 z-50 xl:hidden flex" role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1}>
           <div className="w-[85vw] max-w-[380px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{renderSidebar(false, false)}</div>
           <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
