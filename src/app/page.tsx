@@ -6,7 +6,16 @@ import { buttonVariants } from "@/components/ui/button";
 import { DemoButton } from "@/components/DemoButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
-import { ArrowRight, BarChart3, Clock3, Layers, LineChart, Lock, ShieldCheck, Sparkles, Wallet, EyeOff, TrendingUp } from "lucide-react";
+
+/** The demo card's curve, rising into the card's top-right corner. */
+const CHART =
+  "M0 152 C22 148 38 155 60 143 C82 131 98 139 122 125 C146 111 162 119 186 106 C210 93 226 100 250 85 C274 70 290 76 314 58 C332 45 344 34 358 24 C368 17 380 12 389 8";
+
+const ACCOUNTS = [
+  { name: "ISA", detail: "Global Tracker", value: "£42,800", color: "#60a5fa" },
+  { name: "SIPP", detail: "S&P 500", value: "£18,200", color: "#34d399" },
+  { name: "GIA", detail: "All-World", value: "£7,400", color: "#f472b6" },
+];
 
 export default async function Home() {
   const jar = await cookies();
@@ -42,211 +51,142 @@ export default async function Home() {
     }
   }
   if (user) redirect("/dashboard");
+
   return (
-    <div className="min-h-screen flex flex-col">
-      <nav className="sticky top-0 z-40 backdrop-blur-xl bg-black/30 border-b border-white/[0.06]">
-        <div className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-4 max-w-6xl mx-auto w-full">
-          <Link href="/" className="flex items-center gap-3">
-            <Logo size={34} />
-            <span className="hidden md:inline text-[10px] tracking-widest uppercase text-zinc-600 border border-white/10 px-2 py-0.5 rounded-full">Personal Finance</span>
-          </Link>
-          <div className="flex items-center gap-2">
-            {user ? (
-              <>
-                <a href="/dashboard" className={buttonVariants({ variant: "ghost", size: "sm", className: "text-zinc-400 hover:text-white" })}>Dashboard</a>
-                <a href={isDemo ? "/api/demo?clear=1" : "/logout"} className={buttonVariants({ size: "sm" })}>Sign out <ArrowRight className="w-3.5 h-3.5" /></a>
-              </>
-            ) : (
-              <>
-                <a href="/login" className={buttonVariants({ variant: "ghost", size: "sm", className: "text-zinc-400 hover:text-white" })}>Sign in</a>
-                <a href="/login" className={buttonVariants({ size: "sm" })}>Get started <ArrowRight className="w-3.5 h-3.5" /></a>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
+    <div className="relative flex min-h-screen flex-col overflow-x-clip lg:h-screen lg:min-h-0 lg:overflow-hidden">
+      <Link
+        href="/"
+        aria-label="Olantis — home"
+        className="absolute top-0 left-0 z-10 p-6 transition-opacity hover:opacity-80 md:p-8"
+      >
+        <Logo size={28} />
+      </Link>
 
-      <div className="flex-1">
-        <section className="max-w-6xl mx-auto w-full px-6 md:px-10 pt-12 md:pt-20 pb-10">
-          <div className="grid md:grid-cols-2 gap-10 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-zinc-400">
-                <Sparkles className="w-3 h-3 text-zinc-300" /> Unlimited portfolios • Live prices • Private by design
-              </div>
-              <h1 className="text-4xl md:text-[52px] font-bold tracking-tight text-white mt-5 leading-[0.95]">
-                Your portfolios,<br /><span className="text-zinc-500">beautifully simple.</span>
-              </h1>
-              <p className="text-sm md:text-[15px] leading-relaxed text-zinc-400 mt-4 max-w-[480px]">
-                Organise every account, portfolio and holding in one place. Track live valuations, see allocation and performance over time. No spreadsheets. Just clarity.
-              </p>
-              <div className="flex flex-wrap gap-3 mt-7">
-                <a href="/login" className={buttonVariants({ size: "lg", className: "h-10 px-6 bg-white text-black hover:bg-zinc-200 font-semibold" })}>Sign in to dashboard <ArrowRight className="w-4 h-4" /></a>
-                <DemoButton variant="outline" size="lg" className="h-10 px-6 bg-white/[0.06] border-white/10 hover:bg-white/10 text-white" />
-              </div>
-              <p className="text-xs text-zinc-600 mt-3">No credit card • Demo is instant • Set up in 60 seconds</p>
-              <div className="flex flex-wrap items-center gap-6 mt-8 text-xs text-zinc-500">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400" />Live market prices</span>
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400" />Private by design</span>
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-300" />No tracking</span>
-              </div>
-              <div className="flex items-center gap-3 mt-9 pt-6 border-t border-white/5">
-                <div className="flex -space-x-2">
-                  {["#60a5fa","#34d399","#f472b6"].map(c=> <span key={c} className="w-7 h-7 rounded-full border-2 border-black grid place-items-center text-[10px] font-bold text-white" style={{background:c}}>£</span>)}
-                </div>
-                <p className="text-xs text-zinc-500"><span className="text-white font-medium">3 demo portfolios</span> pre-loaded • 1 click to explore</p>
-              </div>
+      <main className="relative flex flex-1 flex-col">
+        <section className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 pt-24 pb-16 md:px-8 lg:grid-cols-2 lg:gap-20 lg:py-24">
+          <div>
+            <h1 className="rise text-[34px] font-semibold leading-[1.04] tracking-[-0.03em] text-white sm:text-[44px] lg:text-[54px]">
+              Your portfolios,
+              <br />
+              <span className="text-zinc-500">beautifully simple.</span>
+            </h1>
+
+            <p className="rise mt-5 max-w-[25rem] text-[15px] leading-relaxed text-zinc-400" style={{ animationDelay: "90ms" }}>
+              Every account, holding and valuation in one place. Prices update daily, so the
+              picture stays current.
+            </p>
+
+            <div className="rise mt-8 flex items-center gap-3" style={{ animationDelay: "180ms" }}>
+              <DemoButton
+                label="Explore the demo"
+                className="h-11 rounded-full bg-white px-6 text-[13px] font-semibold text-black hover:bg-zinc-200"
+              />
+              <a
+                href="/login"
+                className="inline-flex h-11 items-center rounded-full border border-white/15 px-5 text-[13px] text-zinc-300 transition-colors hover:border-white/30 hover:text-white"
+              >
+                Sign in
+              </a>
             </div>
+          </div>
 
-            <Card className="glass-card overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-between py-4">
-                <CardTitle className="text-[11px] tracking-[0.14em] uppercase text-zinc-500 font-semibold flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Live preview</CardTitle>
-                <span className="text-xs px-2.5 py-1 rounded-full bg-white text-black font-medium">Demo</span>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {[
-                  { n: "ISA", v: "£42,800", sub: "Global Tracker • +8.4%", c: "#60a5fa" },
-                  { n: "SIPP", v: "£18,200", sub: "S&P 500 • +5.1%", c: "#34d399" },
-                  { n: "GIA", v: "£7,400", sub: "All-World • +3.2%", c: "#f472b6" },
-                ].map((p) => (
-                  <div key={p.n} className="flex items-center justify-between p-3.5 rounded-xl bg-white/[0.04] border border-white/5">
-                    <span className="flex items-center gap-2.5 text-sm text-zinc-300"><span className="w-2.5 h-2.5 rounded-full" style={{ background: p.c }} />{p.n}<span className="text-xs text-zinc-600 hidden sm:inline">{p.sub}</span></span>
-                    <span className="text-sm font-semibold text-white tabular-nums">{p.v}</span>
-                  </div>
-                ))}
-                <div className="mt-1 rounded-xl bg-white/[0.03] border border-white/5 p-3">
-                  <div className="flex items-center justify-between text-[11px] text-zinc-600 mb-2"><span>Value over time</span><span className="text-emerald-400">+£4,820 • +7.6%</span></div>
-                  <svg viewBox="0 0 300 70" className="w-full h-[72px]">
-                    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="white" stopOpacity="0.18"/><stop offset="100%" stopColor="white" stopOpacity="0"/></linearGradient></defs>
-                    <path d="M0 52 L30 48 L60 55 L90 38 L120 42 L150 28 L180 33 L210 18 L240 22 L270 10 L300 14 L300 70 L0 70 Z" fill="url(#g)" />
-                    <path d="M0 52 L30 48 L60 55 L90 38 L120 42 L150 28 L180 33 L210 18 L240 22 L270 10 L300 14" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
-                    <path d="M0 52 L30 48 L60 55 L90 38 L120 42 L150 28 L180 33 L210 18 L240 22 L270 10 L300 14" fill="none" stroke="#60a5fa" strokeWidth="1.4" strokeLinecap="round" strokeDasharray="4 4" opacity="0.7" />
-                  </svg>
-                  <div className="flex justify-between text-[10px] text-zinc-600 mt-1"><span>1Y</span><span>MAX</span></div>
+          <div className="rise relative" style={{ animationDelay: "220ms" }}>
+            {/* The mark, blown up: a closed ring whose top-right point is the chart's last point. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute top-[8px] left-[97.25%] -z-10 hidden w-[270%] -translate-x-[69.09%] -translate-y-[30.91%] lg:block"
+            >
+              <svg viewBox="0 0 100 100" className="aspect-square w-full">
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="27"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.06)"
+                  strokeWidth="0.12"
+                />
+              </svg>
+            </div>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -inset-8 -z-10 bg-[radial-gradient(60%_60%_at_55%_45%,rgba(52,211,153,0.10),transparent_72%)] blur-2xl"
+            />
+            <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0f0f11] shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_30px_80px_-40px_rgba(0,0,0,0.9)]">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-20 -bottom-28 h-64 w-64 rounded-full bg-emerald-500/[0.08] blur-3xl"
+              />
+
+              <div className="relative h-[176px]">
+                <svg
+                  viewBox="0 0 400 176"
+                  className="absolute inset-0 h-full w-full"
+                  preserveAspectRatio="none"
+                  aria-hidden
+                >
+                  <defs>
+                    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#34d399" stopOpacity="0.22" />
+                      <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d={`${CHART} L400 176 L0 176 Z`}
+                    fill="url(#fade)"
+                    style={{
+                      maskImage: "linear-gradient(to right, #000 92%, transparent 100%)",
+                      WebkitMaskImage: "linear-gradient(to right, #000 92%, transparent 100%)",
+                    }}
+                  />
+                  <path
+                    className="chart-line"
+                    d={CHART}
+                    fill="none"
+                    stroke="#34d399"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    pathLength={1}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </svg>
+                <span className="absolute top-6 left-7 text-[11px] text-zinc-500 sm:left-8">Demo</span>
+                <span className="absolute top-[8px] right-[2.75%] h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400 shadow-[0_0_10px_2px_rgba(52,211,153,0.55)]" />
+              </div>
+
+              <div className="relative px-7 pb-7 sm:px-8 sm:pb-8">
+                <p className="text-[11px] text-zinc-400">Total value</p>
+
+                <div className="mt-2 flex items-center gap-2.5">
+                  <span className="text-[44px] font-semibold leading-none tracking-tight text-white tabular-nums">
+                    £68,400
+                  </span>
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-medium leading-none text-emerald-400 tabular-nums">
+                    +7.6%
+                  </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 pt-1">
-                  <div className="rounded-lg bg-white text-black p-2.5"><div className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Total</div><div className="text-sm font-bold">£68,400</div></div>
-                  <div className="rounded-lg bg-white/5 border border-white/10 p-2.5"><div className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Gain</div><div className="text-sm font-bold text-emerald-400">+£4,820</div></div>
-                  <div className="rounded-lg bg-white/5 border border-white/10 p-2.5"><div className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Holdings</div><div className="text-sm font-bold text-white">8</div></div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
+                <p className="mt-2 text-[11px] text-zinc-500">+£4,820 over 12 months</p>
 
-        <div className="max-w-6xl mx-auto w-full px-6 md:px-10">
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 py-6 border-y border-white/5 text-xs tracking-widest uppercase text-zinc-600">
-            <span className="flex items-center gap-2"><ShieldCheck className="w-3.5 h-3.5" /> Encrypted & private</span>
-            <span className="w-1 h-1 rounded-full bg-white/20" />
-            <span className="flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5" /> Live market prices</span>
-            <span className="w-1 h-1 rounded-full bg-white/20" />
-            <span className="flex items-center gap-2"><Clock3 className="w-3.5 h-3.5" /> Automatic daily updates</span>
-            <span className="w-1 h-1 rounded-full bg-white/20" />
-            <span className="flex items-center gap-2"><Layers className="w-3.5 h-3.5" /> Unlimited portfolios</span>
-          </div>
-        </div>
-
-        <section className="max-w-6xl mx-auto w-full px-6 md:px-10 pt-10 pb-4">
-          <div className="grid md:grid-cols-3 gap-4">
-            {[
-              { icon: Layers, t: "Organise by account", d: "Create accounts for each provider — ISA, SIPP, GIA — and group portfolios underneath. Rename, move and manage with ease." },
-              { icon: LineChart, t: "Holdings in seconds", d: "Add any ticker, set shares and average price. Live valuations update automatically, gains calculated for you." },
-              { icon: BarChart3, t: "See the full picture", d: "Value over time and allocation charts per portfolio or across everything. Track what's driving performance." },
-              { icon: ShieldCheck, t: "Private by design", d: "Your data is isolated and encrypted. Only you can see your portfolios — never shared, never sold." },
-              { icon: Lock, t: "Secure by default", d: "Passwordless sign-in, encrypted sessions. Your money view stays protected without extra effort." },
-              { icon: EyeOff, t: "No tracking, ever", d: "No ads, no analytics cookies, no selling data. Just your portfolios, beautifully simple." },
-            ].map((f) => (
-              <Card key={f.t} className="glass-card">
-                <CardHeader className="pb-2">
-                  <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 grid place-items-center mb-2"><f.icon className="w-4 h-4 text-zinc-300" /></div>
-                  <CardTitle className="text-sm text-white">{f.t}</CardTitle>
-                </CardHeader>
-                <CardContent><p className="text-xs leading-relaxed text-zinc-500">{f.d}</p></CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        <section className="max-w-6xl mx-auto w-full px-6 md:px-10 py-8">
-          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.02] overflow-hidden">
-            <div className="grid lg:grid-cols-2 gap-0">
-              <div className="p-8 md:p-10">
-                <div className="inline-flex items-center gap-2 text-xs tracking-widest uppercase text-zinc-500 font-semibold"><Clock3 className="w-3.5 h-3.5" /> How it works</div>
-                <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mt-3">From zero to clarity in 60 seconds.</h2>
-                <div className="mt-8 space-y-6">
-                  {[
-                    { n: "01", t: "Sign in securely", d: "One click to your private dashboard. No passwords to remember." },
-                    { n: "02", t: "Create accounts & portfolios", d: "Set up ISAs, SIPPs or GIAs, then add Live or Manual portfolios inside each." },
-                    { n: "03", t: "Add holdings and track", d: "Enter a ticker, shares and avg price. Watch live values, gains and allocation update." },
-                  ].map(s=> (
-                    <div key={s.n} className="flex gap-4">
-                      <span className="shrink-0 w-9 h-9 rounded-full bg-white text-black grid place-items-center text-xs font-bold">{s.n}</span>
-                      <div><div className="text-sm font-semibold text-white">{s.t}</div><div className="text-xs text-zinc-500 mt-1 leading-relaxed">{s.d}</div></div>
+                <div className="mt-5 border-t border-white/[0.06]">
+                  {ACCOUNTS.map((a, i) => (
+                    <div
+                      key={a.name}
+                      className="rise flex items-center justify-between border-b border-white/[0.06] py-3.5 transition-colors last:border-b-0 hover:bg-white/[0.02]"
+                      style={{ animationDelay: `${300 + i * 90}ms` }}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="h-6 w-[3px] rounded-full" style={{ backgroundColor: a.color }} />
+                        <span className="text-[13px] text-zinc-200">{a.name}</span>
+                        <span className="text-[11px] text-zinc-500">{a.detail}</span>
+                      </div>
+                      <span className="text-[13px] text-zinc-300 tabular-nums">{a.value}</span>
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-3 mt-8">
-                  <a href="/login" className={buttonVariants({ className: "bg-white text-black hover:bg-zinc-200" })}>Start now <ArrowRight className="w-4 h-4" /></a>
-                  <DemoButton variant="outline" className="bg-white/5 border-white/10 hover:bg-white/10 text-white" label="Explore demo" showArrow={false} />
-                </div>
-              </div>
-              <div className="bg-black/40 border-t lg:border-t-0 lg:border-l border-white/5 p-6 md:p-8 flex flex-col justify-center">
-                <div className="space-y-3">
-                  <div className="h-10 rounded-xl bg-white flex items-center justify-between px-4"><span className="text-sm font-semibold text-black flex items-center gap-2"><Wallet className="w-4 h-4" /> Global Tracker</span><span className="text-sm font-bold text-black">£12,768</span></div>
-                  <div className="h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between px-4"><span className="text-sm text-zinc-400">VWRP • 120 × £106.40</span><span className="text-sm font-semibold text-white">£12,768</span></div>
-                  <div className="h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between px-4"><span className="text-sm text-zinc-400">AAPL • 15 × $178</span><span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400">+22.7%</span></div>
-                  <div className="rounded-xl bg-white/[0.03] border border-white/5 p-4 mt-2">
-                    <div className="text-xs text-zinc-500 mb-2">Built for the long term</div>
-                    <div className="flex items-center gap-2 text-sm text-zinc-300"><ShieldCheck className="w-4 h-4 text-emerald-400" /> Your data never leaves your account</div>
-                    <div className="flex items-center gap-2 text-sm text-zinc-300 mt-2"><Clock3 className="w-4 h-4 text-blue-400" /> Prices refresh automatically every day</div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
         </section>
-
-        <section className="max-w-6xl mx-auto w-full px-6 md:px-10 py-6">
-          <Card className="glass-card overflow-hidden">
-            <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-white/5 text-center">
-              <div className="p-8"><div className="text-3xl font-bold text-white">£0</div><div className="text-xs tracking-widest uppercase text-zinc-500 mt-1">To start</div><p className="text-xs text-zinc-600 mt-2">Free while in beta</p></div>
-              <div className="p-8"><div className="text-3xl font-bold text-white">Unlimited</div><div className="text-xs tracking-widest uppercase text-zinc-500 mt-1">Portfolios & holdings</div><p className="text-xs text-zinc-600 mt-2">Track everything in one place</p></div>
-              <div className="p-8"><div className="text-3xl font-bold text-white">Daily</div><div className="text-xs tracking-widest uppercase text-zinc-500 mt-1">Price updates</div><p className="text-xs text-zinc-600 mt-2">Automatic, hands-off</p></div>
-            </div>
-          </Card>
-        </section>
-
-        <section className="max-w-6xl mx-auto w-full px-6 md:px-10 py-10">
-          <div className="rounded-2xl bg-white text-zinc-900 p-8 md:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div>
-              <h3 className="text-2xl font-bold tracking-tight text-zinc-900">Ready to get organised?</h3>
-              <p className="text-sm text-zinc-600 mt-1">Sign in takes 2 seconds. Your first portfolio takes 10 more.</p>
-            </div>
-            <div className="flex gap-3 shrink-0">
-              <a href="/login" className={buttonVariants({ size: "lg", className: "!bg-zinc-900 !text-white hover:!bg-black border border-zinc-900" })}>Sign in <ArrowRight className="w-4 h-4" /></a>
-              <DemoButton variant="outline" size="lg" className="!bg-white !text-zinc-900 !border-zinc-300 hover:!bg-zinc-50" showArrow={false} />
-            </div>
-          </div>
-        </section>
-
-        <footer className="border-t border-white/5 mt-2">
-          <div className="max-w-6xl mx-auto w-full px-6 md:px-10 py-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-zinc-600">
-            <span className="flex items-center gap-2"><Logo size={24} /> © {new Date().getFullYear()} Olantis • Personal finance, simplified.</span>
-            <span className="flex items-center gap-4">
-              {user ? (
-                <>
-                  <a href="/dashboard" className="hover:text-zinc-300">Dashboard</a>
-                  <a href={isDemo ? "/api/demo?clear=1" : "/logout"} className="hover:text-zinc-300">Sign out</a>
-                </>
-              ) : (
-                <>
-                  <a href="/login" className="hover:text-zinc-300">Sign in</a>
-                  <a href="/login" className="hover:text-zinc-300">Get started</a>
-                </>
-              )}
-            </span>
-          </div>
-        </footer>
-      </div>
+      </main>
     </div>
   );
 }

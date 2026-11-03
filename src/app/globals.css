@@ -104,6 +104,11 @@ body {
   box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .chart-line { animation: none; stroke-dashoffset: 0; }
+  .rise { animation: none; }
+}
+
 /* Quieter surface for data panels: no glass gradient or drop shadow, just a
    faint edge so charts and tables read as part of the page rather than boxes. */
 .panel {
