@@ -354,7 +354,7 @@ const pickRange = useCallback((r: ChartRange) => {
         onDeleteAccount={requestDeleteAccount}
         onDeleteProvider={requestDeleteProvider}
         onDeletePortfolio={requestDeletePortfolio} />
-      <main className="flex-1 min-w-0 pt-12 xl:pt-0">
+      <main id="main-content" className="flex-1 min-w-0 pt-12 xl:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
           {(portfoliosError || holdingsError || accountsError) && (
             <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
