@@ -13,7 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { getLatestFxRates } from "@/lib/fx";
 import { windowSeries } from "@/lib/snapshot-window";
-import type { FxRates } from "@/lib/format";
+import { DEFAULT_FX_RATES, holdingValueGBP, valueChangeOverRange, type FxRates } from "@/lib/format";
 import type {
   Account,
   Holding,
@@ -121,19 +121,35 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
     entry.data = windowSeries(entry.data) as typeof entry.data;
   }
 
-  const byHolding: NonNullable<SnapResponse["byHolding"]> = {};
+  // Per-holding history is the bulk of this payload — one long series per
+  // holding. The dashboard only needs two things from it: the strongest/weakest
+  // movers (four numbers per holding, so compute those here) and the combined
+  // account/provider history, which is built from portfolio series plus the
+  // series of *direct* holdings (no portfolioId). So only those direct holdings
+  // keep a series; everything else is reduced to moverChanges.
+  const holdingById = new Map(holdingRows.map((h) => [h.id, h]));
+  const fxRates = { ...DEFAULT_FX_RATES, ...fx.rates } as FxRates;
+  const allByHolding: NonNullable<SnapResponse["byHolding"]> = {};
   for (const row of perHoldingSnapshots) {
-    const entry = (byHolding[row.holdingId] ??= { symbol: "", name: "", data: [] });
+    const entry = (allByHolding[row.holdingId] ??= { symbol: "", name: "", data: [] });
     entry.data.push({ date: row.date, value: row.value });
   }
-  const holdingById = new Map(holdingRows.map((h) => [h.id, h]));
-  for (const [id, entry] of Object.entries(byHolding)) {
+  const byHolding: NonNullable<SnapResponse["byHolding"]> = {};
+  const moverChanges: NonNullable<SnapResponse["moverChanges"]> = {};
+  for (const [id, entry] of Object.entries(allByHolding)) {
     const h = holdingById.get(id);
-    if (h) {
-      entry.symbol = h.symbol;
-      entry.name = h.name;
-    }
     entry.data = windowSeries(entry.data) as typeof entry.data;
+    if (!h || !(h.shares > 0)) continue;
+    entry.symbol = h.symbol;
+    entry.name = h.name;
+    if (!h.portfolioId) byHolding[id] = entry;
+    const currentValue = holdingValueGBP(h, fxRates);
+    moverChanges[id] = {
+      change1M: valueChangeOverRange(entry.data, "1M", currentValue),
+      change3M: valueChangeOverRange(entry.data, "3M", currentValue),
+      change1Y: valueChangeOverRange(entry.data, "1Y", currentValue),
+      changeMax: valueChangeOverRange(entry.data, "MAX", currentValue),
+    };
   }
 
   const total: Snapshot[] = windowSeries(
@@ -152,7 +168,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
       holdings: holdingsByPortfolio.get(p.id) ?? [],
     })) as unknown as Portfolio[],
     holdings: liveHoldings,
-    snapshots: { total, byPortfolio, byHolding },
+    snapshots: { total, byPortfolio, byHolding, moverChanges },
     transactions,
     settings: (settingsRows[0] ?? {}) as Record<string, unknown>,
     fx: { date: fx.date, rates: fx.rates as FxRates },

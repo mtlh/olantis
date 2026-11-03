@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { holdingCostGBP, holdingValueGBP, valueChangeOverRange, type FxRates, type ValueChange } from "@/lib/format";
-import type { Account, Holding, Portfolio, Provider, Snapshot } from "@/lib/store";
+import { holdingCostGBP, holdingValueGBP, type FxRates, type ValueChange } from "@/lib/format";
+import type { Account, Holding, HoldingMoverChanges, Portfolio, Provider } from "@/lib/store";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 
 export type AccountBreakdownChild = {
@@ -47,9 +47,16 @@ type UsePortfolioOverviewInsightsProps = {
   portfolios: Portfolio[];
   allHoldings: Holding[];
   directHoldings: Holding[];
-  byHolding?: Record<string, { data: Snapshot[] }>;
+  moverChanges?: Record<string, HoldingMoverChanges>;
   fxRates: FxRates;
   range: ChartRange;
+};
+
+const MOVE_KEY: Record<ChartRange, keyof HoldingMoverChanges> = {
+  "1M": "change1M",
+  "3M": "change3M",
+  "1Y": "change1Y",
+  MAX: "changeMax",
 };
 
 export function usePortfolioOverviewInsights({
@@ -58,7 +65,7 @@ export function usePortfolioOverviewInsights({
   portfolios,
   allHoldings,
   directHoldings,
-  byHolding,
+  moverChanges,
   fxRates,
   range,
 }: UsePortfolioOverviewInsightsProps) {
@@ -139,16 +146,16 @@ export function usePortfolioOverviewInsights({
   }, [directHoldings, fxRates, portfolios]);
 
   const periodMovers = useMemo(() => {
+    const key = MOVE_KEY[range];
     const movers = insights.positions.flatMap((position) => {
-      const history = byHolding?.[position.holding.id]?.data ?? [];
-      const change = valueChangeOverRange(history, range, position.value);
+      const change = moverChanges?.[position.holding.id]?.[key];
       return change ? [{ ...position, change }] : [];
     });
     return {
       strongest: movers.reduce<PositionMover | null>((best, item) => !best || item.change.amount > best.change.amount ? item : best, null),
       weakest: movers.reduce<PositionMover | null>((worst, item) => !worst || item.change.amount < worst.change.amount ? item : worst, null),
     };
-  }, [byHolding, insights.positions, range]);
+  }, [insights.positions, moverChanges, range]);
 
   return { breakdown, insights, periodMovers };
 }

@@ -65,7 +65,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const { holdings: allHoldingsList, refresh: refreshAllHoldings, setHoldings: setAllHoldings, error: holdingsError } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
   const { settings } = useSettings();
-  const { snapshots, byPortfolio, byHolding } = useSnapshots(portfolios, directHoldings, settings.fxRates);
+  const { snapshots, byPortfolio, byHolding, moverChanges } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
   const activeId = portfolioFromUrl;
   const [tradeRequest, setTradeRequest] = useState<{ holding: Holding; type: "buy" | "sell" } | null>(null);
@@ -181,7 +181,7 @@ const pickRange = useCallback((r: ChartRange) => {
     portfolios,
     allHoldings: allHoldingsList,
     directHoldings,
-    byHolding,
+    moverChanges,
     fxRates: settings.fxRates,
     range,
   });
