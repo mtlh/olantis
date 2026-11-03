@@ -33,17 +33,26 @@ async function deleteQuietly(job: () => Promise<unknown>) {
 
 export async function clearDemo(userId: string) {
   const db = getDb();
-  await deleteQuietly(() => db.delete(snapshots).where(eq(snapshots.userId, userId)));
-  await deleteQuietly(() => db.delete(portfolioSnapshots).where(eq(portfolioSnapshots.userId, userId)));
-  await deleteQuietly(() => db.delete(holdingSnapshots).where(eq(holdingSnapshots.userId, userId)));
-  await deleteQuietly(() => db.delete(transactions).where(eq(transactions.userId, userId)));
-  await deleteQuietly(() => db.delete(holdings).where(eq(holdings.userId, userId)));
-  await deleteQuietly(() => db.delete(portfolios).where(eq(portfolios.userId, userId)));
-  await deleteQuietly(() => db.delete(providers).where(eq(providers.userId, userId)));
-  await deleteQuietly(() => db.delete(accounts).where(eq(accounts.userId, userId)));
-  await deleteQuietly(() => db.delete(goals).where(eq(goals.userId, userId)));
-  await deleteQuietly(() => db.delete(watchlistItems).where(eq(watchlistItems.userId, userId)));
-  await deleteQuietly(() => db.delete(userSettings).where(eq(userSettings.userId, userId)));
+  // Children first, then their parents, so the cleanup does not depend on the
+  // database having the cascade rules from the schema. Each wave runs in
+  // parallel: every statement in it touches a different table.
+  await Promise.all([
+    deleteQuietly(() => db.delete(snapshots).where(eq(snapshots.userId, userId))),
+    deleteQuietly(() => db.delete(portfolioSnapshots).where(eq(portfolioSnapshots.userId, userId))),
+    deleteQuietly(() => db.delete(holdingSnapshots).where(eq(holdingSnapshots.userId, userId))),
+    deleteQuietly(() => db.delete(transactions).where(eq(transactions.userId, userId))),
+    deleteQuietly(() => db.delete(holdings).where(eq(holdings.userId, userId))),
+  ]);
+  await Promise.all([
+    deleteQuietly(() => db.delete(portfolios).where(eq(portfolios.userId, userId))),
+    deleteQuietly(() => db.delete(providers).where(eq(providers.userId, userId))),
+    deleteQuietly(() => db.delete(goals).where(eq(goals.userId, userId))),
+    deleteQuietly(() => db.delete(watchlistItems).where(eq(watchlistItems.userId, userId))),
+  ]);
+  await Promise.all([
+    deleteQuietly(() => db.delete(accounts).where(eq(accounts.userId, userId))),
+    deleteQuietly(() => db.delete(userSettings).where(eq(userSettings.userId, userId))),
+  ]);
 }
 
 /**
@@ -59,7 +68,12 @@ export async function pruneDemoSessions(olderThanDays = 7): Promise<number> {
       .from(accounts)
       .where(and(like(accounts.userId, "demo:%"), lt(accounts.createdAt, cutoff)));
     const ids = [...new Set(stale.map((r) => r.userId))].filter(isDemoUserId);
-    for (const id of ids) await clearDemo(id);
+    // Tenants are independent, so clear them a few at a time instead of one
+    // after another: a week of demo traffic stays well inside the cron budget.
+    const PER_BATCH = 10;
+    for (let i = 0; i < ids.length; i += PER_BATCH) {
+      await Promise.all(ids.slice(i, i + PER_BATCH).map(clearDemo));
+    }
     // legacy single-tenant demo rows (pre per-session isolation)
     const legacy = await db.select().from(accounts).where(eq(accounts.userId, LEGACY_DEMO_USER_ID));
     if (legacy.length) await clearDemo(LEGACY_DEMO_USER_ID);
