@@ -14,8 +14,57 @@ const iconPath = app.isPackaged
   ? path.join(process.resourcesPath, "brand-mark.png")
   : path.join(__dirname, "..", "public", "brand", "mark-512.png");
 
+// Startup tracing: opt-in via OLANTIS_STARTUP_TRACE=1. Every mark is emitted as
+// one JSON line prefixed with OLANTIS-TRACE so scripts/electron-startup-bench.mjs
+// (and anyone with a terminal) can see exactly where launch time goes. The
+// helper is a no-op otherwise, so the shipped app pays nothing for it.
+const STARTUP_TRACE_LEVEL = Number(process.env.OLANTIS_STARTUP_TRACE || 0);
+// 1 = main-process + page milestones, 2 = also Chromium's paint lifecycle.
+const STARTUP_TRACE = STARTUP_TRACE_LEVEL > 0;
+const STARTUP_TRACE_PAINT = STARTUP_TRACE_LEVEL > 1;
+const STARTUP_TRACE_FILE = process.env.OLANTIS_STARTUP_TRACE_FILE || "";
+function trace(event, detail) {
+  if (!STARTUP_TRACE) return;
+  const ms = performance.now();
+  const line = `OLANTIS-TRACE ${JSON.stringify({ event, ms: Number(ms.toFixed(1)), at: Date.now(), ...(detail || {}) })}\n`;
+  if (STARTUP_TRACE_FILE) {
+    // Packaged Windows builds have no stdout to read, so the benchmark asks for
+    // a file instead.
+    require("node:fs").appendFileSync(STARTUP_TRACE_FILE, line);
+    return;
+  }
+  process.stdout.write(line);
+}
+trace("main:module-loaded", { url: APP_URL, packaged: app.isPackaged, timeOrigin: Date.now() - performance.now() });
+
+// Read the embedded page's own navigation timings. `timeOrigin` lets the bench
+// harness convert page-relative marks onto the app process clock.
+const PAGE_METRICS_SNIPPET = `(() => {
+  const nav = performance.getEntriesByType("navigation")[0] || {};
+  const paint = performance.getEntriesByType("paint").map((entry) => [entry.name, Math.round(entry.startTime)]);
+  const fcp = performance.getEntriesByName("first-contentful-paint")[0];
+  return {
+    href: location.href,
+    readyState: document.readyState,
+    timeOrigin: Math.round(performance.timeOrigin),
+    ttfb: Math.round(nav.responseStart || 0),
+    responseEnd: Math.round(nav.responseEnd || 0),
+    domContentLoaded: Math.round(nav.domContentLoadedEventEnd || 0),
+    loadEventEnd: Math.round(nav.loadEventEnd || 0),
+    fcp: fcp ? Math.round(fcp.startTime) : null,
+    paints: paint,
+    textLength: ((document.body && document.body.innerText) || "").trim().length,
+  };
+})()`;
+
 app.setName("Olantis");
 app.setAppUserModelId("com.olantis.desktop");
+
+// Lets the startup benchmark run against a throwaway profile so first-launch
+// timings (no HTTP cache, no GPU shader cache) can be measured separately.
+if (process.env.OLANTIS_ELECTRON_PROFILE) {
+  app.setPath("userData", process.env.OLANTIS_ELECTRON_PROFILE);
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -29,9 +78,48 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus();
   });
 
+  function oncePromise(emitter, event) {
+    return new Promise((resolve) => emitter.once(event, resolve));
+  }
+
+  async function runSmokeTest(shellReady, appReady) {
+    try {
+      await Promise.all([shellReady, appReady]);
+      const integratedToolbar = await mainWindow.webContents.executeJavaScript(
+        '["back-button", "forward-button", "minimize-button", "maximize-button", "close-button"].every((id) => document.getElementById(id))',
+      );
+      const renderedApp = await appView.webContents.executeJavaScript(
+        'document.readyState === "complete" && document.body.innerText.trim().length > 0',
+      );
+      const toolbarIsIntegrated = appView.getBounds().y === TITLEBAR_HEIGHT;
+      const brandIconLoaded = await mainWindow.webContents.executeJavaScript(
+        '(() => { const img = document.getElementById("brand-icon"); return Boolean(img && img.complete && img.naturalWidth > 0); })()',
+      );
+      if (!integratedToolbar || !toolbarIsIntegrated) {
+        console.error("Electron smoke test: integrated desktop toolbar was not rendered above the app.");
+      }
+      if (!renderedApp) console.error("Electron smoke test: Olantis content was not rendered.");
+      if (!brandIconLoaded) console.error("Electron smoke test: the Olantis brand icon did not load in the title bar.");
+      app.exit(renderedApp && integratedToolbar && toolbarIsIntegrated && brandIconLoaded ? 0 : 1);
+    } catch (error) {
+      console.error("Electron smoke test failed:", error);
+      app.exit(1);
+    }
+  }
+
   function shellWindowFor(event) {
     const window = BrowserWindow.fromWebContents(event.sender);
     return window === mainWindow ? window : null;
+  }
+
+  async function tracePageMetrics(label) {
+    if (!STARTUP_TRACE || !appView) return;
+    try {
+      const metrics = await appView.webContents.executeJavaScript(PAGE_METRICS_SNIPPET);
+      trace(`view:metrics:${label}`, metrics);
+    } catch (error) {
+      trace(`view:metrics:${label}:error`, { message: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   ipcMain.on("olantis:window:minimize", (event) => shellWindowFor(event)?.minimize());
@@ -88,30 +176,19 @@ if (!app.requestSingleInstanceLock()) {
     const template = path.join(__dirname, "shell-preload.cjs");
     const shellHtml = path.join(__dirname, "shell.html");
 
-    mainWindow = new BrowserWindow({
-      width: 1440,
-      height: 920,
-      minWidth: 900,
-      minHeight: 620,
-      show: false,
-      frame: false,
-      backgroundColor: APP_BACKGROUND,
-      title: "Olantis — Portfolio Dashboard",
-      icon: iconPath,
-      webPreferences: {
-        preload: template,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
-      },
-    });
-
+    // The embedded app is the slow half of a launch, so its view is created and
+    // pointed at the app before the shell window exists. The request, the
+    // renderer process and the network stack all get going while the window
+    // itself is still being constructed.
+    trace("view:create");
     appView = new WebContentsView({
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        // Nothing in the app is spell-checked, and skipping the dictionary load
+        // keeps it out of renderer start-up.
+        spellcheck: false,
         webSecurity: true,
       },
     });
@@ -119,22 +196,7 @@ if (!app.requestSingleInstanceLock()) {
     // still loading when the window appears. Keep the view's backdrop dark so
     // launching shows black chrome instead of a white flash.
     appView.setBackgroundColor(APP_BACKGROUND);
-    mainWindow.contentView.addChildView(appView);
-    syncAppBounds();
-    mainWindow.on("resize", syncAppBounds);
-    mainWindow.on("maximize", () => mainWindow.webContents.send("olantis:window:maximized", true));
-    mainWindow.on("unmaximize", () => mainWindow.webContents.send("olantis:window:maximized", false));
-    mainWindow.once("ready-to-show", () => mainWindow.show());
-    mainWindow.on("closed", () => {
-      mainWindow = undefined;
-      appView = undefined;
-    });
-
-    mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    mainWindow.webContents.on("will-navigate", (event, url) => {
-      if (url.startsWith("file:")) return;
-      event.preventDefault();
-    });
+    trace("view:created");
 
     appView.webContents.setWindowOpenHandler(({ url }) => {
       if (isAllowedNavigation(url, APP_URL, appView.webContents.getURL())) {
@@ -158,38 +220,96 @@ if (!app.requestSingleInstanceLock()) {
       appView.webContents.on(eventName, sendNavigationState);
     }
 
-    if (process.argv.includes("--smoke-test")) {
-      const shellLoaded = new Promise((resolve) => mainWindow.webContents.once("did-finish-load", resolve));
-      appView.webContents.once("did-finish-load", async () => {
-        try {
-          await shellLoaded;
-          const integratedToolbar = await mainWindow.webContents.executeJavaScript(
-            '["back-button", "forward-button", "minimize-button", "maximize-button", "close-button"].every((id) => document.getElementById(id))',
-          );
-          const renderedApp = await appView.webContents.executeJavaScript(
-            'document.readyState === "complete" && document.body.innerText.trim().length > 0',
-          );
-          const toolbarIsIntegrated = appView.getBounds().y === TITLEBAR_HEIGHT;
-          const brandIconLoaded = await mainWindow.webContents.executeJavaScript(
-            '(() => { const img = document.getElementById("brand-icon"); return Boolean(img && img.complete && img.naturalWidth > 0); })()',
-          );
-          if (!integratedToolbar || !toolbarIsIntegrated) {
-            console.error("Electron smoke test: integrated desktop toolbar was not rendered above the app.");
-          }
-          if (!renderedApp) console.error("Electron smoke test: Olantis content was not rendered.");
-          if (!brandIconLoaded) console.error("Electron smoke test: the Olantis brand icon did not load in the title bar.");
-          app.exit(renderedApp && integratedToolbar && toolbarIsIntegrated && brandIconLoaded ? 0 : 1);
-        } catch (error) {
-          console.error("Electron smoke test failed:", error);
-          app.exit(1);
-        }
+    if (STARTUP_TRACE) {
+      appView.webContents.on("did-start-loading", () => trace("view:did-start-loading"));
+      appView.webContents.on("dom-ready", () => {
+        trace("view:dom-ready");
+        void tracePageMetrics("dom-ready");
+      });
+      appView.webContents.once("did-finish-load", () => {
+        trace("view:did-finish-load");
+        void tracePageMetrics("loaded");
       });
     }
+
+    let paintReady = Promise.resolve();
+    if (STARTUP_TRACE_PAINT) {
+      // Chromium's own paint milestones. Attaching the debugger costs a little,
+      // so the default trace level leaves it off and the paint pass runs it
+      // against both builds being compared. The navigation waits for the
+      // lifecycle events to be enabled, otherwise the very first paint can slip
+      // through before Chromium starts reporting it.
+      try {
+        appView.webContents.debugger.attach("1.3");
+        appView.webContents.debugger.on("message", (_event, method, params) => {
+          if (method === "Page.lifecycleEvent") trace(`paint:${params.name}`);
+        });
+        paintReady = appView.webContents.debugger
+          .sendCommand("Page.enable")
+          .then(() => appView.webContents.debugger.sendCommand("Page.setLifecycleEventsEnabled", { enabled: true }))
+          .catch((error) => trace("paint:enable-failed", { message: error instanceof Error ? error.message : String(error) }));
+      } catch (error) {
+        trace("paint:attach-failed", { message: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
+    const smokeTest = process.argv.includes("--smoke-test");
+    trace("view:load-url");
+    const appReady = smokeTest ? oncePromise(appView.webContents, "did-finish-load") : null;
+    void paintReady.then(() => appView.webContents.loadURL(APP_URL));
+
+    trace("shell:window-create");
+    mainWindow = new BrowserWindow({
+      width: 1440,
+      height: 920,
+      minWidth: 900,
+      minHeight: 620,
+      // Shown from the first frame. Waiting for "ready-to-show" held the window
+      // back by 100-250ms after the shell had already loaded, and the shell,
+      // the window and the view all paint #050507, so there is no white flash
+      // to hide from.
+      show: true,
+      frame: false,
+      backgroundColor: APP_BACKGROUND,
+      title: "Olantis — Portfolio Dashboard",
+      icon: iconPath,
+      webPreferences: {
+        preload: template,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+      },
+    });
+    trace("shell:window-created");
+    trace("window:shown");
+    const shellReady = smokeTest ? oncePromise(mainWindow.webContents, "did-finish-load") : null;
+
+    mainWindow.contentView.addChildView(appView);
+    syncAppBounds();
+    mainWindow.on("resize", syncAppBounds);
+    mainWindow.on("maximize", () => mainWindow.webContents.send("olantis:window:maximized", true));
+    mainWindow.on("unmaximize", () => mainWindow.webContents.send("olantis:window:maximized", false));
+    if (STARTUP_TRACE) {
+      mainWindow.webContents.once("did-finish-load", () => trace("shell:did-finish-load"));
+      mainWindow.once("ready-to-show", () => trace("shell:ready-to-show"));
+    }
+    mainWindow.on("closed", () => {
+      mainWindow = undefined;
+      appView = undefined;
+    });
+
+    mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    mainWindow.webContents.on("will-navigate", (event, url) => {
+      if (url.startsWith("file:")) return;
+      event.preventDefault();
+    });
 
     const shellUrl = require("node:url").pathToFileURL(shellHtml);
     shellUrl.searchParams.set("icon", require("node:url").pathToFileURL(iconPath).href);
     void mainWindow.loadURL(shellUrl.href);
-    void appView.webContents.loadURL(APP_URL);
+
+    if (smokeTest) void runSmokeTest(shellReady, appReady);
   }
 
   function promptToRestart(version) {
@@ -214,7 +334,9 @@ if (!app.requestSingleInstanceLock()) {
 
     let updater;
     try {
+      trace("updater:require-start");
       ({ autoUpdater: updater } = require("electron-updater"));
+      trace("updater:required");
     } catch (error) {
       console.error("[updater] electron-updater is unavailable:", error?.message ?? error);
       return;
@@ -240,11 +362,45 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(check, UPDATE_CHECK_INTERVAL_MS).unref();
   }
 
+  /**
+   * Start the updater only once the app has had its first paint. Requiring
+   * electron-updater pulls in ~200ms of synchronous module loading, and its
+   * first check competes with the launch itself for disk and network — both
+   * were landing on the critical path when this ran straight from whenReady.
+   */
+  function startAutoUpdatesWhenIdle() {
+    if (!app.isPackaged) return;
+
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      startAutoUpdates();
+    };
+
+    if (!appView) {
+      start();
+      return;
+    }
+    const idle = () => {
+      const handle = setTimeout(start, 1500);
+      handle.unref?.();
+    };
+    if (appView.webContents.isLoadingMainFrame()) appView.webContents.once("did-finish-load", idle);
+    else idle();
+    // The app page can stall (offline, sign-in); never hold the updater back
+    // forever, and never let it land inside the first fifth of a second.
+    const fallback = setTimeout(start, 6000);
+    fallback.unref?.();
+  }
+
   app.whenReady().then(() => {
+    trace("app:ready");
     // The integrated toolbar replaces the platform menu/title bar.
     Menu.setApplicationMenu(null);
     installWindowControls();
-    startAutoUpdates();
+    trace("app:window-installed");
+    startAutoUpdatesWhenIdle();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) installWindowControls();
     });
