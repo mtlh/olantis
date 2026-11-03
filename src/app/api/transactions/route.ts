@@ -94,12 +94,15 @@ export async function POST(req: Request) {
   }
 
   let createdHoldingId: string | null = null;
+  let createdHolding: typeof holdings.$inferSelect | null = null;
   if (type === "buy" && !holding) {
     createdHoldingId = crypto.randomUUID();
     const currency = typeof body.currency === "string" && body.currency ? body.currency : "GBP";
-    await db.insert(holdings).values({
+    createdHolding = {
       id: createdHoldingId,
       portfolioId,
+      providerId: null,
+      accountId: null,
       userId,
       symbol: targetSymbol,
       name: targetName || targetSymbol,
@@ -107,45 +110,54 @@ export async function POST(req: Request) {
       avgPrice: pr,
       currentPrice: pr,
       currency,
+      sector: null,
       purchaseDate: d,
       exchange: null,
       lastRefreshedAt: null,
-    });
+    };
+    await db.insert(holdings).values(createdHolding);
   }
 
   const id = crypto.randomUUID();
+  const transaction = {
+    id,
+    userId,
+    portfolioId,
+    holdingId: holding?.id ?? createdHoldingId,
+    symbol: targetSymbol,
+    name: targetName,
+    type,
+    shares: s,
+    price: pr,
+    date: d,
+    note: note || null,
+    createdAt: Math.floor(Date.now() / 1000),
+  };
   try {
-    await db.insert(transactions).values({
-      id,
-      userId,
-      portfolioId,
-      holdingId: holding?.id ?? createdHoldingId,
-      symbol: targetSymbol,
-      name: targetName,
-      type,
-      shares: s,
-      price: pr,
-      date: d,
-      note: note || null,
-      createdAt: Math.floor(Date.now() / 1000),
-    });
+    await db.insert(transactions).values(transaction);
   } catch (e: unknown) {
     if (createdHoldingId) await db.delete(holdings).where(eq(holdings.id, createdHoldingId));
     return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 
+  // The recalculated position travels back with the transaction so the client
+  // can paint the new shares, totals and trade row without a follow-up read.
+  let updatedHolding: typeof holdings.$inferSelect | null = createdHolding;
   if (type === "buy") {
     if (holding) {
       const newShares = holding.shares + s;
       const newAvg = (holding.shares * holding.avgPrice + s * pr) / newShares;
       await db.update(holdings).set({ shares: newShares, avgPrice: newAvg }).where(eq(holdings.id, holding.id));
+      updatedHolding = { ...holding, shares: newShares, avgPrice: newAvg };
     }
   } else {
     const remaining = holding!.shares - s;
-    await db.update(holdings).set({ shares: Math.max(0, remaining) }).where(eq(holdings.id, holding!.id));
+    const shares = Math.max(0, remaining);
+    await db.update(holdings).set({ shares }).where(eq(holdings.id, holding!.id));
+    updatedHolding = { ...holding!, shares };
   }
 
-  return Response.json({ id, ok: true });
+  return Response.json({ id, ok: true, transaction, holding: updatedHolding });
 }
 
 export async function DELETE(req: Request) {
@@ -206,5 +218,7 @@ export async function DELETE(req: Request) {
   }
   await db.delete(transactions).where(eq(transactions.id, id));
   await db.update(holdings).set({ shares, avgPrice: average }).where(eq(holdings.id, holding.id));
-  return Response.json({ ok: true });
+  // Return the recalculated position so the caller can update in place instead
+  // of re-reading the holding after the delete.
+  return Response.json({ ok: true, id, holding: { ...holding, shares, avgPrice: average } });
 }

@@ -158,6 +158,7 @@ export async function PATCH(req: Request) {
   let manualSkipped = 0;
   let nextAllowedAt: number | null = null;
   const toUpdate: { id: string; price: number; currency: string; ts: number }[] = [];
+  const updatedRows: typeof holdings.$inferSelect[] = [];
   for (const h of all) {
     const upd = symbols[h.symbol];
     if (!upd) continue;
@@ -170,6 +171,7 @@ export async function PATCH(req: Request) {
       continue;
     }
     toUpdate.push({ id: h.id, price: upd.price, currency: upd.currency, ts: now });
+    updatedRows.push({ ...h, currentPrice: upd.price, currency: upd.currency, lastRefreshedAt: now });
     updated++;
   }
   if (toUpdate.length) {
@@ -178,5 +180,5 @@ export async function PATCH(req: Request) {
   if (!force && updated === 0 && skipped > 0) {
     return Response.json({ ok: false, error: "daily limit", message: "Prices already refreshed within 24h", nextAllowedAt, skipped }, { status: 429 });
   }
-  return Response.json({ ok: true, updated, skipped, manualSkipped, nextAllowedAt });
+  return Response.json({ ok: true, updated, skipped, manualSkipped, nextAllowedAt, holdings: updatedRows });
 }

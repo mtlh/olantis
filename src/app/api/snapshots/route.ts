@@ -138,11 +138,19 @@ export async function POST(req: Request) {
   const d = typeof body.date === "string" && body.date ? body.date : todayISODate();
   const db = getDb();
 
-  const ownedPf = await db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId));
+  // Ownership checks and the holding rows they gate are independent reads, so
+  // one Neon round trip covers all four instead of four sequential ones.
+  const holdingValues = Array.isArray(body.holdings) ? body.holdings as Array<{ id?: unknown; value?: unknown }> : [];
+  const holdingIds = holdingValues.map((h) => h?.id).filter((x): x is string => typeof x === "string");
+
+  const [ownedPf, ownedPr, ownedAcc, holdingRows] = await db.batch([
+    db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId)),
+    db.select({ id: providers.id }).from(providers).where(eq(providers.userId, userId)),
+    db.select({ id: accounts.id }).from(accounts).where(eq(accounts.userId, userId)),
+    db.select().from(holdings).where(inArray(holdings.id, holdingIds)),
+  ]);
   const ownedPids = new Set(ownedPf.map((p) => p.id));
-  const ownedPr = await db.select({ id: providers.id }).from(providers).where(eq(providers.userId, userId));
   const ownedPrids = new Set(ownedPr.map((p) => p.id));
-  const ownedAcc = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.userId, userId));
   const ownedAids = new Set(ownedAcc.map((a) => a.id));
 
   const topValue = finiteNumber(body.value);
@@ -167,23 +175,18 @@ export async function POST(req: Request) {
     await db.insert(portfolioSnapshots).values(batch.map((b) => ({ userId, portfolioId: b.portfolioId, date: d, value: b.value }))).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value` } });
   }
 
-  if (Array.isArray(body.holdings)) {
-    const hv = body.holdings as Array<{ id?: unknown; value?: unknown }>;
-    const ids = hv.map((h) => h?.id).filter((x): x is string => typeof x === "string");
-    if (ids.length) {
-      const rows = await db.select().from(holdings).where(inArray(holdings.id, ids));
-      const holdingBatch: { holdingId: string; value: number }[] = [];
-      for (const h of rows) {
-        const owned = (h.portfolioId && ownedPids.has(h.portfolioId)) || (h.providerId && ownedPrids.has(h.providerId)) || (h.accountId && ownedAids.has(h.accountId)) || h.userId === userId;
-        if (!owned) continue;
-        const src = hv.find((x) => x?.id === h.id);
-        const v = finiteNumber(src?.value);
-        if (v == null) continue;
-        holdingBatch.push({ holdingId: h.id, value: v });
-      }
-      if (holdingBatch.length) {
-        await db.insert(holdingSnapshots).values(holdingBatch.map((b) => ({ userId, holdingId: b.holdingId, date: d, value: b.value }))).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value` } });
-      }
+  if (holdingIds.length) {
+    const holdingBatch: { holdingId: string; value: number }[] = [];
+    for (const h of holdingRows) {
+      const owned = (h.portfolioId && ownedPids.has(h.portfolioId)) || (h.providerId && ownedPrids.has(h.providerId)) || (h.accountId && ownedAids.has(h.accountId)) || h.userId === userId;
+      if (!owned) continue;
+      const src = holdingValues.find((x) => x?.id === h.id);
+      const v = finiteNumber(src?.value);
+      if (v == null) continue;
+      holdingBatch.push({ holdingId: h.id, value: v });
+    }
+    if (holdingBatch.length) {
+      await db.insert(holdingSnapshots).values(holdingBatch.map((b) => ({ userId, holdingId: b.holdingId, date: d, value: b.value }))).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value` } });
     }
   }
   return Response.json({ ok: true });

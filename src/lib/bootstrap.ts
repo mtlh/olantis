@@ -13,7 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { getLatestFxRates } from "@/lib/fx";
 import { windowSeries } from "@/lib/snapshot-window";
-import { DEFAULT_FX_RATES, holdingValueGBP, valueChangeOverRange, type FxRates } from "@/lib/format";
+import { DEFAULT_FX_RATES, holdingValueGBP, valueChangeOverRange, todayISODate, type FxRates } from "@/lib/format";
 import type {
   Account,
   Holding,
@@ -43,6 +43,8 @@ export type WorkspaceBootstrap = {
   /** Raw user_settings row; normalised client-side by normalizeSettings(). */
   settings: Record<string, unknown>;
   fx: { date: string | null; rates: FxRates };
+  /** True when `snapshots` already holds today's row (see store's type). */
+  snapshotsFresh: boolean;
 };
 
 export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceBootstrap> {
@@ -156,6 +158,9 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
     totalSnapshots.map((row) => ({ date: row.date, value: row.value }) as Snapshot),
   ) as Snapshot[];
 
+  const today = todayISODate();
+  const snapshotsFresh = totalSnapshots.some((row) => row.date === today);
+
   const transactions = transactionRows
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt) as unknown as Transaction[];
@@ -172,5 +177,6 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
     transactions,
     settings: (settingsRows[0] ?? {}) as Record<string, unknown>,
     fx: { date: fx.date, rates: fx.rates as FxRates },
+    snapshotsFresh,
   };
 }
