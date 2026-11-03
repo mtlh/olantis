@@ -9,12 +9,14 @@ export async function GET(req: Request) {
   if (!q.trim()) return Response.json([]);
   const results = await searchSymbols(q);
   if (results.length === 0) return Response.json([]);
-  const enriched = await Promise.all(results.slice(0, 5).map(async (r) => {
-    try {
-      const quotes = await fetchQuotes([{ symbol: r.symbol, exchange: r.exchange }], { disambiguate: true });
-      const hit = quotes[r.symbol] ?? quotes[`${r.symbol}:${r.exchange ?? ""}`];
-      return { ...r, price: hit?.price ?? null, currency: hit?.currency ?? null };
-    } catch { return { ...r, price: null, currency: null }; }
-  }));
+  const top5 = results.slice(0, 5);
+  let quotes: Awaited<ReturnType<typeof fetchQuotes>> = {};
+  try {
+    quotes = await fetchQuotes(top5.map((r) => ({ symbol: r.symbol, exchange: r.exchange })), { disambiguate: true });
+  } catch { quotes = {}; }
+  const enriched = top5.map((r) => {
+    const hit = quotes[r.symbol] ?? quotes[`${r.symbol}:${r.exchange ?? ""}`];
+    return { ...r, price: hit?.price ?? null, currency: hit?.currency ?? null };
+  });
   return Response.json(enriched);
 }

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { watchlistItems } from "@/lib/db/schema";
@@ -8,8 +8,8 @@ export async function GET() {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
   try {
-    const rows = await getDb().select().from(watchlistItems).where(eq(watchlistItems.userId, userId));
-    return Response.json(rows.sort((a, b) => b.createdAt - a.createdAt));
+    const rows = await getDb().select().from(watchlistItems).where(eq(watchlistItems.userId, userId)).orderBy(desc(watchlistItems.createdAt));
+    return Response.json(rows);
   } catch (error) {
     return Response.json({ error: "Unable to load watchlist", detail: error instanceof Error ? error.message : String(error) }, { status: 503 });
   }
