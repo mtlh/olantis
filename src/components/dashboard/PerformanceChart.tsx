@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Too
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
-import { chartDateLabel, rangeCutoff, paddedDomain, fmtPct } from "@/lib/format";
+import { chartDateLabel, carryForward, rangeCutoff, paddedDomain, fmtPct, seriesCursor, type SeriesCursor } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import type { Snapshot } from "@/lib/store";
 
@@ -89,15 +89,21 @@ export function PerformanceChart({
     const orderedDates = [...dates].sort((a, b) => a.localeCompare(b));
     if (!orderedDates.length) return [];
 
-    const percentAt = (history: Snapshot[], date: string): number | null => {
-      const first = history[0];
-      if (!first || first.value <= 0 || date < first.date) return null;
-      let latest: Snapshot | undefined;
-      for (const snapshot of history) {
-        if (snapshot.date > date) break;
-        latest = snapshot;
-      }
-      return latest ? ((latest.value / first.value) - 1) * 100 : null;
+    // One forward cursor per series: each history is walked once across the
+    // merged date axis instead of rescanned for every date.
+    type PercentCurve = { cursor: SeriesCursor; base: number; valid: boolean };
+    const curveFor = (history: Snapshot[]): PercentCurve => ({
+      cursor: seriesCursor(history),
+      base: history[0]?.value ?? 0,
+      valid: history.length > 0 && !(history[0].value <= 0),
+    });
+    const totalCurve = curveFor(totalHistory);
+    const portfolioCurves = portfolioHistories.map(({ id, history }) => ({ id, curve: curveFor(history) }));
+
+    const percentAt = (curve: PercentCurve, date: string): number | null => {
+      if (!curve.valid) return null;
+      const value = carryForward(curve.cursor, date);
+      return value == null ? null : ((value / curve.base) - 1) * 100;
     };
 
     const benchmarkHistory = benchmarkPrices?.key === `${benchmark}:MAX`
@@ -106,21 +112,18 @@ export function PerformanceChart({
     const userDataStart = orderedDates[0];
     const benchmarkBase = [...benchmarkHistory].reverse().find((point) => point.date <= userDataStart)
       ?? benchmarkHistory.find((point) => point.date >= userDataStart);
+    const benchmarkCursor = seriesCursor(benchmarkHistory.map((point) => ({ date: point.date, value: point.price })));
 
     return orderedDates.map((date) => {
       const row: PerformanceChartRow = { date: chartDateLabel(date), dateISO: date };
-      const totalPct = percentAt(totalHistory, date);
+      const totalPct = percentAt(totalCurve, date);
       if (totalPct != null) row.total = totalPct;
-      for (const { id, history } of portfolioHistories) {
-        const value = percentAt(history, date);
+      for (const { id, curve } of portfolioCurves) {
+        const value = percentAt(curve, date);
         if (value != null) row[id] = value;
       }
       if (benchmarkBase && date >= userDataStart && date >= benchmarkBase.date) {
-        let latestPrice: number | undefined;
-        for (const point of benchmarkHistory) {
-          if (point.date > date) break;
-          latestPrice = point.price;
-        }
+        const latestPrice = carryForward(benchmarkCursor, date);
         if (latestPrice != null) row.benchmark = ((latestPrice / benchmarkBase.price) - 1) * 100;
       }
       return row;

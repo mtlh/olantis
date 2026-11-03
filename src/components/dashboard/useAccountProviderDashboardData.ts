@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 import { portfolioTint, resolveAccountColor, resolveProviderColor } from "@/lib/colors";
-import { holdingCostGBP, holdingValueGBP, todayISODate, type FxRates } from "@/lib/format";
+import { combineHistories, holdingCostGBP, holdingValueGBP, type FxRates } from "@/lib/format";
 import type { Account, Holding, Portfolio, Provider, Snapshot } from "@/lib/store";
 
 type HistoryIndex = Record<string, { data: Snapshot[] }>;
@@ -24,8 +24,12 @@ function sortByOrder<T extends { sortOrder?: number | null }>(items: T[]) {
   return [...items].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
 }
 
-function getSortOrderIndex(items: Array<{ id: string; sortOrder?: number | null }>, id: string) {
-  return sortByOrder(items).findIndex((item) => item.id === id);
+function getSortOrderIndexes(items: Array<{ id: string; sortOrder?: number | null }>) {
+  const indexes = new Map<string, number>();
+  sortByOrder(items).forEach((item, index) => {
+    if (!indexes.has(item.id)) indexes.set(item.id, index);
+  });
+  return indexes;
 }
 
 function summarizeHoldings(holdings: Holding[], fxRates: FxRates) {
@@ -36,24 +40,6 @@ function summarizeHoldings(holdings: Holding[], fxRates: FxRates) {
     cost += holdingCostGBP(holding, fxRates);
   }
   return { value, cost, gain: value - cost };
-}
-
-function combineHistories(histories: Snapshot[][], currentValue: number): Snapshot[] {
-  const populatedHistories = histories.filter((history) => history.length > 0);
-  const dates = [...new Set(populatedHistories.flatMap((history) => history.map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
-  const combined = dates.map((date) => ({
-    date,
-    value: populatedHistories.reduce((sum, history) => {
-      const latest = [...history].reverse().find((point) => point.date <= date);
-      return sum + (latest?.value ?? 0);
-    }, 0),
-  }));
-
-  if (!combined.length) return [{ date: todayISODate(), value: currentValue }];
-  const today = todayISODate();
-  const lastDate = combined.at(-1)?.date;
-  if (lastDate && lastDate < today) combined.push({ date: today, value: currentValue });
-  return combined;
 }
 
 function createAllocation(holdings: Holding[], totalValue: number, baseColor: string | null, fxRates: FxRates): AllocationItem[] {
@@ -118,6 +104,9 @@ export function useAccountProviderDashboardData({
       ], value)
       : [];
 
+    const accountProviderIndexes = getSortOrderIndexes(accountProviders);
+    const directPortfolioIndexes = getSortOrderIndexes(directPortfolios);
+
     const providerSummaries = accountProviders.map((provider) => {
       const providerPortfolios = allPortfolios.filter((portfolio) => portfolio.providerId === provider.id);
       const providerHoldings = [
@@ -125,7 +114,7 @@ export function useAccountProviderDashboardData({
         ...providerDirectHoldings.filter((holding) => holding.providerId === provider.id),
       ];
       const totals = summarizeHoldings(providerHoldings, fxRates);
-      const providerIndex = Math.max(0, getSortOrderIndex(accountProviders, provider.id));
+      const providerIndex = Math.max(0, accountProviderIndexes.get(provider.id) ?? -1);
       return {
         id: provider.id,
         name: provider.name,
@@ -142,7 +131,7 @@ export function useAccountProviderDashboardData({
       return {
         id: portfolio.id,
         name: portfolio.name,
-        color: portfolio.color || portfolioTint(color, Math.max(0, getSortOrderIndex(directPortfolios, portfolio.id))),
+        color: portfolio.color || portfolioTint(color, Math.max(0, directPortfolioIndexes.get(portfolio.id) ?? -1)),
         holdingsCount: portfolio.holdings.length,
         value: totals.value,
         gain: totals.gain,
@@ -192,12 +181,14 @@ export function useAccountProviderDashboardData({
       ], value)
       : [];
 
+    const providerPortfolioIndexes = getSortOrderIndexes(providerPortfolios);
+
     const portfolioSummaries = providerPortfolios.map((portfolio) => {
       const totals = summarizeHoldings(portfolio.holdings, fxRates);
       return {
         id: portfolio.id,
         name: portfolio.name,
-        color: portfolio.color || portfolioTint(color, Math.max(0, getSortOrderIndex(providerPortfolios, portfolio.id))),
+        color: portfolio.color || portfolioTint(color, Math.max(0, providerPortfolioIndexes.get(portfolio.id) ?? -1)),
         value: totals.value,
         gain: totals.gain,
         holdingsCount: portfolio.holdings.length,
