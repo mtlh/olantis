@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fmtGBP, fmtPct, fmtPrice, fmtRelative, holdingCostGBP, holdingValueGBP, type FxRates } from "@/lib/format";
+import { fmtGBP, fmtPct, fmtPrice, fmtRelative, fmtTimestamp, holdingCostGBP, holdingValueGBP, type FxRates } from "@/lib/format";
 import type { Holding, Portfolio } from "@/lib/store";
 
 type HoldingSort = "value" | "gain" | "symbol";
@@ -176,7 +176,7 @@ export function HoldingsTable({
                     <div className="text-[11px] tabular-nums text-zinc-600">{fmtPct(returnPct)}</div>
                   </TableCell>
                   <TableCell className="hidden text-right text-xs tabular-nums text-zinc-400 sm:table-cell">{weight.toFixed(1)}%</TableCell>
-                  <TableCell className="hidden text-right text-xs tabular-nums 2xl:table-cell" title={holding.lastRefreshedAt ? new Date(holding.lastRefreshedAt * 1000).toLocaleString(dateFormat) : "No refresh recorded"}>
+                  <TableCell className="hidden text-right text-xs tabular-nums 2xl:table-cell" title={holding.lastRefreshedAt ? fmtTimestamp(holding.lastRefreshedAt, dateFormat) : "No refresh recorded"}>
                     {stale
                       ? <span className="text-amber-300/80" title="No recent quote refresh is recorded for this holding">{holding.lastRefreshedAt ? `Stale · ${fmtRelative(holding.lastRefreshedAt, dateFormat)}` : "Unverified"}</span>
                       : <span className="text-zinc-500">{fmtRelative(holding.lastRefreshedAt, dateFormat)}</span>}

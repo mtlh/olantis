@@ -3,7 +3,7 @@ import { Plus, RefreshCw, Loader2 } from "lucide-react";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fmtGBP, fmtPct, type ValueChange } from "@/lib/format";
+import { fmtGBP, fmtPct, fmtSnapshotDate, type ValueChange } from "@/lib/format";
 
 type MainDashboardProps = {
   accountsCount: number;
@@ -28,12 +28,6 @@ type MainDashboardProps = {
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const SUB = "mt-2 text-[11px] text-zinc-600";
-
-function formatSnapshotDate(iso: string) {
-  const [year, month, day] = iso.split("-").map(Number);
-  if (!year || !month || !day) return iso;
-  return new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
 
 export function MainDashboard({
   accountsCount,
@@ -66,7 +60,7 @@ export function MainDashboard({
           <p className="mt-2 text-xs text-zinc-500">
             {accountsCount} accounts · {providersCount} providers · {portfoliosCount} portfolios
             <span className="mx-1.5 text-zinc-700">·</span>
-            <span className="whitespace-nowrap">Updated {formatSnapshotDate(latestSnapshot)}</span>
+            <span className="whitespace-nowrap">Updated {fmtSnapshotDate(latestSnapshot)}</span>
           </p>
           {portfoliosCount === 0 && (
             <Button variant="link" size="xs" className="mt-1 h-auto p-0 text-xs text-zinc-500" onClick={onCreateFirstPortfolio}>Create your first portfolio</Button>
@@ -123,7 +117,7 @@ export function MainDashboard({
                   {periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))}
                   <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{periodChange.percent == null ? "" : fmtPct(periodChange.percent)}</span>
                 </p>
-                <p className={SUB}>Since {formatSnapshotDate(periodChange.fromDate)}</p>
+                <p className={SUB}>Since {fmtSnapshotDate(periodChange.fromDate)}</p>
               </>
             ) : (
               <>
