@@ -2,7 +2,7 @@
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
 import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { memo, useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -485,6 +485,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const focusSearchOnExpandRef = useRef(false);
   const resizePointerIdRef = useRef<number | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
 
   const toggleSidebar = () => setSidebarCollapsed(!sidebarCollapsed);
   const expandSearch = () => {
@@ -521,7 +522,20 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const moveSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (resizePointerIdRef.current !== event.pointerId) return;
-    applySidebarWidth(event.clientX);
+    // Pointer samples arrive far faster than React can paint, and each state
+    // write here would re-render the whole sidebar and remeasure every chart
+    // inside the main column. The width goes straight to the element instead;
+    // state and storage catch up once the drag ends.
+    const next = clampSidebarWidth(event.clientX);
+    if (next === sidebarWidthRef.current) return;
+    sidebarWidthRef.current = next;
+    const aside = asideRef.current;
+    if (aside) aside.style.width = `${next}px`;
+  };
+
+  const commitSidebarWidth = () => {
+    applySidebarWidth(sidebarWidthRef.current);
+    persistSidebarWidth();
   };
 
   const endSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -531,8 +545,16 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    persistSidebarWidth();
+    commitSidebarWidth();
   };
+
+  // An unrelated render mid-drag would put the last committed width back on the
+  // aside, so replay the in-flight one before the frame paints.
+  useLayoutEffect(() => {
+    if (resizePointerIdRef.current === null) return;
+    const aside = asideRef.current;
+    if (aside) aside.style.width = `${sidebarWidthRef.current}px`;
+  });
 
   const handleSidebarResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? 48 : 16;
@@ -1424,6 +1446,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     <>
       <Button ref={mobileMenuTriggerRef} variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 !size-11 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu" aria-expanded={mobileOpen}><Menu className="w-4 h-4"/></Button>
       <aside
+        ref={asideRef}
         className="hidden xl:flex relative shrink-0 flex-col h-screen sticky top-0 border-r bg-black"
         style={{ width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth, borderColor: "rgba(255,255,255,0.07)" }}
       >
