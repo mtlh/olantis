@@ -1,6 +1,10 @@
-# Olantis
+<p align="center">
+  <img src="public/brand/mark-512.png" alt="Olantis app icon" width="112" height="112">
+</p>
 
-Your portfolios, beautifully simple.
+<h1 align="center">Olantis</h1>
+
+<p align="center">Your portfolios, beautifully simple.</p>
 
 Olantis is a portfolio dashboard built with Next.js and backed by Neon Postgres. The Electron desktop app in this repository opens the same deployed application at `https://olantis.vercel.app`, so desktop and web share the same routes, sign-in, demo experience, API, and user data. Its frameless desktop window has an integrated draggable toolbar, page navigation controls, window buttons, and the Olantis app icon.
 

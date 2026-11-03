@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DEMO_COOKIE, demoUserId } from "@/lib/auth";
 import { loadWorkspaceBootstrap, type WorkspaceBootstrap } from "@/lib/bootstrap";
 import { WorkspaceDataProvider } from "@/lib/store";
 import { Dashboard } from "@/components/Dashboard";
+import { WorkspaceBootScreen } from "@/components/WorkspaceBootScreen";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -48,15 +50,30 @@ export async function AuthenticatedDashboardLayout() {
   // Resolve the workspace data on the server so the first HTML already shows
   // real numbers instead of a client-fetch skeleton. If the database is
   // unreachable we fall back to the client-side loaders (null bootstrap).
-  let bootstrap: WorkspaceBootstrap | null = null;
-  try {
-    bootstrap = await loadWorkspaceBootstrap(user.id);
-  } catch {
-    bootstrap = null;
-  }
+  //
+  // The read is started here but awaited inside the Suspense boundary below, so
+  // the shell streams immediately. That matters most right after "Try demo":
+  // the redirect lands on a visible progress screen instead of an idle tab
+  // while the freshly seeded tenant is read back.
+  const bootstrap: Promise<WorkspaceBootstrap | null> = loadWorkspaceBootstrap(user.id).catch(() => null);
 
   return (
-    <WorkspaceDataProvider value={bootstrap}>
+    <Suspense fallback={<WorkspaceBootScreen isDemo={isDemo} />}>
+      <WorkspaceShell bootstrap={bootstrap} isDemo={isDemo} />
+    </Suspense>
+  );
+}
+
+async function WorkspaceShell({
+  bootstrap,
+  isDemo,
+}: {
+  bootstrap: Promise<WorkspaceBootstrap | null>;
+  isDemo: boolean;
+}) {
+  const value = await bootstrap;
+  return (
+    <WorkspaceDataProvider value={value}>
       <Dashboard isDemo={isDemo} />
     </WorkspaceDataProvider>
   );

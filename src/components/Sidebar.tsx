@@ -1,7 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -21,6 +21,27 @@ interface SearchResult { symbol: string; name: string; exchange: string; price?:
 
 const TOOL_BUTTON_CLASS = "text-zinc-400 hover:text-white";
 const TOOL_ICON_CLASS = "w-4 h-4";
+
+// Tree rows use a bare chevron instead of a boxed icon button so the hierarchy
+// reads as one calm list rather than a stack of nested controls.
+function TreeToggle({ open, onToggle, label, className = "" }: {
+  open: boolean;
+  onToggle: () => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={label}
+      className={`grid h-6 w-5 shrink-0 place-items-center rounded text-zinc-500 transition-colors hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${className}`}
+    >
+      <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} strokeWidth={2.25} />
+    </button>
+  );
+}
 
 // Sidebar width is remembered per device (localStorage), not per account.
 const SIDEBAR_WIDTH_KEY = "olantis.sidebar-width";
@@ -412,18 +433,21 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     return (
       <div key={portfolio.id} className={`overflow-hidden rounded-lg border border-transparent transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`} style={isActive ? { borderColor: `color-mix(in srgb, ${color} 44%, transparent)` } : undefined}>
         <div className="flex items-center gap-1 px-1 py-0.5">
-          <Button variant="ghost" size="icon-xs" className="h-6 w-6 shrink-0 text-zinc-500 hover:text-white" onClick={() => togglePortfolio(portfolio.id)} aria-label={`${isOpen ? "Collapse" : "Expand"} ${portfolio.name}`} aria-expanded={isOpen}>
-            <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? "" : "-rotate-90"}`} />
-          </Button>
+          <TreeToggle
+            open={isOpen}
+            onToggle={() => togglePortfolio(portfolio.id)}
+            label={`${isOpen ? "Collapse" : "Expand"} ${portfolio.name}`}
+            className="ml-0.5"
+          />
           <Button variant="ghost" size="sm" aria-pressed={isActive} className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 hover:bg-transparent" style={isActive ? { color: "#fff" } : undefined} onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}>
             <Layers className="h-3.5 w-3.5 shrink-0" style={{ color }} />
             <span className="truncate text-xs font-medium">{portfolio.name}</span>
-            <span className="ml-auto rounded-full bg-white/[0.05] px-1.5 py-0.5 text-[9px] font-medium capitalize text-zinc-500">{portfolio.type}</span>
+            <span className="ml-auto rounded-full bg-white/[0.04] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500">{portfolio.type}</span>
           </Button>
           <span className="shrink-0 pr-1 text-xs tabular-nums text-zinc-400">{fmtGBP(total)}</span>
           {editMode && (
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`}><MoreVertical className="h-3 w-3" /></Button>} />
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`} className="text-zinc-500 hover:text-white"><MoreVertical className="h-3 w-3" /></Button>} />
               <DropdownMenuContent className="border-white/10 bg-zinc-900 text-white">
                 <DropdownMenuItem onClick={() => { setEditingPortfolio(portfolio); setEditPName(portfolio.name); setEditPType(portfolio.type); setEditPAccount(portfolio.accountId ?? "__none"); setEditPProvider(portfolio.providerId ?? "__none"); }}><Pencil className="h-3 w-3" />Edit</DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={() => onDeletePortfolio?.(portfolio)}><Trash2 className="h-3 w-3" />Delete</DropdownMenuItem>
@@ -432,13 +456,13 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           )}
         </div>
         {isOpen && (
-          <div className="ml-8 border-l border-white/[0.08] pb-1 pl-2">
+          <div className="ml-8 border-l border-white/[0.06] pb-1 pl-2">
             {holdingsInValueOrder.length ? holdingsInValueOrder.map((holding) => {
               const holdingValue = holdingValueGBP(holding, settings.fxRates);
               const allocation = total > 0 ? holdingValue / total * 100 : 0;
               const isHoldingActive = holding.id === activeHoldingId;
               return (
-                <button key={holding.id} type="button" onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
+                <button key={holding.id} type="button" onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-white/[0.06] text-[9px] font-semibold text-zinc-300">{holding.symbol.slice(0, 3)}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
@@ -571,9 +595,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           <div className="flex items-center justify-between px-1 mb-2">
             <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Accounts</span>
             <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon-xs" onClick={() => setEditMode(v => !v)} aria-pressed={editMode} aria-label="Toggle edit mode" title={editMode ? "Hide edit controls" : "Show edit controls"} className={editMode ? "bg-white/10 text-white hover:bg-white/15" : "text-zinc-500 hover:text-zinc-300"}><Pencil className="w-3.5 h-3.5" /></Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => setEditMode(v => !v)} aria-pressed={editMode} aria-label="Toggle edit mode" title={editMode ? "Hide edit controls" : "Show edit controls"} className={editMode ? "bg-white/10 text-white hover:bg-white/15" : "text-zinc-500 hover:text-zinc-200"}><Pencil className="w-3.5 h-3.5" /></Button>
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Create new" title="Create new"><Plus className="w-3.5 h-3.5" /></Button>} />
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Create new" title="Create new" className="text-zinc-500 hover:text-zinc-200"><Plus className="w-4 h-4" /></Button>} />
                 <DropdownMenuContent align="end" className="min-w-56 bg-zinc-900 border-white/10 text-white">
                   <DropdownMenuItem onClick={() => setShowAccountDialog(true)}>
                     <Building2 className="w-3.5 h-3.5"/> Account
@@ -616,17 +640,19 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const accountDirectHoldings = directHoldings.filter((holding) => holding.accountId === acc.id && !holding.providerId && !holding.portfolioId && (accountNameMatches || matchesHolding(holding)));
               const accColor = accColorFor(acc);
               return (
-                <div key={acc.id} className={`group overflow-hidden rounded-2xl border shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-[filter] hover:brightness-110 ${accountActive ? "ring-1 ring-white/10" : ""}`} style={{ borderColor: accountActive ? `${accColor}90` : accColor + "42", background: accountActive ? `${accColor}18` : accColor + "10" }}>
-                  <div className="flex items-center gap-1.5 rounded-md px-2 py-2 transition-colors hover:bg-white/[0.035]">
-                    <Button variant="ghost" size="icon-xs" onClick={() => toggle(acc.id)} aria-expanded={isOpen} aria-label={`${isOpen ? "Collapse" : "Expand"} ${acc.name}`} className="shrink-0 text-zinc-500 hover:text-white"><ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? "" : "-rotate-90"}`} /></Button>
-                    <button type="button" aria-pressed={accountActive} onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }} className="flex-1 min-w-0 flex items-center gap-2 text-left">
-                      {isOpen ? <FolderOpen className="w-4 h-4 shrink-0" style={{ color: accColor }} /> : <Building2 className="w-4 h-4 text-zinc-500 shrink-0" />}
+                <div key={acc.id} className={`group overflow-hidden rounded-2xl border shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-[filter] hover:brightness-110 ${accountActive ? "ring-1 ring-white/10" : ""}`} style={{ borderColor: accountActive ? `${accColor}90` : accColor + "38", background: accountActive ? `${accColor}18` : accColor + "0d" }}>
+                  <div className="flex items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-2 transition-colors hover:bg-white/[0.035]">
+                    <TreeToggle open={isOpen} onToggle={() => toggle(acc.id)} label={`${isOpen ? "Collapse" : "Expand"} ${acc.name}`} className="ml-0.5" />
+                    <button type="button" aria-pressed={accountActive} onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                      {isOpen
+                        ? <FolderOpen className="h-4 w-4 shrink-0" style={{ color: accColor }} />
+                        : <Folder className="h-4 w-4 shrink-0 text-zinc-500" />}
                       <span className={`truncate text-sm font-semibold ${accountActive ? "text-white" : "text-zinc-200"}`}>{acc.name}</span>
                     </button>
-                    <span className="text-xs tabular-nums font-medium text-zinc-400 pr-1">£{total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                    <span className="pr-1 text-xs font-medium tabular-nums text-zinc-400">£{total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
                     {editMode && (
                     <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Account actions"><MoreVertical className="w-3.5 h-3.5"/></Button>} />
+                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Account actions" className="text-zinc-500 hover:text-white"><MoreVertical className="w-3.5 h-3.5"/></Button>} />
                       <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-40">
                         <DropdownMenuItem onClick={()=>{ setEditingAccount(acc); setEditAccountName(acc.name); }}><Pencil className="w-3.5 h-3.5"/>Rename account</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>{ setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true); }}><Briefcase className="w-3.5 h-3.5"/>New provider</DropdownMenuItem>
@@ -639,7 +665,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                     )}
                   </div>
                   {isOpen && (
-                    <div className="px-2.5 pb-2.5 space-y-2.5">
+                    <div className="space-y-2 px-2 pb-2">
                       {provs.length===0 && direct.length===0 && <div className="p-4 rounded-xl border border-dashed border-white/10 bg-black/20 text-center"><p className="text-sm text-zinc-400">No providers yet</p><p className="text-xs text-zinc-600 mt-1">Add a provider like Vanguard or Trading 212</p><div className="flex gap-2 mt-3"><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>{setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true);}}><Plus className="w-3.5 h-3.5"/> Provider</Button><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3.5 h-3.5"/> Portfolio</Button></div></div>}
                       {provs.map((pr)=>{
                         const providerIndex = accountProviders.findIndex((item) => item.id === pr.id);
@@ -653,14 +679,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                         const providerActive = activeProviderId === pr.id;
                         return (
                           <div key={pr.id} className="group">
-                            <div className={`flex items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/[0.035] ${providerActive ? "bg-white/[0.035]" : ""}`}>
-                              <Button variant="ghost" size="icon-xs" onClick={()=>toggleProv(pr.id)} aria-expanded={isProvOpen} aria-label={`${isProvOpen ? "Collapse" : "Expand"} ${pr.name}`} className="shrink-0 text-zinc-500 hover:text-white"><ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isProvOpen ? "" : "-rotate-90"}`} /></Button>
-                              <Briefcase className="w-3.5 h-3.5 shrink-0" style={{ color: provColor }} />
-                              <button type="button" aria-pressed={providerActive} onClick={() => { onSelectProvider?.(pr.id); setMobileOpen(false); }} className="min-w-0 flex-1 truncate text-left text-xs font-semibold" style={{ color: providerActive ? provColor : undefined }}>{pr.name}</button>
+                            <div className={`flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1.5 transition-colors hover:bg-white/[0.035] ${providerActive ? "bg-white/[0.035]" : ""}`}>
+                              <TreeToggle open={isProvOpen} onToggle={() => toggleProv(pr.id)} label={`${isProvOpen ? "Collapse" : "Expand"} ${pr.name}`} className="-ml-0.5" />
+                              <Briefcase className="h-3.5 w-3.5 shrink-0" style={{ color: provColor }} />
+                              <button type="button" aria-pressed={providerActive} onClick={() => { onSelectProvider?.(pr.id); setMobileOpen(false); }} className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-zinc-300" style={{ color: providerActive ? provColor : undefined }}>{pr.name}</button>
                               <span className="text-xs tabular-nums text-zinc-400">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
                               {editMode && (
                               <DropdownMenu>
-                                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${pr.name} actions`}><MoreVertical className="w-3 h-3"/></Button>} />
+                                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${pr.name} actions`} className="text-zinc-500 hover:text-white"><MoreVertical className="w-3 h-3"/></Button>} />
                                 <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-[220px]">
                                   <DropdownMenuItem onClick={()=>{setEditingProvider(pr); setEditProviderName(pr.name);}}><Pencil className="w-3.5 h-3.5"/>Rename provider</DropdownMenuItem>
                                   <DropdownMenuItem onClick={()=>{ setDirectTarget({providerId: pr.id, accountId: pr.accountId}); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
@@ -672,7 +698,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                               )}
                             </div>
                             {isProvOpen && (
-                              <div className="ml-3 border-l border-white/[0.08] pb-1 pl-2 space-y-1">
+                              <div className="ml-3 space-y-1 border-l border-white/[0.06] pb-1 pl-2">
                                 {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
                                 {ps.map((p)=>{
                                   const portfolioIndex = providerPortfolios.findIndex((item) => item.id === p.id);

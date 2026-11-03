@@ -1,25 +1,20 @@
-import { cookies } from "next/headers";
+﻿import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";
-import { eq, and, like, lt } from "drizzle-orm";
-import {
-  DEMO_COOKIE,
-  LEGACY_DEMO_USER_ID,
-  demoUserId,
-  isDemoUserId,
-  newDemoSessionId,
-} from "@/lib/auth";
+import { eq } from "drizzle-orm";
+import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
+import { clearDemo } from "@/lib/demo-cleanup";
 
 /**
- * Demo mode — deliberately UNAUTHENTICATED.
+ * Demo mode â€” deliberately UNAUTHENTICATED.
  *
  * There is no sign-in, no WorkOS challenge and no shared secret protecting this
  * endpoint, and that is intentional: the demo must be reachable in one click.
  * Security comes from isolation rather than from an auth boundary:
  *
  *   - each visitor gets their own tenant `demo:<sessionId>` (see lib/auth.ts)
- *   - the dataset is PREDEFINED and deterministic — the same accounts,
+ *   - the dataset is PREDEFINED and deterministic â€” the same accounts,
  *     portfolios, holdings and history for everyone, generated from a seeded
  *     PRNG, with no upstream (Yahoo) calls on the seeding path
  *   - because tenants are per-session, one visitor can never read, overwrite
@@ -32,7 +27,7 @@ import {
 // Deterministic predefined dataset
 // ---------------------------------------------------------------------------
 
-/** mulberry32 — small, fast, deterministic PRNG. */
+/** mulberry32 â€” small, fast, deterministic PRNG. */
 function mulberry32(seed: number) {
   return function () {
     seed |= 0;
@@ -174,9 +169,9 @@ async function seedDemo(userId: string) {
   const provT212: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Trading 212", createdAt: now };
   const provHL: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, name: "Hargreaves Lansdown", createdAt: now };
 
-  const p1: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA — Global Tracker", type: "live", createdAt: now };
-  const p2: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 — Growth", type: "live", createdAt: now };
-  const p3: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP — Retirement", type: "live", createdAt: now };
+  const p1: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provVanguard.id, name: "ISA â€” Global Tracker", type: "live", createdAt: now };
+  const p2: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, providerId: provT212.id, name: "Trading 212 â€” Growth", type: "live", createdAt: now };
+  const p3: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP â€” Retirement", type: "live", createdAt: now };
 
   const slotFor: Record<string, string> = { [p1.id]: "p1", [p2.id]: "p2", [p3.id]: "p3" };
   const hs: (typeof holdings.$inferInsert)[] = [];
@@ -186,7 +181,7 @@ async function seedDemo(userId: string) {
     }
   }
 
-  // Predefined history — deterministic, no network. Built before any insert so
+  // Predefined history â€” deterministic, no network. Built before any insert so
   // the writes can be batched instead of run one after another.
   const dates = weeklyDates(3);
   const n = dates.length;
@@ -218,7 +213,7 @@ async function seedDemo(userId: string) {
     sideWrites.push(db.insert(goals).values({
       id: crypto.randomUUID(),
       userId,
-      name: "Build a £50,000 portfolio",
+      name: "Build a Â£50,000 portfolio",
       targetValue: 50000,
       targetDate: targetDate.toISOString().slice(0, 10),
       createdAt: now,
@@ -256,43 +251,6 @@ async function seedDemo(userId: string) {
   ]);
 }
 
-async function clearDemo(userId: string) {
-  const db = getDb();
-  try { await db.delete(snapshots).where(eq(snapshots.userId, userId)); } catch { /* ignore */ }
-  try { await db.delete(portfolioSnapshots).where(eq(portfolioSnapshots.userId, userId)); } catch { /* ignore */ }
-  try {
-    const ps = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
-    for (const p of ps) await db.delete(holdings).where(eq(holdings.portfolioId, p.id));
-    await db.delete(portfolios).where(eq(portfolios.userId, userId));
-    await db.delete(providers).where(eq(providers.userId, userId));
-    await db.delete(accounts).where(eq(accounts.userId, userId));
-    await db.delete(userSettings).where(eq(userSettings.userId, userId));
-  } catch { /* ignore */ }
-}
-
-/**
- * Housekeeping: drop abandoned demo tenants so per-session isolation does not
- * grow the database without bound. Called opportunistically from `/api/demo`.
- */
-async function pruneDemoSessions(olderThanDays = 7): Promise<number> {
-  const db = getDb();
-  const cutoff = Math.floor(Date.now() / 1000) - olderThanDays * 86400;
-  try {
-    const stale = await db
-      .select({ userId: accounts.userId })
-      .from(accounts)
-      .where(and(like(accounts.userId, "demo:%"), lt(accounts.createdAt, cutoff)));
-    const ids = [...new Set(stale.map((r) => r.userId))].filter(isDemoUserId);
-    for (const id of ids) await clearDemo(id);
-    // legacy single-tenant demo rows (pre per-session isolation)
-    const legacy = await db.select().from(accounts).where(eq(accounts.userId, LEGACY_DEMO_USER_ID));
-    if (legacy.length) await clearDemo(LEGACY_DEMO_USER_ID);
-    return ids.length + (legacy.length ? 1 : 0);
-  } catch {
-    return 0;
-  }
-}
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const clear = url.searchParams.get("clear");
@@ -317,8 +275,6 @@ export async function GET(req: Request) {
   });
 
   await seedDemo(userId);
-  // Fire-and-forget housekeeping; never block the redirect on it.
-  void pruneDemoSessions();
 
   redirect("/dashboard");
 }

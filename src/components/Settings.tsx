@@ -7,8 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { ArrowLeft, Palette, Building2, Briefcase, Folder, Trash2, Download, Upload, Shield, Clock, Image as ImageIcon, Sparkles, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
-import Link from "next/link";
+import { Palette, Building2, Briefcase, Folder, Trash2, Download, Upload, Shield, Clock, Image as ImageIcon, Sparkles, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
 import { PALETTE, tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
 
 interface SettingsState {
@@ -136,18 +135,16 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="sticky top-0 z-30 backdrop-blur-xl bg-black/40 border-b border-white/5">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 grid place-items-center hover:bg-white/10"><ArrowLeft className="w-4 h-4"/></Link>
-            <div><h1 className="text-lg font-semibold tracking-tight">Settings</h1><p className="text-xs text-zinc-500">Manage colors, preferences & data</p></div>
-          </div>
-          <Badge variant="outline" className="border-white/10 text-zinc-400 hidden sm:inline-flex"><Sparkles className="w-3 h-3"/> Personalize everything</Badge>
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
+          <p className="mt-1 text-sm text-zinc-500">Manage colors, preferences & data.</p>
         </div>
+        <Badge variant="outline" className="border-white/10 text-zinc-400 hidden sm:inline-flex"><Sparkles className="w-3 h-3"/> Personalize everything</Badge>
       </div>
 
-        <div className="max-w-5xl mx-auto px-6 py-5 space-y-4">
+      <div className="space-y-4">
         <Card className="glass-card border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-0 gap-0">
           <details className="group">
             <summary className="flex list-none cursor-pointer items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
@@ -589,9 +586,9 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
         </Card>
 
         <div className="text-center text-xs text-zinc-600">
-          Olantis • Your portfolios, beautifully simple. <Link href="/dashboard" className="underline hover:text-zinc-400">Back to dashboard</Link>
+          Olantis • Your portfolios, beautifully simple.
         </div>
       </div>
-    </div>
+    </section>
   );
 }
