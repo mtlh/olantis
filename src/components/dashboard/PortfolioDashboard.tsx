@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Move, Plus, Trash2 } from "lucide-react";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import { Button } from "@/components/ui/button";
 import type { Account, Portfolio, Provider } from "@/lib/store";
@@ -16,7 +16,7 @@ type PortfolioDashboardProps = {
   gainPct: number;
   staleCount: number;
   onBack: () => void;
-  onEdit: () => void;
+  onMove: () => void;
   onAddHolding: () => void;
   onDelete: () => void;
   children: ReactNode;
@@ -36,7 +36,7 @@ export function PortfolioDashboard({
   gainPct,
   staleCount,
   onBack,
-  onEdit,
+  onMove,
   onAddHolding,
   onDelete,
   children,
@@ -74,12 +74,13 @@ export function PortfolioDashboard({
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="ghost"
-              size="sm"
-              className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white"
-              onClick={onEdit}
+              size="icon-sm"
+              aria-label="Move portfolio"
+              title="Move portfolio"
+              className="rounded-full text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+              onClick={onMove}
             >
-              <Pencil className="h-3.5 w-3.5" />
-              Edit
+              <Move className="h-4 w-4" />
             </Button>
             <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onAddHolding}>
               <Plus className="h-3.5 w-3.5" />

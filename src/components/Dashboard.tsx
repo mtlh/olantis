@@ -606,7 +606,7 @@ range={range}
                 else if (active.accountId) selectAccount(active.accountId);
                 else clearSelection();
               }}
-              onEdit={() => openEditPortfolio(active)}
+              onMove={() => openEditPortfolio(active)}
               onAddHolding={openAdd}
                onDelete={() => requestDeletePortfolio(active)}
             >
