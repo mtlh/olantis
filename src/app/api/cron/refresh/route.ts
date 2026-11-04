@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { fetchQuotes, lookupQuote } from "@/lib/yahoo";
+import { fetchQuotes, fetchSectors, lookupQuote } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
 import { holdings, snapshots, portfolioSnapshots, holdingSnapshots, portfolios } from "@/lib/db/schema";
 import { eq, sql, notLike, isNull, or } from "drizzle-orm";
@@ -96,6 +96,33 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   });
   await createSnapshots(refreshedHoldings, fxRates);
 
+  // Positions still missing a sector get one here, so the allocation view can
+  // group them without the user typing a value. Each lookup is a separate
+  // (cached) Yahoo profile request, so cap the work per run — leftovers are
+  // picked up by the next refresh. Demo tenants stay fixed: their seed already
+  // carries sectors and the sweep must not rewrite predefined rows.
+  let sectorsFilled = 0;
+  const missingSector = new Map<string, { symbol: string; exchange?: string }>();
+  for (const h of refreshableHoldings) {
+    if (h.sector?.trim()) continue;
+    if (/^CASH$/i.test(h.symbol.trim())) continue;
+    const key = quoteKey(h.symbol, h.exchange);
+    if (!missingSector.has(key) && missingSector.size >= 20) continue;
+    missingSector.set(key, { symbol: h.symbol, exchange: h.exchange ?? undefined });
+  }
+  if (missingSector.size) {
+    try {
+      const sectors = await fetchSectors([...missingSector.values()]);
+      const rows = Object.entries(sectors).filter(([, sector]) => !!sector);
+      if (rows.length) {
+        await db.execute(sql`UPDATE holdings SET sector = v.sector FROM (VALUES ${sql.join(rows.map(([symbol, sector]) => sql`(${symbol}, ${sector})`), sql`, `)}) AS v(symbol, sector) WHERE upper(holdings.symbol) = v.symbol AND (holdings.sector IS NULL OR btrim(holdings.sector) = '') AND (holdings.user_id IS NULL OR holdings.user_id NOT LIKE 'demo:%')`);
+        sectorsFilled = rows.length;
+      }
+    } catch {
+      /* sector enrichment must never fail the daily refresh */
+    }
+  }
+
   // Backstop for holdings the on-demand backfill never reached (imports made
   // while offline, interrupted runs). Deliberately small: the cron function has
   // a platform timeout and Yahoo calls are rate-limited.
@@ -106,7 +133,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
     /* history backfill must never fail the daily refresh */
   }
 
-  return { success: true, symbolsUpdated: updated, skipped, failed: [...new Set(failed)], updatedAt: new Date().toISOString(), backfill };
+  return { success: true, symbolsUpdated: updated, skipped, sectorsFilled, failed: [...new Set(failed)], updatedAt: new Date().toISOString(), backfill };
 }
 
 async function createSnapshots(allHoldings: HoldingRow[], fxRates: Record<string, number>) {

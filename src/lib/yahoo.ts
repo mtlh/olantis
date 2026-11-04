@@ -144,6 +144,51 @@ export function lookupQuote(
   return quotes[quoteKey(up, exchange)] ?? quotes[up] ?? quotes[symbol];
 }
 
+export type SectorMap = Record<string, string>;
+
+interface YahooProfileResult {
+  assetProfile?: { sector?: string | null } | null;
+  fundProfile?: { categoryName?: string | null } | null;
+}
+
+/**
+ * Sector/asset class for symbols, keyed by uppercase ticker. Uses Yahoo's
+ * `quoteSummary` profile modules — one throttled, cached call per symbol. Funds
+ * get their category name when Yahoo exposes one; broad trackers often return
+ * none, which is where the static map in `lib/sectors.ts` picks up.
+ */
+export async function fetchSectors(
+  symbols: Array<{ symbol: string; exchange?: string }>
+): Promise<SectorMap> {
+  const out: SectorMap = {};
+  const unique = new Map<string, { symbol: string; exchange?: string }>();
+  for (const item of symbols) {
+    if (!item.symbol?.trim()) continue;
+    const key = toYahooSymbol(item.symbol, item.exchange).toUpperCase();
+    if (!unique.has(key)) unique.set(key, item);
+  }
+
+  await Promise.allSettled(
+    [...unique.values()].map(async ({ symbol, exchange }) => {
+      const ys = toYahooSymbol(symbol, exchange);
+      const sector = await cached("sector", ys.toUpperCase(), async () => {
+        try {
+          const res = (await yf.quoteSummary(ys, {
+            modules: ["assetProfile", "fundProfile"],
+          })) as unknown as YahooProfileResult;
+          return res.assetProfile?.sector?.trim() || res.fundProfile?.categoryName?.trim() || null;
+        } catch {
+          return null;
+        }
+      });
+      if (!sector) return;
+      out[symbol.toUpperCase()] = sector;
+    })
+  );
+
+  return out;
+}
+
 export type ChartPoint = { date: string; price: number };
 
 /** Yahoo returns `Date` objects, epoch seconds or ISO strings depending on version. */
