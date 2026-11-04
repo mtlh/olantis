@@ -103,6 +103,42 @@ function opaqueBounds(data: Buffer, width: number, height: number) {
   return { minX, minY, maxX, maxY, count };
 }
 
+/**
+ * Reject artwork that cannot read as a mark at tile size. Logo services happily
+ * return wordmarks ("SPDR", "SAXO"), stacked stripe graphics (State Street) or
+ * a lone letter fragment (iShares' "i"), and once their coloured tile is
+ * stripped those become a few stray strokes on the dark surface. A real mark is
+ * roughly square and a single block of ink, so anything stretched past 2:1 or
+ * split into more than two horizontal bands is better served by the monogram.
+ */
+function isReadableMark(
+  data: Buffer,
+  width: number,
+  bounds: { minX: number; minY: number; maxX: number; maxY: number },
+): boolean {
+  const markWidth = bounds.maxX - bounds.minX + 1;
+  const markHeight = bounds.maxY - bounds.minY + 1;
+  if (markWidth <= 0 || markHeight <= 0) return false;
+  if (Math.max(markWidth, markHeight) / Math.min(markWidth, markHeight) > 2) return false;
+
+  // A row counts as inked when it carries a meaningful share of the artwork;
+  // anti-aliased fringes alone must not merge separate strokes into one band.
+  const rowThreshold = Math.max(1, Math.round(markWidth * 0.06));
+  let bands = 0;
+  let inBand = false;
+  for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+    let rowInk = 0;
+    for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+      if (data[(y * width + x) * 4 + 3] >= 40) rowInk += 1;
+    }
+    const inked = rowInk >= rowThreshold;
+    if (inked && !inBand) bands += 1;
+    inBand = inked;
+    if (bands > 2) return false;
+  }
+  return true;
+}
+
 /** Drop specks such as Vanguard's tiny ™ so the mark reads cleanly at 22px. */
 function removeSpecks(data: Buffer, width: number, height: number, minimumShare: number) {
   const visited = new Uint8Array(width * height);
@@ -234,6 +270,7 @@ export async function normalizeLogo(
 
   const bounds = opaqueBounds(cleaned, width, height);
   if (bounds.count < 8 || bounds.maxX < bounds.minX) return null;
+  if (!isReadableMark(cleaned, width, bounds)) return null;
 
   const markWidth = bounds.maxX - bounds.minX + 1;
   const markHeight = bounds.maxY - bounds.minY + 1;

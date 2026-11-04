@@ -30,6 +30,7 @@ const ALLOWED_HOSTS = new Set([
   "www.pensionbee.com",
   "www.aviva.co.uk",
   "www.robeco.com",
+  "www.ssga.com",
   "home.saxo",
   "www.sharesies.com",
 ]);

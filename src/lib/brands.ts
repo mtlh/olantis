@@ -34,7 +34,7 @@ const FMP_BASE = "https://financialmodelingprep.com/image-stock";
 const CMC_BASE = "https://companiesmarketcap.com/img/company-logos/128";
 
 /** Bump when the icon renderer changes so browsers drop cached marks. */
-export const BRAND_ICON_VERSION = "5";
+export const BRAND_ICON_VERSION = "6";
 
 /**
  * A holding whose symbol is CASH is not a listed security — it is the user's
@@ -56,7 +56,7 @@ const BRANDS: Brand[] = [
   { key: "invesco", label: "Invesco", kind: "both", aliases: ["invesco"], domain: "invesco.com", monogram: "IVZ", iconUrls: ["https://www.invesco.com/etc.clientlibs/invesco/clientlibs/main/resources/images/apple-touch-icon.png"] },
   { key: "ishares", label: "iShares", kind: "issuer", aliases: ["ishares", "i shares"], domain: "ishares.com", monogram: "iS" },
   { key: "blackrock", label: "BlackRock", kind: "both", aliases: ["blackrock", "black rock"], domain: "blackrock.com", monogram: "BLK" },
-  { key: "spdr", label: "SPDR", kind: "issuer", aliases: ["spdr", "state street", "ssga"], domain: "ssga.com", monogram: "SP" },
+  { key: "spdr", label: "SPDR", kind: "issuer", aliases: ["spdr", "state street", "ssga"], domain: "ssga.com", monogram: "SP", iconUrls: ["https://www.ssga.com/apple-touch-icon.png"] },
   { key: "trading212", label: "Trading 212", kind: "provider", aliases: ["trading 212", "trading212"], domain: "trading212.com", monogram: "T212", iconUrls: ["/brands/trading212.svg", "https://www.trading212.com/apple-touch-icon.png"] },
   { key: "hargreaves", label: "Hargreaves Lansdown", kind: "provider", aliases: ["hargreaves lansdown", "hargreaves"], domain: "hl.co.uk", monogram: "HL" },
   { key: "ajbell", label: "AJ Bell", kind: "provider", aliases: ["aj bell", "ajbell", "aj bell youinvest", "youinvest"], domain: "ajbell.co.uk", monogram: "AJB", iconUrls: ["https://www.ajbell.co.uk/apple-touch-icon.png"], markColor: "#d6003c" },
