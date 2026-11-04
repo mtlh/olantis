@@ -132,8 +132,10 @@ export async function ensureBenchmarkSeries(symbol: string, from: string): Promi
 
   const latest = stored.at(-1);
   const lastSync = stored.reduce((max, row) => Math.max(max, row.updatedAt), 0) * 1000;
-  const stale = Date.now() - lastSync > SYNC_TTL_MS;
-  const needsSync = !stored.length || !latest || (latest.date < today && stale);
+  // Re-sync on a timer even when today's row already exists: during the session
+  // it keeps the latest price current, and after the close it replaces the
+  // provisional intraday value with the final close.
+  const needsSync = !stored.length || !latest || Date.now() - lastSync > SYNC_TTL_MS;
 
   if (needsSync) {
     // Fill a missing prefix in one pass, otherwise only refresh the recent tail.
