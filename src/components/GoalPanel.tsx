@@ -8,19 +8,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fmtGBP, filterByRange, todayISODate, chartDateLabel } from "@/lib/format";
-import type { Snapshot } from "@/lib/store";
+import { useWorkspaceBootstrap, type Goal, type Snapshot } from "@/lib/store";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
-
-type Goal = { id: string; name: string; targetValue: number; targetDate: string };
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const SUB = "mt-2 text-[11px] text-zinc-600";
 
 export function GoalPanel({ currentValue, history, dateFormat }: { currentValue: number; history: Snapshot[]; dateFormat: string }) {
-  const [goal, setGoal] = useState<Goal | null>(null);
-  const [name, setName] = useState("Portfolio goal");
-  const [targetValue, setTargetValue] = useState("");
-  const [targetDate, setTargetDate] = useState("");
+  // The goal ships with the workspace bootstrap, so the first paint already has
+  // its real shape (4 metrics, progress bar, goal sidebar). Fetching it on mount
+  // meant /goals rendered the "no goal" layout first and then jumped to this one.
+  const boot = useWorkspaceBootstrap();
+  const serverGoal = boot ? boot.goals[0] ?? null : undefined;
+  const [goal, setGoal] = useState<Goal | null>(serverGoal ?? null);
+  const [name, setName] = useState(serverGoal?.name ?? "Portfolio goal");
+  const [targetValue, setTargetValue] = useState(serverGoal ? String(serverGoal.targetValue) : "");
+  const [targetDate, setTargetDate] = useState(serverGoal?.targetDate ?? "");
   const [range, setRange] = useState<ChartRange>("MAX");
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
@@ -28,6 +31,8 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
+    // Bootstrap already carried the goal (or proved there isn't one).
+    if (serverGoal !== undefined) return;
     let cancelled = false;
     fetch("/api/goals").then(async (response) => {
       const data = await response.json();
@@ -43,7 +48,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
       if (!cancelled) setError(e instanceof Error ? e.message : "Unable to load goal");
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [serverGoal]);
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();

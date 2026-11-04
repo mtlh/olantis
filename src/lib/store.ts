@@ -34,6 +34,7 @@ export type SnapResponse = {
   moverChanges?: Record<string, HoldingMoverChanges>;
 };
 export type Transaction = { id: string; userId?: string; portfolioId?: string | null; holdingId?: string | null; symbol: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date: string; note?: string | null; createdAt: number };
+export type Goal = { id: string; name: string; targetValue: number; targetDate: string };
 
 /**
  * Workspace data resolved on the server (see lib/bootstrap.ts) and handed to
@@ -47,6 +48,7 @@ export type WorkspaceBootstrap = {
   holdings: Holding[];
   snapshots: SnapResponse;
   transactions: Transaction[];
+  goals: Goal[];
   settings: Record<string, unknown>;
   fx: { date: string | null; rates: FxRates };
   /**

@@ -1,5 +1,5 @@
 "use client";
-import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings } from "@/lib/store";
+import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings, useWorkspaceBootstrap } from "@/lib/store";
 import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
@@ -92,12 +92,61 @@ function WatchlistFallback() {
 }
 
 function GoalsFallback() {
+  // Match the real panel's frame, which depends on whether a goal exists:
+  // the saved goal adds a fourth metric column, a progress bar under the hero
+  // and a summary sidebar instead of the "set a goal" form.
+  const boot = useWorkspaceBootstrap();
+  const hasGoal = !!boot?.goals.length;
   return (
     <div className="space-y-8" aria-busy="true">
-      <SectionFallback rows={2} />
-      <div className="panel p-4">
-        <Skeleton className="h-3.5 w-32 bg-white/[0.05]" />
-        <Skeleton className="mt-4 h-[280px] w-full bg-white/[0.05] sm:h-[320px]" />
+      <div className={`grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:gap-0 lg:py-7 ${hasGoal ? "sm:grid-cols-3 lg:grid-cols-[1.3fr_1fr_1fr_1fr]" : "sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr]"}`}>
+        <div className={`col-span-2 min-w-0 lg:col-span-1 lg:pr-8 ${hasGoal ? "sm:col-span-3" : "sm:col-span-2"}`}>
+          <Skeleton className="h-2.5 w-28 bg-white/[0.05]" />
+          <Skeleton className="mt-2 h-[38px] w-36 bg-white/[0.05] sm:h-[42px]" />
+          {hasGoal && <Skeleton className="mt-3 h-1 w-full max-w-[220px] bg-white/[0.05]" />}
+          <Skeleton className="mt-2 h-2.5 w-24 bg-white/[0.05]" />
+        </div>
+        {Array.from({ length: hasGoal ? 3 : 2 }, (_, index) => (
+          <div key={index} className={index === (hasGoal ? 2 : 1) ? "col-span-2 sm:col-span-1 lg:border-l lg:border-white/[0.06] lg:pl-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
+            <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
+            <Skeleton className="mt-2 h-6 w-20 bg-white/[0.05]" />
+            <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.05]" />
+          </div>
+        ))}
+      </div>
+      <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-0">
+        <div className="min-w-0 xl:pr-8">
+          <div className="panel p-4">
+            <Skeleton className="h-3.5 w-32 bg-white/[0.05]" />
+            <Skeleton className="mt-4 h-[280px] w-full bg-white/[0.05] sm:h-[320px]" />
+          </div>
+        </div>
+        <aside className="xl:border-l xl:border-white/[0.06] xl:pl-8">
+          <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
+            <Skeleton className="h-4 w-16 bg-white/[0.05]" />
+            <Skeleton className="h-3 w-10 bg-white/[0.05]" />
+          </div>
+          {hasGoal ? (
+            <div className="divide-y divide-white/[0.05]">
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="flex items-baseline justify-between gap-3 py-3">
+                  <Skeleton className="h-3 w-12 bg-white/[0.05]" />
+                  <Skeleton className="h-4 w-20 bg-white/[0.05]" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4 pt-4">
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="space-y-1.5">
+                  <Skeleton className="h-3 w-20 bg-white/[0.05]" />
+                  <Skeleton className="h-9 w-full bg-white/[0.05]" />
+                </div>
+              ))}
+              <Skeleton className="h-9 w-full bg-white/[0.05]" />
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   );

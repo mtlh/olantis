@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fmtGBP } from "@/lib/format";
-
-type GoalSummary = { id: string; name: string; targetValue: number; targetDate: string };
+import { useWorkspaceBootstrap, type Goal } from "@/lib/store";
 
 type DashboardGoalCardProps = {
   currentValue: number;
@@ -11,16 +10,21 @@ type DashboardGoalCardProps = {
 };
 
 export function DashboardGoalCard({ currentValue, onViewGoals }: DashboardGoalCardProps) {
-  const [goal, setGoal] = useState<GoalSummary | null>(null);
+  // Same as GoalPanel: read the bootstrapped goal so the card does not pop in
+  // (or flip between "No goal set" and a progress bar) after hydration.
+  const boot = useWorkspaceBootstrap();
+  const serverGoal = boot ? boot.goals[0] ?? null : undefined;
+  const [goal, setGoal] = useState<Goal | null>(serverGoal ?? null);
 
   useEffect(() => {
+    if (serverGoal !== undefined) return;
     let cancelled = false;
     fetch("/api/goals")
-      .then(async (response) => response.ok ? await response.json() as GoalSummary[] : [])
+      .then(async (response) => response.ok ? await response.json() as Goal[] : [])
       .then((goals) => { if (!cancelled) setGoal(Array.isArray(goals) ? goals[0] ?? null : null); })
       .catch(() => { if (!cancelled) setGoal(null); });
     return () => { cancelled = true; };
-  }, []);
+  }, [serverGoal]);
 
   const progress = goal && goal.targetValue > 0 ? currentValue / goal.targetValue * 100 : 0;
 

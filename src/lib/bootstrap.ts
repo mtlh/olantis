@@ -10,12 +10,14 @@ import {
   holdingSnapshots,
   transactions as transactionsTable,
   userSettings,
+  goals as goalsTable,
 } from "@/lib/db/schema";
 import { getLatestFxRates } from "@/lib/fx";
 import { windowSeries } from "@/lib/snapshot-window";
 import { DEFAULT_FX_RATES, holdingValueGBP, valueChangeOverRange, todayISODate, type FxRates } from "@/lib/format";
 import type {
   Account,
+  Goal,
   Holding,
   Portfolio,
   Provider,
@@ -40,6 +42,8 @@ export type WorkspaceBootstrap = {
   holdings: Holding[];
   snapshots: SnapResponse;
   transactions: Transaction[];
+  /** First paint of /goals needs the saved goal, or the layout jumps once /api/goals resolves. */
+  goals: Goal[];
   /** Raw user_settings row; normalised client-side by normalizeSettings(). */
   settings: Record<string, unknown>;
   fx: { date: string | null; rates: FxRates };
@@ -58,6 +62,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   type PortfolioRow = typeof portfoliosTable.$inferSelect;
   type TransactionRow = typeof transactionsTable.$inferSelect;
   type SettingsRow = typeof userSettings.$inferSelect;
+  type GoalRow = typeof goalsTable.$inferSelect;
 
   const [batchRes, fx] = await Promise.all([
     db.batch([
@@ -69,6 +74,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
       db.select({ holdingId: holdingSnapshots.holdingId, date: holdingSnapshots.date, value: holdingSnapshots.value }).from(holdingSnapshots).where(eq(holdingSnapshots.userId, userId)),
       db.select().from(transactionsTable).where(eq(transactionsTable.userId, userId)),
       db.select().from(userSettings).where(eq(userSettings.userId, userId)),
+      db.select().from(goalsTable).where(eq(goalsTable.userId, userId)),
     ]),
     getLatestFxRates().catch(() => ({ date: null, rates: {} as FxRates })),
   ]);
@@ -81,6 +87,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
     { holdingId: string; date: string; value: number }[],
     TransactionRow[],
     SettingsRow[],
+    GoalRow[],
   ];
   const accountRows = typed[0];
   const providerRows = typed[1];
@@ -90,6 +97,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   const perHoldingSnapshots = typed[5];
   const transactionRows = typed[6];
   const settingsRows = typed[7];
+  const goalRows = typed[8];
 
   // Wave 2 — holdings can belong to the user directly, or to one of their
   // accounts/providers/portfolios (legacy rows), so it needs the ids above.
@@ -175,6 +183,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
     holdings: liveHoldings,
     snapshots: { total, byPortfolio, byHolding, moverChanges },
     transactions,
+    goals: goalRows as unknown as Goal[],
     settings: (settingsRows[0] ?? {}) as Record<string, unknown>,
     fx: { date: fx.date, rates: fx.rates as FxRates },
     snapshotsFresh,
