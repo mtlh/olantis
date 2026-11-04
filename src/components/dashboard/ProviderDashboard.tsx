@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import type { Snapshot } from "@/lib/store";
-import { chartDateLabel, filterByRange, fmtGBP, fmtPct, fmtRelative, todayISODate, valueChangeOverRange } from "@/lib/format";
+import { chartDateLabel, filterByRange, fmtGBP, fmtPct, fmtRelative, fmtSnapshotDate, todayISODate, valueChangeOverRange } from "@/lib/format";
 
 type ProviderPortfolioSummary = {
   id: string;
@@ -60,12 +60,7 @@ type ProviderDashboardProps = {
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const SUB = "mt-2 text-[11px] text-zinc-600";
-
-function formatSnapshotDate(iso: string) {
-  const [year, month, day] = iso.split("-").map(Number);
-  if (!year || !month || !day) return iso;
-  return new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
+const NOOP = () => {};
 
 function shareOfProvider(value: number, total: number) {
   return total > 0 ? `${(value / total * 100).toFixed(1)}%` : "0.0%";
@@ -183,7 +178,7 @@ export function ProviderDashboard({
                 {periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))}
                 <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{periodChange.percent == null ? "" : fmtPct(periodChange.percent)}</span>
               </p>
-              <p className={SUB}>Since {formatSnapshotDate(periodChange.fromDate)}</p>
+              <p className={SUB}>Since {fmtSnapshotDate(periodChange.fromDate)}</p>
             </>
           ) : (
             <>
@@ -214,7 +209,7 @@ export function ProviderDashboard({
           className="min-w-0 lg:col-span-3"
         />
         <div className="min-w-0 lg:col-span-2">
-          <AllocationCard allocation={allocation} mode="holding" onModeChange={() => {}} layout="fill" showModeSelector={false} compactChart surface="panel" emptyMessage="No holdings in this provider yet" />
+          <AllocationCard allocation={allocation} mode="holding" onModeChange={NOOP} layout="fill" showModeSelector={false} compactChart surface="panel" emptyMessage="No holdings in this provider yet" />
         </div>
       </div>
 

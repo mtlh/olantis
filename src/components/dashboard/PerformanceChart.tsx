@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,7 +37,7 @@ function drawdownLabel(value: number | null | undefined) {
   return `${value.toFixed(2)}%`;
 }
 
-export function PerformanceChart({
+export const PerformanceChart = memo(function PerformanceChart({
   snapshots,
   byPortfolio,
   series,
@@ -359,4 +359,4 @@ export function PerformanceChart({
       <p className="text-xs leading-relaxed text-zinc-600">Figures show value movement, not a flow-adjusted investment return. “Largest pullback” is based on saved observations; benchmarks use price data and may exclude dividends.</p>
     </section>
   );
-}
+});

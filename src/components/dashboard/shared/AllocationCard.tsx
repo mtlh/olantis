@@ -1,7 +1,7 @@
 "use client";
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtGBP } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -34,7 +34,7 @@ const MODES: { value: AllocationMode; label: string }[] = [
   { value: "sector", label: "Sectors" },
 ];
 
-export function AllocationCard({
+export const AllocationCard = memo(function AllocationCard({
   allocation,
   mode,
   onModeChange,
@@ -124,4 +124,4 @@ export function AllocationCard({
       </CardContent>
     </Card>
   );
-}
+});

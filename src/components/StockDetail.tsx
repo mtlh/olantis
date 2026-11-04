@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, FolderPlus, Minus, Plus, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,10 +61,12 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
     if (rangeTouched.current) return;
     setRange(settings.defaultRange);
   }, [settings.defaultRange]);
-  const pickRange = (r: ChartRange) => {
+  // Stable so the memoised chart does not re-render on unrelated state changes
+  // (price fetch settling, trades loading, …).
+  const pickRange = useCallback((r: ChartRange) => {
     rangeTouched.current = true;
     setRange(r);
-  };
+  }, []);
   const isListed = isListedSymbol(holding.symbol);
   const [prices, setPrices] = useState<PriceRow[] | null>(null);
   const [snapSeriesFull, setSnapSeries] = useState<PriceRow[] | null>(null);

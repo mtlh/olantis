@@ -2,7 +2,7 @@
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
 import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -648,21 +648,27 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const valuationFor = (portfolio: Portfolio) => portfolioValuations.get(portfolio.id) ?? EMPTY_VALUATION;
 
-  const searchTerm = q.trim().toLowerCase();
-  const matchesHolding = (holding: Holding) => holding.symbol.toLowerCase().includes(searchTerm) || holding.name.toLowerCase().includes(searchTerm);
-  const matchesPortfolio = (portfolio: Portfolio) => {
+  // Typing stays immediate while the (potentially large) account tree filters
+  // in a lower-priority render.
+  const deferredQuery = useDeferredValue(q);
+  const searchTerm = deferredQuery.trim().toLowerCase();
+  const matchesHolding = useCallback(
+    (holding: Holding) => holding.symbol.toLowerCase().includes(searchTerm) || holding.name.toLowerCase().includes(searchTerm),
+    [searchTerm],
+  );
+  const matchesPortfolio = useCallback((portfolio: Portfolio) => {
     if (portfolio.name.toLowerCase().includes(searchTerm) || portfolio.holdings.some(matchesHolding)) return true;
     if (!searchTerm) return true;
     const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name ?? "" : "";
     const accountId = accountIdForPortfolio(portfolio);
     const accountName = accountId ? accountById.get(accountId)?.name ?? "" : "";
     return providerName.toLowerCase().includes(searchTerm) || accountName.toLowerCase().includes(searchTerm);
-  };
-  const filteredAccounts = sortByOrder(accounts.filter((account) => {
+  }, [accountById, accountIdForPortfolio, matchesHolding, providerById, searchTerm]);
+  const filteredAccounts = useMemo(() => sortByOrder(accounts.filter((account) => {
     if (!searchTerm || account.name.toLowerCase().includes(searchTerm)) return true;
     return portfolios.some((portfolio) => accountIdForPortfolio(portfolio) === account.id && matchesPortfolio(portfolio))
       || directHoldings.some((holding) => accountIdForHolding(holding) === account.id && matchesHolding(holding));
-  }));
+  })), [accountIdForHolding, accountIdForPortfolio, accounts, directHoldings, matchesHolding, matchesPortfolio, portfolios, searchTerm]);
   const filteredPortfolios = (list: Portfolio[], showAll = false) => sortByOrder(list.filter((portfolio) => !searchTerm || showAll || matchesPortfolio(portfolio)));
   const accountIndex = useMemo(() => new Map(accounts.map((a, i) => [a.id, i])), [accounts]);
   const accountTotalsById = useMemo(() => {
