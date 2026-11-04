@@ -42,7 +42,7 @@ function ChartPlaceholder({
         <h2 className="text-sm font-medium text-white">{title}</h2>
         <ChartRangeSelector range={range} onRangeChange={onRangeChange} segmented />
       </div>
-      <div className="grid min-h-[320px] flex-1 place-items-center px-6 pb-6 text-center">
+      <div className="grid min-h-[420px] flex-1 place-items-center px-6 pb-6 text-center">
         <div>
           {icon}
           <p className="text-sm text-zinc-400">{message}</p>
@@ -158,15 +158,16 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={32} shape="circle" />
             <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{holding.symbol}</h1>
-            {(holding.exchange || portfolioName) && (
-              <span className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-600">
-                {holding.exchange && <span>{holding.exchange}</span>}
-                {holding.exchange && portfolioName && <span className="text-zinc-700">·</span>}
-                {portfolioName && <span>{portfolioName}</span>}
-              </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <p className="text-xs text-zinc-500">{holding.name}</p>
+            {holding.exchange && (
+              <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">{holding.exchange}</span>
+            )}
+            {portfolioName && (
+              <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">{portfolioName}</span>
             )}
           </div>
-          <p className="mt-2 text-xs text-zinc-500">{holding.name}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {onBuy && onSell && (
@@ -218,7 +219,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="flex flex-col gap-6">
         {isManual && !hasValueSeries ? (
           <ChartPlaceholder
             title={chartTitle}
@@ -227,12 +228,11 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
             icon={<Wallet className="mx-auto mb-2 h-7 w-7 text-zinc-600" />}
             message="Manual holding — no market price history"
             detail="Value is tracked on the portfolio chart."
-            className="xl:col-span-2"
           />
         ) : loading ? (
-          <ChartPlaceholder title={chartTitle} range={range} onRangeChange={pickRange} message="Loading price history…" className="xl:col-span-2" />
+          <ChartPlaceholder title={chartTitle} range={range} onRangeChange={pickRange} message="Loading price history…" />
         ) : chartRows.length === 0 ? (
-          <ChartPlaceholder title={chartTitle} range={range} onRangeChange={pickRange} message={`No price data available for ${holding.symbol}.`} className="xl:col-span-2" />
+          <ChartPlaceholder title={chartTitle} range={range} onRangeChange={pickRange} message={`No price data available for ${holding.symbol}.`} />
         ) : (
           <ValueTimeChart
             data={chartRows}
@@ -245,7 +245,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
             dots={dots}
             showTradeMarkers={settings.showTradeMarkers}
             surface="panel"
-            className="xl:col-span-2"
+            heightClassName="h-[320px] sm:h-[420px]"
           />
         )}
 
@@ -257,14 +257,18 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
           {transactions.length === 0 ? (
             <p className="border-b border-white/[0.06] py-6 text-sm text-zinc-500">Buy or sell this holding to start a trade history.</p>
           ) : (
-            <div className="max-h-[420px] divide-y divide-white/[0.05] overflow-auto">
+            <div className="max-h-[360px] divide-y divide-white/[0.05] overflow-auto">
               {transactions.slice(0, 50).map((t) => (
                 <div key={t.id} className="flex items-center gap-3 px-1 py-3 transition-colors hover:bg-white/[0.025]">
                   <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${t.type === "buy" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>{t.type === "buy" ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm text-white">{t.type === "buy" ? "Buy" : "Sell"} <span className="text-zinc-500">· {t.shares} @ {fmtPrice(t.price, holding.currency)}</span></div>
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
+                      <span className={t.type === "buy" ? "text-emerald-400" : "text-red-400"}>{t.type === "buy" ? "Buy" : "Sell"}</span>
+                      <span className="tabular-nums text-zinc-500">{t.shares} @ {fmtPrice(t.price, holding.currency)}</span>
+                    </div>
                   </div>
-                  <span className="shrink-0 text-xs tabular-nums text-zinc-600">{new Date(t.date).toLocaleDateString(settings.dateFormat, { month: "short", day: "numeric" })}</span>
+                  <span className="hidden shrink-0 text-xs tabular-nums text-zinc-500 sm:block">{fmtPrice(t.shares * Number(t.price), holding.currency)}</span>
+                  <span className="w-14 shrink-0 text-right text-xs tabular-nums text-zinc-600">{new Date(t.date).toLocaleDateString(settings.dateFormat, { month: "short", day: "numeric" })}</span>
                 </div>
               ))}
             </div>

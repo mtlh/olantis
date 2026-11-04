@@ -1,7 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/Logo";
 import { BrandIcon } from "@/components/BrandIcon";
+import { EditPortfolioDialog } from "@/components/dashboard/EditPortfolioDialog";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PALETTE, resolvePortfolioColor } from "@/lib/colors";
@@ -447,10 +448,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [editAccountName, setEditAccountName] = useState("");
   const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null);
-  const [editPName, setEditPName] = useState("");
-  const [editPType, setEditPType] = useState<"live"|"manual">("live");
-  const [editPAccount, setEditPAccount] = useState<string>("__none");
-  const [editPProvider, setEditPProvider] = useState<string>("__none");
   const [showProviderDialog, setShowProviderDialog] = useState(false);
   const [providerAccountId, setProviderAccountId] = useState<string | null>(null);
   const [providerName, setProviderName] = useState("");
@@ -710,26 +707,31 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     const isOpen = expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding || searchMatchesHolding);
     return (
       <div key={portfolio.id}>
-        <div className={`group/portfolio flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`}>
+        <div className={`group/portfolio relative flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`}>
+          {/* The card itself opens the portfolio. The chevron, provider link and
+              edit menu are lifted above it so they keep their own actions. */}
+          <button
+            type="button"
+            aria-label={`Open ${portfolio.name}`}
+            aria-current={isActive ? "page" : undefined}
+            onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
+            className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+          />
           <TreeToggle
             open={isOpen}
             onToggle={() => togglePortfolio(portfolio.id)}
             label={`${isOpen ? "Collapse" : "Expand"} ${portfolio.name}`}
+            className="relative z-10"
           />
           {providerName
             ? <BrandIcon provider={providerName} size={22} />
             : <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: portfolioColor }} />}
           <div className="min-w-0 flex-1">
-            <button
-              type="button"
-              aria-pressed={isActive}
-              onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
-              className={`block w-full truncate rounded text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${isActive ? "text-white" : "text-zinc-200"}`}
-            >
+            <span aria-hidden className={`block truncate text-xs font-medium ${isActive ? "text-white" : "text-zinc-200"}`}>
               {portfolio.name}
-            </button>
+            </span>
             {providerName ? (
-              <button type="button" onClick={() => { onSelectProvider?.(portfolio.providerId!); setMobileOpen(false); }} className="mt-0.5 block max-w-full truncate rounded text-left text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+              <button type="button" onClick={() => { onSelectProvider?.(portfolio.providerId!); setMobileOpen(false); }} className="relative z-10 mt-0.5 block max-w-full truncate rounded text-left text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
                 {providerName}
               </button>
             ) : (
@@ -740,9 +742,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           <span className="shrink-0 pl-1 text-xs tabular-nums text-zinc-400">{fmtGBP(total)}</span>
           {editMode && (
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`} className="text-zinc-500 hover:text-white"><MoreVertical className="h-3 w-3" /></Button>} />
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`} className="relative z-10 text-zinc-500 hover:text-white"><MoreVertical className="h-3 w-3" /></Button>} />
               <DropdownMenuContent className="border-white/10 bg-zinc-900 text-white">
-                <DropdownMenuItem onClick={() => { setEditingPortfolio(portfolio); setEditPName(portfolio.name); setEditPType(portfolio.type); setEditPAccount(portfolio.accountId ?? "__none"); setEditPProvider(portfolio.providerId ?? "__none"); }}><Pencil className="h-3 w-3" />Edit</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setEditingPortfolio(portfolio)}><Move className="h-3 w-3" />Move</DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={() => onDeletePortfolio?.(portfolio)}><Trash2 className="h-3 w-3" />Delete</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -800,13 +802,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     if(err) return toast({title:err,variant:"error"});
     setSaving(true);
     try{ await onRenameProvider?.(editingProvider.id, editProviderName.trim()); setEditingProvider(null); toast({title:"Provider renamed",variant:"success"});} catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Rename failed",description:msg,variant:"error"});} finally{setSaving(false);}
-  };
-  const handleEditPortfolio = async () => {
-    if (!editingPortfolio) return;
-    const err = validateName(editPName);
-    if (err) return toast({title:err,variant:"error"});
-    setSaving(true);
-    try { await onRenamePortfolio?.(editingPortfolio.id, { name: editPName.trim(), type: editPType, accountId: editPAccount==="__none"?null:editPAccount, providerId: editPProvider==="__none"?null:editPProvider }); setEditingPortfolio(null); toast({title:"Portfolio updated",variant:"success"});} catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Update failed",description:msg,variant:"error"});} finally{setSaving(false);}
   };
   const handleCreateDirectHolding = async () => {
     if(!directTarget && !editingDirectId) return;
@@ -1260,42 +1255,19 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingPortfolio} onOpenChange={o=>!o&&setEditingPortfolio(null)}>
-        <DialogContent className="bg-zinc-900 border-white/10 text-white sm:max-w-md">
-          <DialogHeader><DialogTitle>Edit portfolio</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2"><Label>Name</Label><Input value={editPName} onChange={e=>setEditPName(e.target.value)} autoFocus/></div>
-            <div className="space-y-2"><Label>Type</Label>
-              <Select value={editPType} onValueChange={v=>setEditPType(v as "live"|"manual")}>
-                <SelectTrigger><span className="flex-1 text-left truncate">{editPType==="live"?"Live — auto prices":"Manual — cash/custom"}</span></SelectTrigger>
-                <SelectContent><SelectItem value="live">Live — auto prices</SelectItem><SelectItem value="manual">Manual — pension/cash</SelectItem></SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2"><Label>Account</Label>
-              <Select value={editPAccount} onValueChange={(v)=>{setEditPAccount(v as string); setEditPProvider("__none");}}>
-                <SelectTrigger><span className="flex-1 text-left truncate">{editPAccount === "__none" ? "Unassigned" : accounts.find((a)=>a.id===editPAccount)?.name ?? "—"}</span></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">Unassigned</SelectItem>
-                  {accounts.map(a=> <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2"><Label>Provider</Label>
-              <Select value={editPProvider} onValueChange={v=>setEditPProvider(v as string)} disabled={editPAccount==="__none"}>
-                <SelectTrigger><span className="flex-1 text-left truncate">{editPProvider==="__none" ? "No provider" : providers.find(p=>p.id===editPProvider)?.name ?? "—"}</span></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">No provider</SelectItem>
-                  {providers.filter(pr=> pr.accountId===editPAccount).map(pr=> <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={()=>setEditingPortfolio(null)}>Cancel</Button>
-              <Button onClick={handleEditPortfolio} disabled={saving || !editPName.trim()}>{saving?"Saving…":"Save changes"}</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {editingPortfolio && (
+        <EditPortfolioDialog
+          key={editingPortfolio.id}
+          portfolio={editingPortfolio}
+          accounts={accounts}
+          providers={providers}
+          onOpenChange={(open) => { if (!open) setEditingPortfolio(null); }}
+          onSave={async (id, update) => {
+            if (!onRenamePortfolio) throw new Error("Portfolio updates are unavailable");
+            await onRenamePortfolio(id, update);
+          }}
+        />
+      )}
     </>
   );
 

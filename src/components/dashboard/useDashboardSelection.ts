@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 // The dashboard is rendered by the (workspace) layout, so the page below it
 // never re-renders. Selection therefore lives in client state and the URL is
@@ -44,15 +44,25 @@ export function selectionUrl({ portfolioId, providerId, accountId, holdingId }: 
 
 export function useDashboardSelection() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [selection, setSelection] = useState<DashboardSelection>(() => selectionFromSearchParams(searchParams));
 
   const select = useCallback((next: DashboardSelection) => {
     setSelection(next);
-    // Next.js patches history.replaceState and feeds usePathname/useSearchParams
-    // from the new URL, so the section and every shareable link follow along
-    // without a server round trip.
-    window.history.replaceState(window.history.state, "", selectionUrl(next));
-  }, []);
+    const url = selectionUrl(next);
+    // Selection normally only mirrors the URL. From another workspace section
+    // (settings, watchlist, …) it has to open the dashboard as well, otherwise
+    // the URL changes while the old section stays on screen until the user
+    // navigates manually.
+    if (window.location.pathname === "/dashboard") {
+      // Next.js patches history.replaceState and feeds usePathname/useSearchParams
+      // from the new URL, so the section and every shareable link follow along
+      // without a server round trip.
+      window.history.replaceState(window.history.state, "", url);
+    } else {
+      router.push(url);
+    }
+  }, [router]);
 
   const clear = useCallback(() => select(EMPTY_SELECTION), [select]);
 
