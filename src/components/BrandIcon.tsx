@@ -11,7 +11,7 @@ type BrandIconProps = {
   symbol?: string | null;
   name?: string | null;
   exchange?: string | null;
-  /** Quoted currency of the holding, used for the cash tile glyph. */
+  /** Quoted currency of the holding, used for the cash glyph. */
   currency?: string | null;
   /** Edge length in px. Defaults to 24. */
   size?: number;
@@ -113,36 +113,33 @@ function currencyGlyph(currency?: string | null): string | null {
 /**
  * Cash is not a listed security: show the currency it is held in (the quote
  * currency, e.g. £ for GBP) instead of whatever company owns the CASH ticker.
+ * Like the brand marks, it sits straight on the surface at full size.
  */
 function CashMark({
   currency,
   size,
-  shape,
   className,
 }: {
   currency?: string | null;
   size: number;
-  shape: "rounded" | "circle";
   className?: string;
 }) {
   const glyph = currencyGlyph(currency);
-  const iconSize = Math.round(size * 0.52);
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "inline-grid shrink-0 place-items-center border border-white/[0.08] bg-white/[0.06] font-semibold text-zinc-300",
+        "inline-grid shrink-0 place-items-center font-semibold text-zinc-300",
         className,
       )}
       style={{
         width: size,
         height: size,
-        borderRadius: tileRadius(size, shape),
-        fontSize: glyph && glyph.length > 1 ? Math.max(9, Math.round(size * 0.34)) : Math.round(size * 0.52),
+        fontSize: glyph ? (glyph.length > 1 ? Math.round(size * 0.5) : Math.round(size * 0.9)) : size,
         lineHeight: 1,
       }}
     >
-      {glyph ?? <Banknote style={{ width: iconSize, height: iconSize }} strokeWidth={1.75} />}
+      {glyph ?? <Banknote style={{ width: size, height: size }} strokeWidth={1.5} />}
     </span>
   );
 }
@@ -150,7 +147,7 @@ function CashMark({
 /**
  * Renders a brand mark for a holding (company logo, or its ETF issuer's mark)
  * or a provider, with a monogram tile when no remote mark is available. A cash
- * holding renders a currency tile for the currency it is held in.
+ * holding renders the glyph for the currency it is held in.
  */
 export function BrandIcon({
   provider,
@@ -169,7 +166,7 @@ export function BrandIcon({
   const monogram = useMemo(() => monogramFor({ provider, symbol, name }), [name, provider, symbol]);
 
   if (!provider && isCashSymbol(symbol)) {
-    return <CashMark currency={currency} size={size} shape={shape} className={className} />;
+    return <CashMark currency={currency} size={size} className={className} />;
   }
 
   return (
