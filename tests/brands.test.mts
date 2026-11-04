@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   brandIconSrc,
   holdingLogoSources,
+  isCashSymbol,
   issuerBrandForHolding,
   monogramFor,
   normalizeBrandName,
@@ -23,6 +24,14 @@ test("matches common brokers and platforms", () => {
   assert.equal(providerBrandForName("Hargreaves Lansdown")?.label, "Hargreaves Lansdown");
   assert.equal(providerBrandForName("iShares")?.label, "iShares");
   assert.equal(providerBrandForName("My local broker"), null);
+});
+
+test("matches Dodl and AJ Bell, preferring Dodl for its co-branded name", () => {
+  assert.equal(providerBrandForName("DODL")?.label, "Dodl");
+  assert.equal(providerBrandForName("Dodl")?.label, "Dodl");
+  assert.equal(providerBrandForName("Dodl by AJ Bell")?.label, "Dodl");
+  assert.equal(providerBrandForName("AJBELL")?.label, "AJ Bell");
+  assert.equal(providerBrandForName("AJ Bell Youinvest")?.label, "AJ Bell");
 });
 
 test("prefers the crisp local mark for Trading 212", () => {
@@ -64,14 +73,26 @@ test("falls back to a monogram for unknown names", () => {
   assert.equal(monogramFor({ provider: "My local broker" }), "ML");
   assert.equal(monogramFor({ provider: "Hargreaves Lansdown" }), "HL");
   assert.equal(monogramFor({ symbol: "AAPL" }), "AAP");
+  // Funds fall back to their issuer's mark, not a ticker stub.
+  assert.equal(monogramFor({ symbol: "SPXL", name: "State Street SPDR S&P 500 UCITS ETF" }), "SP");
+  assert.equal(monogramFor({ symbol: "IDGA", name: "iShares $ Treasury Bond 0-1yr UCITS ETF" }), "iS");
+});
+
+test("cash never resolves to a ticker logo", () => {
+  assert.equal(isCashSymbol("CASH"), true);
+  assert.equal(isCashSymbol(" cash "), true);
+  assert.equal(isCashSymbol("CASHX"), false);
+  assert.equal(isCashSymbol(null), false);
+  assert.deepEqual(holdingLogoSources({ symbol: "CASH", name: "Cash", exchange: "" }), []);
+  assert.equal(brandIconSrc({ symbol: "CASH", name: "Cash" }), null);
 });
 
 test("builds same-origin icon URLs for the processing route", () => {
-  assert.equal(brandIconSrc({ provider: "Vanguard" }), "/api/brand-icon?provider=Vanguard&v=4");
+  assert.equal(brandIconSrc({ provider: "Vanguard" }), "/api/brand-icon?provider=Vanguard&v=5");
   assert.equal(brandIconSrc({ provider: "Trading 212" }), "/brands/trading212.svg");
   assert.equal(
     brandIconSrc({ symbol: "VUSA", exchange: "LSE", name: "Vanguard S&P 500" }),
-    "/api/brand-icon?symbol=VUSA&exchange=LSE&name=Vanguard+S%26P+500&v=4",
+    "/api/brand-icon?symbol=VUSA&exchange=LSE&name=Vanguard+S%26P+500&v=5",
   );
   assert.equal(brandIconSrc({}), null);
 });

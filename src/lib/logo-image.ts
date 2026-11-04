@@ -176,7 +176,7 @@ function tintMonochrome(data: Buffer, tint: [number, number, number]) {
  */
 export async function normalizeLogo(
   input: Buffer,
-  options: { size?: number; tint?: string; aggressiveSpecks?: boolean } = {},
+  options: { size?: number; tint?: string; aggressiveSpecks?: boolean; minSourceSize?: number } = {},
 ): Promise<Buffer | null> {
   const size = options.size ?? 128;
   const { data, info } = await sharp(input)
@@ -184,6 +184,9 @@ export async function normalizeLogo(
     .raw()
     .toBuffer({ resolveWithObject: true });
   const { width, height } = info;
+  // A 16px favicon blown up to 128px is a blurry smear on the dashboard. When
+  // the caller can fall back to a monogram, skip sources this small entirely.
+  if (options.minSourceSize && Math.max(width, height) < options.minSourceSize) return null;
   const pixels = Buffer.from(data);
   const background = borderBackground(pixels, width, height);
 
@@ -234,8 +237,11 @@ export async function normalizeLogo(
 
   const markWidth = bounds.maxX - bounds.minX + 1;
   const markHeight = bounds.maxY - bounds.minY + 1;
-  const padding = Math.round(size * 0.04);
-  const inner = Math.max(8, size - padding * 2);
+  // Never upsample: a 32px favicon stays 32px and paints crisply at tile size,
+  // whereas scaling it to 128px only adds blur.
+  const outputSize = Math.max(8, Math.min(size, Math.max(markWidth, markHeight)));
+  const padding = Math.round(outputSize * 0.04);
+  const inner = Math.max(8, outputSize - padding * 2);
   const output = await sharp(cleaned, { raw: { width, height, channels: 4 } })
     .extract({ left: bounds.minX, top: bounds.minY, width: markWidth, height: markHeight })
     .resize(inner, inner, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })

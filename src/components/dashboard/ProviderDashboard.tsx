@@ -29,6 +29,7 @@ type ProviderHoldingSummary = {
   symbol: string;
   name: string;
   exchange?: string | null;
+  currency?: string | null;
   value: number;
   gain: number;
 };
@@ -254,7 +255,7 @@ export function ProviderDashboard({
               {directHoldings.map((holding) => (
                 <button key={holding.id} type="button" onClick={() => onOpenHolding(holding.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={28} />
+                    <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={28} />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-white">{holding.symbol}</span>
                       <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">

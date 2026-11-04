@@ -300,7 +300,7 @@ export function HoldingDialog({
                         <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl overflow-hidden max-h-64 overflow-auto">
                           {symbolResults.map((result) => (
                             <button key={`${result.symbol}:${result.exchange}`} type="button" onMouseDown={(event) => { event.preventDefault(); selectSearchResult(result); }} className="w-full text-left px-3 py-2.5 hover:bg-white/5 flex items-center justify-between gap-2 border-b border-white/[0.04] last:border-0">
-                              <BrandIcon symbol={result.symbol} name={result.name} exchange={result.exchange} size={24} />
+                              <BrandIcon symbol={result.symbol} name={result.name} exchange={result.exchange} currency={result.currency} size={24} />
                               <span className="min-w-0">
                                 <span className="text-sm font-medium text-white flex items-center gap-2">
                                   {result.symbol}
