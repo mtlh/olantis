@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Briefcase, Layers, Plus, Trash2 } from "lucide-react";
+import { Layers, Plus, Trash2 } from "lucide-react";
 import { AllocationCard, type AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import { ValueTimeChart, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
@@ -62,7 +62,6 @@ type AccountDashboardProps = {
   gainPct: number;
   onBack: () => void;
   onRename: (name: string) => Promise<void>;
-  onCreateProvider: (name: string) => Promise<void>;
   onNewPortfolio: () => void;
   onDelete: () => void;
   onOpenProvider: (id: string) => void;
@@ -104,7 +103,6 @@ export function AccountDashboard({
   gainPct,
   onBack,
   onRename,
-  onCreateProvider,
   onNewPortfolio,
   onDelete,
   onOpenProvider,
@@ -114,8 +112,6 @@ export function AccountDashboard({
   const [range, setRange] = useState<"1M" | "3M" | "1Y" | "MAX">("1Y");
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState(name);
-  const [providerOpen, setProviderOpen] = useState(false);
-  const [providerName, setProviderName] = useState("");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const chartData = useMemo<ValueTimeChartRow[]>(() => {
@@ -143,21 +139,6 @@ export function AccountDashboard({
     }
   };
 
-  const createProvider = async () => {
-    const trimmed = providerName.trim();
-    if (trimmed.length < 2) return toast({ title: "Name too short", variant: "error" });
-    setSaving(true);
-    try {
-      await onCreateProvider(trimmed);
-      setProviderOpen(false);
-      setProviderName("");
-    } catch {
-      // The parent callback owns the create error toast.
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <DashboardLevel label={`${name} account`}>
       <div>
@@ -166,9 +147,6 @@ export function AccountDashboard({
           <h1 className="min-w-0 text-[28px] font-semibold leading-none tracking-tight text-white">{name}</h1>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={() => { setEditName(name); setEditOpen(true); }}>Edit</Button>
-            <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={() => setProviderOpen(true)}>
-              <Briefcase className="h-3.5 w-3.5" /> Add provider
-            </Button>
             <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onNewPortfolio}>
               <Plus className="h-3.5 w-3.5" /> Add portfolio
             </Button>
@@ -251,7 +229,7 @@ export function AccountDashboard({
         </div>
 
         {!hasChildren ? (
-          <p className="border-y border-white/[0.06] py-6 text-sm text-zinc-500">Create a provider or portfolio to start tracking this account.</p>
+          <p className="border-y border-white/[0.06] py-6 text-sm text-zinc-500">Create a portfolio to start tracking this account.</p>
         ) : (
           <>
             <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600 sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
@@ -329,17 +307,6 @@ export function AccountDashboard({
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={saving}>Cancel</Button>
             <Button onClick={() => void saveName()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={providerOpen} onOpenChange={setProviderOpen}>
-        <DialogContent className="border-white/10 bg-zinc-900 text-white">
-          <DialogHeader><DialogTitle>New provider</DialogTitle></DialogHeader>
-          <div className="space-y-2"><Label htmlFor="provider-name">Name</Label><Input id="provider-name" value={providerName} onChange={(event) => setProviderName(event.target.value)} placeholder="e.g. Vanguard" autoFocus /></div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setProviderOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={() => void createProvider()} disabled={saving}>{saving ? "Creating…" : "Create provider"}</Button>
           </div>
         </DialogContent>
       </Dialog>

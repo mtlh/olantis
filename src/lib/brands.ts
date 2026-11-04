@@ -135,6 +135,15 @@ const BRANDS: Brand[] = [
   { key: "sprott", label: "Sprott", kind: "issuer", aliases: ["sprott"], domain: "sprott.com", monogram: "S" },
 ];
 
+/**
+ * Brands that can act as a broker, platform or bank account. Issuer-only marks
+ * (iShares, State Street, …) are fund issuers, not places to hold a portfolio,
+ * so they stay out of the provider picker.
+ */
+export const PROVIDER_BRANDS: Brand[] = BRANDS
+  .filter((brand) => brand.kind === "provider" || brand.kind === "both")
+  .sort((a, b) => a.label.localeCompare(b.label, "en-GB"));
+
 /** Normalise punctuation away so "M&G" and "m and g" match the same alias. */
 export function normalizeBrandName(value: string): string {
   return value

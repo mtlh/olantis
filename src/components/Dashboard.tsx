@@ -353,10 +353,10 @@ const pickRange = useCallback((r: ChartRange) => {
     try { const r = await create(name, type, accountId ?? null, providerId ?? null); toast({title:"Portfolio created",description:name,variant:"success"}); return r; } catch(e: unknown){toast({title:"Failed to create portfolio",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   };
   const handleCreateAccount = useCallback(async (name: string) => {
-    try { await createAccount(name); } catch(e: unknown){ toast({title:"Failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
+    try { return await createAccount(name); } catch(e: unknown){ toast({title:"Failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   }, [createAccount, toast]);
   const handleCreateProvider = useCallback(async (name: string, accountId: string) => {
-    try { await createProvider(name, accountId); toast({title:"Provider created",description:name,variant:"success"});} catch(e: unknown){toast({title:"Failed to create provider",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
+    try { const created = await createProvider(name, accountId); toast({title:"Provider created",description:name,variant:"success"}); return created; } catch(e: unknown){toast({title:"Failed to create provider",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   }, [createProvider, toast]);
   const handleRenameAccount = useCallback(async (id:string,name:string)=>{ await renameAccount(id,name); }, [renameAccount]);
   const handleRenameProvider = useCallback(async (id:string,name:string)=>{ await renameProvider(id,name); }, [renameProvider]);
@@ -516,9 +516,8 @@ const pickRange = useCallback((r: ChartRange) => {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onCreateProvider={handleCreateProvider} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} onRefreshPrices={handleRefreshPrices} refreshing={refreshing} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} onRefreshPrices={handleRefreshPrices} refreshing={refreshing} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={requestDeleteAccount}
-        onDeleteProvider={requestDeleteProvider}
         onDeletePortfolio={requestDeletePortfolio} />
       <main id="main-content" className="flex-1 min-w-0 pt-12 xl:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
@@ -552,7 +551,7 @@ range={range}
             />
           ) : wizardContext ? (
             <CreatePortfolioWizard open onOpenChange={(open) => { if (!open) setWizardContext(null); }} accounts={accounts} providers={providers} defaultAccountId={wizardContext.accountId} defaultProviderId={wizardContext.providerId}
-              onCreate={handleWizardCreate} inline />
+              onCreate={handleWizardCreate} onCreateProvider={handleCreateProvider} onCreateAccount={handleCreateAccount} inline />
           ) : viewHolding ? (
             <IndividualDashboard
               holding={viewHolding}
@@ -606,7 +605,6 @@ range={range}
               gainPct={accountData.gainPct}
               onBack={clearSelection}
               onRename={(name) => handleRenameAccount(activeAccount.id, name)}
-              onCreateProvider={(name) => handleCreateProvider(name, activeAccount.id)}
               onNewPortfolio={() => openWizard(activeAccount.id, null)}
               onDelete={() => requestDeleteAccount(activeAccount)}
               onOpenProvider={selectProvider}
@@ -723,7 +721,7 @@ range={range}
               canRefresh={portfolios.length > 0 || directHoldings.length > 0}
               onRefresh={() => { void refreshPrices(); }}
               onNewPortfolio={() => openWizard(null)}
-              onCreateFirstPortfolio={() => { void handleCreate("ISA", "live", accounts[0]?.id ?? null); }}
+              onCreateFirstPortfolio={() => openWizard(null)}
             >
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <ValueTimeChart

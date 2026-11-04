@@ -326,7 +326,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               )}
 
               {colorTab === "providers" && (
-                providers.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No providers yet. Add one inside an account.</p> : (
+                providers.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No providers yet. They are created when you add a portfolio.</p> : (
                   <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
                     {sortedProviders.map((pr)=>{
                       const acc = accounts.find(a=>a.id===pr.accountId);
