@@ -6,6 +6,8 @@ export type OwnedHoldingsFilters = {
   portfolioId?: string | null;
   providerId?: string | null;
   accountId?: string | null;
+  /** Also return fully-sold positions (`shares = 0`), needed by history backfill. */
+  includeEmpty?: boolean;
 };
 
 export async function loadOwnedHoldings(
@@ -20,8 +22,8 @@ export async function loadOwnedHoldings(
       isNotNull(providers.id),
       isNotNull(accounts.id)
     ),
-    gt(holdings.shares, 0),
   ];
+  if (!filters?.includeEmpty) conditions.push(gt(holdings.shares, 0));
   if (filters?.portfolioId) conditions.push(eq(holdings.portfolioId, filters.portfolioId));
   if (filters?.providerId) conditions.push(eq(holdings.providerId, filters.providerId));
   if (filters?.accountId) conditions.push(eq(holdings.accountId, filters.accountId));

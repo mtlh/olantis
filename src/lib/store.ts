@@ -313,6 +313,60 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
     return () => clearTimeout(t);
   }, [totalValue, portfolios.length, directHoldings.length, pfVals, hVals, refresh, boot]);
 
+  // Fill in history from before the account existed: if the saved series starts
+  // later than the oldest purchase, ask the server to reconstruct it once. The
+  // server marks completed holdings, so repeat calls are cheap no-ops.
+  const earliestPurchase = useMemo<string | null>(() => {
+    let earliest: string | null = null;
+    const consider = (date?: string | null) => {
+      const day = date?.slice(0, 10);
+      if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+      if (!earliest || day < earliest) earliest = day;
+    };
+    for (const p of portfolios) for (const h of p.holdings) consider(h.purchaseDate);
+    for (const h of directHoldings) consider(h.purchaseDate);
+    return earliest;
+  }, [portfolios, directHoldings]);
+
+  const backfillRequestedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!earliestPurchase) return;
+    const firstSnapshot = data.total[0]?.date;
+    if (firstSnapshot && firstSnapshot <= earliestPurchase) return;
+    if (backfillRequestedFor.current === earliestPurchase) return;
+    const storageKey = "olantis:history-backfill";
+    try {
+      if (sessionStorage.getItem(storageKey) === earliestPurchase) return;
+      sessionStorage.setItem(storageKey, earliestPurchase);
+    } catch {
+      /* sessionStorage may be unavailable (private mode); the server still dedupes */
+    }
+    backfillRequestedFor.current = earliestPurchase;
+    let cancelled = false;
+    const run = async () => {
+      let filled = 0;
+      // Follow the pending count for a few rounds so a large import completes in
+      // one page load instead of waiting for the daily cron.
+      for (let round = 0; round < 3 && !cancelled; round++) {
+        const r = await fetch("/api/snapshots/backfill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        if (!r.ok) break;
+        const result = (await r.json()) as { holdingsBackfilled?: number; pending?: number };
+        const count = result.holdingsBackfilled ?? 0;
+        filled += count;
+        if (count === 0 || (result.pending ?? 0) === 0) break;
+      }
+      if (!cancelled && filled > 0) void refresh();
+    };
+    void run().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [earliestPurchase, data.total, refresh]);
+
   return { snapshots: data.total, byPortfolio: data.byPortfolio, byHolding: data.byHolding, moverChanges: data.moverChanges, refresh };
 }
 

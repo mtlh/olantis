@@ -114,6 +114,9 @@ export async function POST(req: Request) {
       purchaseDate: d,
       exchange: null,
       lastRefreshedAt: null,
+      historyBackfilledAt: null,
+      historyBackfillAttempts: 0,
+      historyBackfillError: null,
     };
     await db.insert(holdings).values(createdHolding);
   }
@@ -147,13 +150,13 @@ export async function POST(req: Request) {
     if (holding) {
       const newShares = holding.shares + s;
       const newAvg = (holding.shares * holding.avgPrice + s * pr) / newShares;
-      await db.update(holdings).set({ shares: newShares, avgPrice: newAvg }).where(eq(holdings.id, holding.id));
+      await db.update(holdings).set({ shares: newShares, avgPrice: newAvg, historyBackfilledAt: null }).where(eq(holdings.id, holding.id));
       updatedHolding = { ...holding, shares: newShares, avgPrice: newAvg };
     }
   } else {
     const remaining = holding!.shares - s;
     const shares = Math.max(0, remaining);
-    await db.update(holdings).set({ shares }).where(eq(holdings.id, holding!.id));
+    await db.update(holdings).set({ shares, historyBackfilledAt: null }).where(eq(holdings.id, holding!.id));
     updatedHolding = { ...holding!, shares };
   }
 
@@ -217,7 +220,7 @@ export async function DELETE(req: Request) {
     }
   }
   await db.delete(transactions).where(eq(transactions.id, id));
-  await db.update(holdings).set({ shares, avgPrice: average }).where(eq(holdings.id, holding.id));
+  await db.update(holdings).set({ shares, avgPrice: average, historyBackfilledAt: null }).where(eq(holdings.id, holding.id));
   // Return the recalculated position so the caller can update in place instead
   // of re-reading the holding after the delete.
   return Response.json({ ok: true, id, holding: { ...holding, shares, avgPrice: average } });
