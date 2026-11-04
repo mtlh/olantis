@@ -53,6 +53,15 @@ test("puts the issuer mark first for an ETF", () => {
   assert.ok(sources.some((source) => source.src.includes("/symbol/VWRP.L?")));
 });
 
+test("uses State Street's square mark for SPDR funds", () => {
+  const sources = holdingLogoSources({
+    symbol: "ACWI.L",
+    name: "State Street SPDR MSCI All Country World UCITS ETF",
+    exchange: "LSE",
+  });
+  assert.equal(sources[0].src, "https://www.ssga.com/apple-touch-icon.png");
+});
+
 test("prefers the company ticker for a single stock", () => {
   const sources = holdingLogoSources({ symbol: "AAPL", name: "Apple Inc", exchange: "NASDAQ" });
   assert.match(sources[0].src, /companiesmarketcap\.com\/img\/company-logos\/128\/AAPL\.png/);
@@ -88,11 +97,11 @@ test("cash never resolves to a ticker logo", () => {
 });
 
 test("builds same-origin icon URLs for the processing route", () => {
-  assert.equal(brandIconSrc({ provider: "Vanguard" }), "/api/brand-icon?provider=Vanguard&v=5");
+  assert.equal(brandIconSrc({ provider: "Vanguard" }), "/api/brand-icon?provider=Vanguard&v=6");
   assert.equal(brandIconSrc({ provider: "Trading 212" }), "/brands/trading212.svg");
   assert.equal(
     brandIconSrc({ symbol: "VUSA", exchange: "LSE", name: "Vanguard S&P 500" }),
-    "/api/brand-icon?symbol=VUSA&exchange=LSE&name=Vanguard+S%26P+500&v=5",
+    "/api/brand-icon?symbol=VUSA&exchange=LSE&name=Vanguard+S%26P+500&v=6",
   );
   assert.equal(brandIconSrc({}), null);
 });
