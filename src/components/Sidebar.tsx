@@ -683,6 +683,29 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const accColorFor = (acc: Account) => acc.color || PALETTE[(accountIndex.get(acc.id) ?? 0) % PALETTE.length].value;
 
   const togglePortfolio = (id: string) => setExpandedPortfolio((e) => ({ ...e, [id]: !e[id] }));
+  // A portfolio only looks expanded by default while it is the active one, so
+  // switching selection would silently collapse it. Pin the open state before
+  // the selection moves on, so expanding several portfolios at once sticks.
+  const pinPortfolioOpen = (id: string | null) => {
+    if (!id) return;
+    setExpandedPortfolio((e) => (e[id] !== undefined ? e : { ...e, [id]: true }));
+  };
+  const selectPortfolio = (id: string) => {
+    if (activeId && activeId !== id) pinPortfolioOpen(activeId);
+    onSelect(id);
+    setMobileOpen(false);
+  };
+  const selectHolding = (holding: Holding) => {
+    if (activeId && activeId !== holding.portfolioId) pinPortfolioOpen(activeId);
+    onSelectHolding?.(holding);
+    setMobileOpen(false);
+  };
+  const prevActivePortfolioIdRef = useRef<string | null>(activeId);
+  useEffect(() => {
+    const previous = prevActivePortfolioIdRef.current;
+    prevActivePortfolioIdRef.current = activeId;
+    if (previous && previous !== activeId) pinPortfolioOpen(previous);
+  }, [activeId]);
   const openWizard = (accountId: string | null = null, providerId: string | null = null) => { onOpenWizard(accountId, providerId); setMobileOpen(false); };
   const validateName = (n: string) => n.trim().length >= 2 ? "" : "Min 2 characters";
 
@@ -709,7 +732,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             type="button"
             aria-label={`Open ${portfolio.name}`}
             aria-current={isActive ? "page" : undefined}
-            onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
+            onClick={() => selectPortfolio(portfolio.id)}
             className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           />
           <TreeToggle
@@ -752,7 +775,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const allocation = total > 0 ? holdingValue / total * 100 : 0;
               const isHoldingActive = holding.id === activeHoldingId;
               return (
-                <button key={holding.id} type="button" onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
+                <button key={holding.id} type="button" onClick={() => selectHolding(holding)} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
                   <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
