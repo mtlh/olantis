@@ -3,6 +3,7 @@ import { holdings, portfolios, accounts, providers, transactions } from "@/lib/d
 import { eq, sql } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
 import { loadOwnedHoldings } from "@/lib/ownership";
+import { isCashSymbol } from "@/lib/format";
 
 export async function GET(req: Request) {
   const userId = await getUserId();
@@ -35,7 +36,9 @@ export async function POST(req: Request) {
   const avgPriceNum = Number(avgPrice);
   const currentPriceNum = currentPrice == null ? avgPriceNum : Number(currentPrice);
   const nameStr = capStr(name, 80).trim();
-  const currencyStr = capStr(currency, 8) || "GBP";
+  // CASH is a base-currency balance, not a quoted security; ignore whatever
+  // currency a quote lookup put on it (Yahoo's CASH ticker is USD).
+  const currencyStr = isCashSymbol(symbolStr) ? "GBP" : capStr(currency, 8) || "GBP";
   const exchangeStr = exchange != null ? capStr(exchange, 16) || null : null;
   const db = getDb();
   if (id) {

@@ -212,7 +212,7 @@ function tintMonochrome(data: Buffer, tint: [number, number, number]) {
  */
 export async function normalizeLogo(
   input: Buffer,
-  options: { size?: number; tint?: string; aggressiveSpecks?: boolean; minSourceSize?: number } = {},
+  options: { size?: number; tint?: string; aggressiveSpecks?: boolean; minSourceSize?: number; allowWideMark?: boolean } = {},
 ): Promise<Buffer | null> {
   const size = options.size ?? 128;
   const { data, info } = await sharp(input)
@@ -270,7 +270,10 @@ export async function normalizeLogo(
 
   const bounds = opaqueBounds(cleaned, width, height);
   if (bounds.count < 8 || bounds.maxX < bounds.minX) return null;
-  if (!isReadableMark(cleaned, width, bounds)) return null;
+  // Authored issuer marks (iShares, J.P. Morgan, State Street) are wordmarks and
+  // stripe lockups, which the generic readability guard would reject. Keep them
+  // when the source explicitly opts in.
+  if (!options.allowWideMark && !isReadableMark(cleaned, width, bounds)) return null;
 
   const markWidth = bounds.maxX - bounds.minX + 1;
   const markHeight = bounds.maxY - bounds.minY + 1;

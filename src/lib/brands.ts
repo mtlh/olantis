@@ -8,6 +8,10 @@
  * back to a monogram tile.
  */
 
+import { isCashSymbol } from "./format.ts";
+
+export { isCashSymbol };
+
 export type BrandKind = "provider" | "issuer" | "both";
 
 export type Brand = {
@@ -24,6 +28,11 @@ export type Brand = {
    * before the favicon so crisp artwork wins over a 32px icon.
    */
   iconUrls?: string[];
+  /**
+   * Keep this mark even when it is a wide wordmark or split into more than two
+   * ink bands. Used for the issuer artwork we deliberately author ourselves.
+   */
+  allowWideMark?: boolean;
   /** Tint for monochrome marks, e.g. Vanguard's white V on its red tile. */
   markColor?: string;
 };
@@ -34,16 +43,7 @@ const FMP_BASE = "https://financialmodelingprep.com/image-stock";
 const CMC_BASE = "https://companiesmarketcap.com/img/company-logos/128";
 
 /** Bump when the icon renderer changes so browsers drop cached marks. */
-export const BRAND_ICON_VERSION = "6";
-
-/**
- * A holding whose symbol is CASH is not a listed security — it is the user's
- * uninvested balance, so it must never resolve to a company that happens to
- * own the CASH ticker.
- */
-export function isCashSymbol(symbol: string | null | undefined): boolean {
-  return !!symbol && /^cash$/i.test(symbol.trim());
-}
+export const BRAND_ICON_VERSION = "7";
 
 /**
  * Word order matters for aliases: they are matched as whole words against the
@@ -54,9 +54,9 @@ const BRANDS: Brand[] = [
   // Brokers, platforms and banks -------------------------------------------------
   { key: "vanguard", label: "Vanguard", kind: "both", aliases: ["vanguard", "vanguard investor", "vanguard asset management"], domain: "vanguard.com", monogram: "V", iconUrls: ["https://www.vanguard.com/apple-touch-icon.png"], markColor: "#96151d" },
   { key: "invesco", label: "Invesco", kind: "both", aliases: ["invesco"], domain: "invesco.com", monogram: "IVZ", iconUrls: ["https://www.invesco.com/etc.clientlibs/invesco/clientlibs/main/resources/images/apple-touch-icon.png"] },
-  { key: "ishares", label: "iShares", kind: "issuer", aliases: ["ishares", "i shares"], domain: "ishares.com", monogram: "iS" },
+  { key: "ishares", label: "iShares", kind: "issuer", aliases: ["ishares", "i shares"], domain: "ishares.com", monogram: "iS", iconUrls: ["https://a.storyblok.com/f/41481/640x640/f4f2d280db/ishares-new.png"], allowWideMark: true },
   { key: "blackrock", label: "BlackRock", kind: "both", aliases: ["blackrock", "black rock"], domain: "blackrock.com", monogram: "BLK" },
-  { key: "spdr", label: "SPDR", kind: "issuer", aliases: ["spdr", "state street", "ssga"], domain: "ssga.com", monogram: "SP", iconUrls: ["https://www.ssga.com/apple-touch-icon.png"] },
+  { key: "spdr", label: "SPDR", kind: "issuer", aliases: ["spdr", "state street", "ssga"], domain: "ssga.com", monogram: "SP", iconUrls: ["https://www.statestreet.com/content/dam/stt/stt-2.png", "https://www.ssga.com/apple-touch-icon.png"], allowWideMark: true },
   { key: "trading212", label: "Trading 212", kind: "provider", aliases: ["trading 212", "trading212"], domain: "trading212.com", monogram: "T212", iconUrls: ["/brands/trading212.svg", "https://www.trading212.com/apple-touch-icon.png"] },
   { key: "hargreaves", label: "Hargreaves Lansdown", kind: "provider", aliases: ["hargreaves lansdown", "hargreaves"], domain: "hl.co.uk", monogram: "HL" },
   { key: "ajbell", label: "AJ Bell", kind: "provider", aliases: ["aj bell", "ajbell", "aj bell youinvest", "youinvest"], domain: "ajbell.co.uk", monogram: "AJB", iconUrls: ["https://www.ajbell.co.uk/apple-touch-icon.png"], markColor: "#d6003c" },
@@ -113,7 +113,7 @@ const BRANDS: Brand[] = [
   { key: "amundi", label: "Amundi", kind: "issuer", aliases: ["amundi"], domain: "amundi.com", monogram: "Am" },
   { key: "lyxor", label: "Lyxor", kind: "issuer", aliases: ["lyxor"], domain: "lyxor.com", monogram: "LX" },
   { key: "xtrackers", label: "Xtrackers", kind: "issuer", aliases: ["xtrackers", "x trackers", "dws"], domain: "xtrackers.com", monogram: "X" },
-  { key: "jpmorgan", label: "J.P. Morgan", kind: "both", aliases: ["jpmorgan", "j p morgan", "jp morgan", "jpm"], domain: "jpmorgan.com", monogram: "JPM" },
+  { key: "jpmorgan", label: "J.P. Morgan", kind: "both", aliases: ["jpmorgan", "j p morgan", "jp morgan", "jpm"], domain: "jpmorgan.com", monogram: "JPM", iconUrls: ["https://companieslogo.com/img/orig/jpmorgan-etf_BIG-577a54cd.png?t=1720244494"], allowWideMark: true },
   { key: "wisdomtree", label: "WisdomTree", kind: "issuer", aliases: ["wisdomtree", "wisdom tree"], domain: "wisdomtree.com", monogram: "WT" },
   { key: "vaneck", label: "VanEck", kind: "issuer", aliases: ["vaneck", "van eck"], domain: "vaneck.com", monogram: "VE" },
   { key: "legalgeneral", label: "Legal & General", kind: "both", aliases: ["legal and general", "legal general", "lgim"], domain: "legalandgeneral.com", monogram: "L&G" },
@@ -190,7 +190,7 @@ export function brandFaviconUrl(brand: Brand): string {
 
 function brandSources(brand: Brand): LogoSource[] {
   return [
-    ...(brand.iconUrls ?? []).map((src) => ({ src, label: brand.label })),
+    ...(brand.iconUrls ?? []).map((src) => ({ src, label: brand.label, allowWideMark: brand.allowWideMark })),
     { src: brandFaviconUrl(brand), label: brand.label },
   ];
 }
@@ -258,7 +258,7 @@ export function tickerCandidates(symbol: string, exchange?: string | null): stri
   return suffix ? [`${base}${suffix}`] : [base];
 }
 
-export type LogoSource = { src: string; label: string };
+export type LogoSource = { src: string; label: string; allowWideMark?: boolean };
 
 /** Ordered logo URLs to try before falling back to a monogram. */
 export function holdingLogoSources({

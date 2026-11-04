@@ -53,13 +53,22 @@ test("puts the issuer mark first for an ETF", () => {
   assert.ok(sources.some((source) => source.src.includes("/symbol/VWRP.L?")));
 });
 
-test("uses State Street's square mark for SPDR funds", () => {
-  const sources = holdingLogoSources({
+test("uses the authored issuer marks for iShares, J.P. Morgan and State Street", () => {
+  const ishares = holdingLogoSources({ symbol: "SWDA.L", name: "iShares Core MSCI World UCITS ETF", exchange: "LSE" });
+  assert.equal(ishares[0].src, "https://a.storyblok.com/f/41481/640x640/f4f2d280db/ishares-new.png");
+  assert.equal(ishares[0].allowWideMark, true);
+
+  const jpm = holdingLogoSources({ symbol: "JEPG.L", name: "JPMorgan Global Equity Premium Income UCITS ETF", exchange: "LSE" });
+  assert.equal(jpm[0].src, "https://companieslogo.com/img/orig/jpmorgan-etf_BIG-577a54cd.png?t=1720244494");
+  assert.equal(jpm[0].allowWideMark, true);
+
+  const spdr = holdingLogoSources({
     symbol: "ACWI.L",
     name: "State Street SPDR MSCI All Country World UCITS ETF",
     exchange: "LSE",
   });
-  assert.equal(sources[0].src, "https://www.ssga.com/apple-touch-icon.png");
+  assert.equal(spdr[0].src, "https://www.statestreet.com/content/dam/stt/stt-2.png");
+  assert.equal(spdr[0].allowWideMark, true);
 });
 
 test("prefers the company ticker for a single stock", () => {
@@ -97,11 +106,11 @@ test("cash never resolves to a ticker logo", () => {
 });
 
 test("builds same-origin icon URLs for the processing route", () => {
-  assert.equal(brandIconSrc({ provider: "Vanguard" }), "/api/brand-icon?provider=Vanguard&v=6");
+  assert.equal(brandIconSrc({ provider: "Vanguard" }), "/api/brand-icon?provider=Vanguard&v=7");
   assert.equal(brandIconSrc({ provider: "Trading 212" }), "/brands/trading212.svg");
   assert.equal(
     brandIconSrc({ symbol: "VUSA", exchange: "LSE", name: "Vanguard S&P 500" }),
-    "/api/brand-icon?symbol=VUSA&exchange=LSE&name=Vanguard+S%26P+500&v=6",
+    "/api/brand-icon?symbol=VUSA&exchange=LSE&name=Vanguard+S%26P+500&v=7",
   );
   assert.equal(brandIconSrc({}), null);
 });

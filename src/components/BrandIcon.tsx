@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Banknote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { brandIconSrc, isCashSymbol, monogramFor } from "@/lib/brands";
+import { holdingCurrency } from "@/lib/format";
 
 type BrandIconProps = {
   /** Provider/broker/issuer name. Takes priority over `symbol`. */
@@ -166,7 +167,7 @@ export function BrandIcon({
   const monogram = useMemo(() => monogramFor({ provider, symbol, name }), [name, provider, symbol]);
 
   if (!provider && isCashSymbol(symbol)) {
-    return <CashMark currency={currency} size={size} className={className} />;
+    return <CashMark currency={holdingCurrency({ symbol, currency })} size={size} className={className} />;
   }
 
   return (

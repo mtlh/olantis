@@ -1,9 +1,27 @@
 export type MoneyHolding = {
+  symbol?: string | null;
   shares: number;
   avgPrice?: number;
   currentPrice?: number;
   currency?: string | null;
 };
+
+/**
+ * A holding whose symbol is CASH is the user's uninvested balance, not a listed
+ * security. It is entered in the app's base currency, so a foreign quote
+ * currency (e.g. Yahoo's USD for the CASH ticker) must never reach the FX
+ * conversion or the icon. Kept here so the money helpers and the brand icon
+ * agree on one rule.
+ */
+export function isCashSymbol(symbol: string | null | undefined): boolean {
+  return !!symbol && /^cash$/i.test(symbol.trim());
+}
+
+/** Currency a holding's amount is actually denominated in. */
+export function holdingCurrency(holding: { symbol?: string | null; currency?: string | null }): string {
+  if (isCashSymbol(holding.symbol)) return "GBP";
+  return holding.currency?.trim() || "GBP";
+}
 
 /** Convert a quoted amount into GBP (GBX/GBp pence → pounds). */
 export type FxRates = Record<string, number>;
@@ -20,11 +38,11 @@ export function toGBP(value: number, currency?: string | null, rates: FxRates = 
 }
 
 export function holdingValueGBP(h: MoneyHolding, rates?: FxRates): number {
-  return toGBP(h.shares * (h.currentPrice ?? 0), h.currency, rates);
+  return toGBP(h.shares * (h.currentPrice ?? 0), holdingCurrency(h), rates);
 }
 
 export function holdingCostGBP(h: MoneyHolding, rates?: FxRates): number {
-  return toGBP(h.shares * (h.avgPrice ?? 0), h.currency, rates);
+  return toGBP(h.shares * (h.avgPrice ?? 0), holdingCurrency(h), rates);
 }
 
 /** Earliest ISO day ("2026-01-05") included by a range; null for "MAX". */

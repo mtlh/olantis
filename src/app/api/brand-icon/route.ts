@@ -31,6 +31,9 @@ const ALLOWED_HOSTS = new Set([
   "www.aviva.co.uk",
   "www.robeco.com",
   "www.ssga.com",
+  "www.statestreet.com",
+  "a.storyblok.com",
+  "companieslogo.com",
   "home.saxo",
   "www.sharesies.com",
 ]);
@@ -78,8 +81,8 @@ async function download(url: string): Promise<Buffer | null> {
   }
 }
 
-async function resolveLogo(sources: Array<{ src: string }>, tint?: string): Promise<Buffer | null> {
-  for (const { src } of sources) {
+async function resolveLogo(sources: Array<{ src: string; allowWideMark?: boolean }>, tint?: string): Promise<Buffer | null> {
+  for (const { src, allowWideMark } of sources) {
     const raw = await download(src);
     if (!raw) continue;
     try {
@@ -88,6 +91,7 @@ async function resolveLogo(sources: Array<{ src: string }>, tint?: string): Prom
         aggressiveSpecks: Boolean(tint),
         // Below 32px a favicon turns to mush at tile size; let the monogram win.
         minSourceSize: 32,
+        allowWideMark,
       });
       if (normalized) return normalized;
     } catch {

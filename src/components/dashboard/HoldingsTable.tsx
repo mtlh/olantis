@@ -7,7 +7,7 @@ import { BrandIcon } from "@/components/BrandIcon";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fmtGBP, fmtPct, fmtPrice, fmtRelative, fmtTimestamp, holdingCostGBP, holdingValueGBP, type FxRates } from "@/lib/format";
+import { fmtGBP, fmtPct, fmtPrice, fmtRelative, fmtTimestamp, holdingCostGBP, holdingCurrency, holdingValueGBP, type FxRates } from "@/lib/format";
 import type { Holding, Portfolio } from "@/lib/store";
 
 type HoldingSort = "value" | "gain" | "symbol";
@@ -162,12 +162,12 @@ export function HoldingsTable({
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-white">{holding.symbol}</div>
                         <div className="max-w-[128px] truncate text-[11px] text-zinc-500 sm:max-w-[160px]">{holding.name}</div>
-                        <div className="text-[11px] tabular-nums text-zinc-600 md:hidden">{holding.shares} × {fmtPrice(holding.avgPrice, holding.currency)}</div>
+                        <div className="text-[11px] tabular-nums text-zinc-600 md:hidden">{holding.shares} × {fmtPrice(holding.avgPrice, holdingCurrency(holding))}</div>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden text-sm tabular-nums text-zinc-400 md:table-cell">{holding.shares} × {fmtPrice(holding.avgPrice, holding.currency)}</TableCell>
-                  <TableCell className="hidden text-right text-sm tabular-nums text-zinc-400 lg:table-cell">{fmtPrice(holding.currentPrice, holding.currency)}</TableCell>
+                  <TableCell className="hidden text-sm tabular-nums text-zinc-400 md:table-cell">{holding.shares} × {fmtPrice(holding.avgPrice, holdingCurrency(holding))}</TableCell>
+                  <TableCell className="hidden text-right text-sm tabular-nums text-zinc-400 lg:table-cell">{fmtPrice(holding.currentPrice, holdingCurrency(holding))}</TableCell>
                   <TableCell className="hidden text-right text-sm tabular-nums text-zinc-400 xl:table-cell">{fmtGBP(cost)}</TableCell>
                   <TableCell className="text-right text-sm font-medium tabular-nums text-white">{fmtGBP(value)}</TableCell>
                   <TableCell className="text-right">
