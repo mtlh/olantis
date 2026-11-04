@@ -95,12 +95,22 @@ if (!app.requestSingleInstanceLock()) {
       const brandIconLoaded = await mainWindow.webContents.executeJavaScript(
         '(() => { const img = document.getElementById("brand-icon"); return Boolean(img && img.complete && img.naturalWidth > 0); })()',
       );
+      const splashMarkLoaded = await mainWindow.webContents.executeJavaScript(
+        '(() => { const img = document.getElementById("splash-icon"); return Boolean(img && img.complete && img.naturalWidth > 0); })()',
+      );
+      const appViewVisible = appView.getVisible();
       if (!integratedToolbar || !toolbarIsIntegrated) {
         console.error("Electron smoke test: integrated desktop toolbar was not rendered above the app.");
       }
       if (!renderedApp) console.error("Electron smoke test: Olantis content was not rendered.");
       if (!brandIconLoaded) console.error("Electron smoke test: the Olantis brand icon did not load in the title bar.");
-      app.exit(renderedApp && integratedToolbar && toolbarIsIntegrated && brandIconLoaded ? 0 : 1);
+      if (!splashMarkLoaded) console.error("Electron smoke test: the startup mark did not load.");
+      if (!appViewVisible) console.error("Electron smoke test: the app view was still hidden behind the startup mark.");
+      app.exit(
+        renderedApp && integratedToolbar && toolbarIsIntegrated && brandIconLoaded && splashMarkLoaded && appViewVisible
+          ? 0
+          : 1,
+      );
     } catch (error) {
       console.error("Electron smoke test failed:", error);
       app.exit(1);
@@ -196,7 +206,23 @@ if (!app.requestSingleInstanceLock()) {
     // still loading when the window appears. Keep the view's backdrop dark so
     // launching shows black chrome instead of a white flash.
     appView.setBackgroundColor(APP_BACKGROUND);
+    // Hidden until the page is ready: shell.html paints a centred brand mark
+    // underneath, and the view is revealed on top of it once loading finishes.
+    appView.setVisible(false);
     trace("view:created");
+
+    // Show the loaded page over the startup mark. A failed first load still
+    // reveals, so the user sees the error page instead of a mark that never
+    // goes away.
+    const revealApp = () => {
+      if (!appView || appView.webContents.isDestroyed()) return;
+      appView.setVisible(true);
+      trace("view:revealed");
+    };
+    appView.webContents.once("did-finish-load", revealApp);
+    appView.webContents.on("did-fail-load", (_event, _code, _description, _url, isMainFrame) => {
+      if (isMainFrame) revealApp();
+    });
 
     appView.webContents.setWindowOpenHandler(({ url }) => {
       if (isAllowedNavigation(url, APP_URL, appView.webContents.getURL())) {

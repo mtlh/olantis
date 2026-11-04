@@ -1,7 +1,12 @@
 const desktop = window.olantisDesktop;
 const iconPath = new URLSearchParams(window.location.search).get("icon");
 
-if (iconPath) document.getElementById("brand-icon").src = iconPath;
+if (iconPath) {
+  for (const id of ["brand-icon", "splash-icon"]) {
+    const icon = document.getElementById(id);
+    if (icon) icon.src = iconPath;
+  }
+}
 
 const backButton = document.getElementById("back-button");
 const forwardButton = document.getElementById("forward-button");

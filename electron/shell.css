@@ -149,3 +149,45 @@ body {
     width: 38px;
   }
 }
+
+/* Startup screen. Sits under the app view, which stays hidden until the page
+   has loaded (see main.cjs), so the mark is centred in the space below the
+   title bar for the whole load. */
+.splash {
+  position: fixed;
+  top: 46px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  background: #050507;
+  -webkit-app-region: drag;
+}
+
+.splash img {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  border-radius: 20px;
+  animation: splash-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes splash-breathe {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash img {
+    animation: none;
+    opacity: 1;
+  }
+}
