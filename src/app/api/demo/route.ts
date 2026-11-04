@@ -2,9 +2,10 @@
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, holdingSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
 import { clearDemo } from "@/lib/demo-cleanup";
+import { buildDemoHistory, demoHistoryIncomplete, weeklyDates, DEMO_HISTORY_YEARS, type DemoHistoryHolding } from "@/lib/demo-history";
 
 /**
  * Demo mode — deliberately UNAUTHENTICATED.
@@ -26,45 +27,6 @@ import { clearDemo } from "@/lib/demo-cleanup";
 // ---------------------------------------------------------------------------
 // Deterministic predefined dataset
 // ---------------------------------------------------------------------------
-
-/** mulberry32 — small, fast, deterministic PRNG. */
-function mulberry32(seed: number) {
-  return function () {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hashString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function weeklyDates(years = 3): string[] {
-  const out: string[] = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = new Date(today);
-  start.setFullYear(start.getFullYear() - years);
-  const d = new Date(start);
-  const day = d.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diffToMonday);
-  while (d <= today) {
-    out.push(d.toISOString().slice(0, 10));
-    d.setDate(d.getDate() + 7);
-  }
-  const todayKey = today.toISOString().slice(0, 10);
-  if (out[out.length - 1] !== todayKey) out.push(todayKey);
-  return out;
-}
 
 type SeedHolding = {
   symbol: string;
@@ -92,61 +54,65 @@ const SEED_HOLDINGS: Record<string, SeedHolding[]> = {
 };
 
 /**
- * Build a predefined weekly price series for a symbol. Deterministic: the same
- * symbol always yields the same curve, starting at a derived entry price and
- * ending exactly at `currentPrice` with no discontinuity.
+ * Repair a demo tenant seeded before per-holding (or aggregate) history
+ * existed. Only missing dates are written, so values the visitor's own session
+ * recorded stay untouched and a complete tenant costs nothing beyond the check.
  */
-function predefinedSeries(h: SeedHolding, dates: string[]): number[] {
-  const rnd = mulberry32(hashString(h.symbol));
-  const n = dates.length;
-  const target = h.currentPrice;
-  if (n <= 1) return [target];
+async function topUpDemoHistory(
+  userId: string,
+  holdingRows: readonly DemoHistoryHolding[],
+  pointsByHolding: ReadonlyMap<string, number>,
+) {
+  if (!holdingRows.length) return;
+  if (!demoHistoryIncomplete(holdingRows, pointsByHolding)) return;
 
-  // Deterministic entry price, a little below today's price.
-  const start = target * (0.8 + rnd() * 0.14);
-
-  // Cumulative random walk, then detrended so it ends at exactly 0.
-  const walk = new Array<number>(n).fill(0);
-  for (let i = 1; i < n; i++) walk[i] = walk[i - 1] + (rnd() - 0.5) * 0.036;
-  const endWalk = walk[n - 1];
-
-  const path = new Array<number>(n);
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1);
-    const baseline = start + (target - start) * t;
-    const noise = walk[i] - endWalk * t; // zero at both ends
-    path[i] = Math.max(baseline * (1 + noise), target * 0.35);
-  }
-  path[0] = start;
-  path[n - 1] = target;
-  return path;
-}
-
-/** Two deterministic drawdowns so the demo chart looks like a real market. */
-function marketFactor(idx: number, n: number): number {
-  const c1 = Math.floor(n * 0.32);
-  const c2 = Math.floor(n * 0.7);
-  let f = 1;
-  const s1 = c1 - 7, b1 = c1 + 2, e1 = c1 + 18, d1 = 0.19;
-  if (idx >= s1 && idx <= e1) {
-    f = idx <= b1 ? 1 - d1 * ((idx - s1) / (b1 - s1)) : 1 - d1 * (1 - (idx - b1) / (e1 - b1));
-  }
-  const s2 = c2 - 8, b2 = c2 + 3, e2 = c2 + 20, d2 = 0.22;
-  if (idx >= s2 && idx <= e2) {
-    const f2 = idx <= b2 ? 1 - d2 * ((idx - s2) / (b2 - s2)) : 1 - d2 * (1 - (idx - b2) / (e2 - b2));
-    f = Math.min(f, f2);
-  }
-  return f;
+  const history = buildDemoHistory(userId, holdingRows, weeklyDates(DEMO_HISTORY_YEARS));
+  const db = getDb();
+  await Promise.all([
+    db.insert(snapshots).values(history.snapshotRows).onConflictDoNothing(),
+    history.portfolioRows.length
+      ? db.insert(portfolioSnapshots).values(history.portfolioRows).onConflictDoNothing()
+      : Promise.resolve(),
+    db.insert(holdingSnapshots).values(history.holdingRows).onConflictDoNothing(),
+  ]);
 }
 
 async function seedDemo(userId: string) {
   const db = getDb();
 
-  // Fast path for returning demo visitors: one cheap query decides whether the
-  // tenant already exists, instead of re-checking goals, watchlist and
-  // portfolios on every click of "Try the demo".
-  const existing = await db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId));
-  if (existing.length > 0) return;
+  // Fast path for returning demo visitors: one round trip decides whether the
+  // tenant already exists and whether its history is complete, instead of
+  // re-checking goals, watchlist and portfolios on every click of "Try the demo".
+  const batch = await db.batch([
+    db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId)),
+    db
+      .select({ holdingId: holdingSnapshots.holdingId, points: sql<number>`count(*)::int` })
+      .from(holdingSnapshots)
+      .where(eq(holdingSnapshots.userId, userId))
+      .groupBy(holdingSnapshots.holdingId),
+    db
+      .select({
+        id: holdings.id,
+        symbol: holdings.symbol,
+        shares: holdings.shares,
+        currentPrice: holdings.currentPrice,
+        portfolioId: holdings.portfolioId,
+      })
+      .from(holdings)
+      .where(eq(holdings.userId, userId)),
+  ]);
+  const [existing, historyCounts, existingHoldings] = batch as unknown as [
+    { id: string }[],
+    { holdingId: string; points: number }[],
+    DemoHistoryHolding[],
+  ];
+  if (existing.length > 0) {
+    // Tenants created before the per-holding seed only had a day or two of
+    // holding rows; fill them in so the holding view shows its full series.
+    const pointsByHolding = new Map(historyCounts.map((row) => [row.holdingId, Number(row.points)]));
+    await topUpDemoHistory(userId, existingHoldings.filter((h) => h.shares > 0), pointsByHolding);
+    return;
+  }
 
   const [existingGoals, existingWatchlist] = await Promise.all([
     db.select({ id: goals.id }).from(goals).where(eq(goals.userId, userId)),
@@ -181,38 +147,19 @@ async function seedDemo(userId: string) {
     }
   }
 
-  // Predefined history — deterministic, no network. Built before any insert so
-  // the writes can be batched instead of run one after another.
-  const dates = weeklyDates(3);
-  const n = dates.length;
-  const seriesBySymbol = new Map<string, number[]>();
-  for (const h of hs) {
-    const raw = predefinedSeries(h as SeedHolding, dates);
-    const scaled = raw.map((v, i) => v * marketFactor(i, n));
-    seriesBySymbol.set(h.symbol, scaled);
-  }
-
-  const snapRows = dates.map((date, i) => {
-    let total = 0;
-    const byPort = new Map<string, number>();
-    for (const h of hs) {
-      const v = (seriesBySymbol.get(h.symbol)?.[i] ?? h.currentPrice ?? 0) * (h.shares ?? 0);
-      total += v;
-      byPort.set(h.portfolioId!, (byPort.get(h.portfolioId!) ?? 0) + v);
-    }
-    return { date, total, byPort };
-  });
-  const portRows = snapRows.flatMap((r) => [...r.byPort].map(([pid, val]) => ({ userId, portfolioId: pid, date: r.date, value: val })));
-  // Per-holding history too: the holding view charts its own value series and
-  // only falls back to market price when there are fewer than two points.
-  // Without this a fresh demo tenant has only the cron/client rows for today.
-  const holdingRows = dates.flatMap((date, i) =>
+  // Predefined history — deterministic, no network. One series per holding plus
+  // the portfolio/total aggregates derived from it, so the holding view (which
+  // charts its own value series) and every rollup always agree.
+  const history = buildDemoHistory(
+    userId,
     hs.map((h) => ({
-      userId,
-      holdingId: h.id!,
-      date,
-      value: (seriesBySymbol.get(h.symbol)?.[i] ?? h.currentPrice ?? 0) * (h.shares ?? 0),
+      id: h.id!,
+      symbol: h.symbol,
+      shares: h.shares,
+      currentPrice: h.currentPrice,
+      portfolioId: h.portfolioId ?? null,
     })),
+    weeklyDates(DEMO_HISTORY_YEARS),
   );
 
   // Side rows don't depend on the account tree, so start them immediately and
@@ -253,20 +200,20 @@ async function seedDemo(userId: string) {
   // with the snapshot and settings writes.
   const holdingsWithHistory = (async () => {
     await db.insert(holdings).values(hs);
-    if (!holdingRows.length) return;
+    if (!history.holdingRows.length) return;
     await db.insert(holdingSnapshots)
-      .values(holdingRows)
+      .values(history.holdingRows)
       .onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: holdingSnapshots.value } });
   })();
 
   await Promise.all([
     holdingsWithHistory,
     db.insert(snapshots)
-      .values(snapRows.map((r) => ({ userId, date: r.date, value: r.total })))
+      .values(history.snapshotRows)
       .onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: snapshots.value } }),
-    portRows.length
+    history.portfolioRows.length
       ? db.insert(portfolioSnapshots)
-        .values(portRows)
+        .values(history.portfolioRows)
         .onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: portfolioSnapshots.value } })
       : Promise.resolve(),
     ...sideWrites,
