@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
+import { BrandIcon } from "@/components/BrandIcon";
 import { Button } from "@/components/ui/button";
 import type { Account, Portfolio, Provider } from "@/lib/store";
 import { fmtGBP, fmtPct, fmtRelative } from "@/lib/format";
@@ -44,6 +45,9 @@ export function PortfolioDashboard({
   const parentName = portfolio.providerId
     ? providers.find((provider) => provider.id === portfolio.providerId)?.name
     : portfolio.accountId ? accounts.find((account) => account.id === portfolio.accountId)?.name : null;
+  const provider = portfolio.providerId
+    ? providers.find((item) => item.id === portfolio.providerId) ?? null
+    : null;
   const backLabel = parentName ?? "Overview";
   const holdingCount = portfolio.holdings.length;
   const latestRefresh = Math.max(...portfolio.holdings.map((holding) => holding.lastRefreshedAt ?? 0), 0) || null;
@@ -61,14 +65,17 @@ export function PortfolioDashboard({
         </button>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{portfolio.name}</h1>
-              <span className="text-[11px] capitalize text-zinc-500">{portfolio.type}</span>
-              {portfolio.accountId && (
-                <span className="text-[11px] text-zinc-600">
-                  {accounts.find((account) => account.id === portfolio.accountId)?.name ?? ""}
-                </span>
-              )}
+            <div className="flex min-w-0 items-center gap-3">
+              {provider && <BrandIcon provider={provider.name} size={28} />}
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{portfolio.name}</h1>
+                <span className="text-[11px] capitalize text-zinc-500">{portfolio.type}</span>
+                {portfolio.accountId && (
+                  <span className="text-[11px] text-zinc-600">
+                    {accounts.find((account) => account.id === portfolio.accountId)?.name ?? ""}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">

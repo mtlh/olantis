@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Download, Minus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandIcon } from "@/components/BrandIcon";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -157,7 +158,7 @@ export function HoldingsTable({
                 <TableRow key={holding.id} className="cursor-pointer border-white/[0.05] hover:bg-white/[0.025]" onClick={() => onSelect(holding)}>
                   <TableCell className="pl-1">
                     <div className="flex items-center gap-3">
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.05] text-[10px] font-semibold text-zinc-300">{holding.symbol.slice(0, 3)}</div>
+                      <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={32} />
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-white">{holding.symbol}</div>
                         <div className="max-w-[128px] truncate text-[11px] text-zinc-500 sm:max-w-[160px]">{holding.name}</div>

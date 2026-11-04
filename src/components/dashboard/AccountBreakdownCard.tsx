@@ -1,4 +1,5 @@
 import { fmtGBP } from "@/lib/format";
+import { BrandIcon } from "@/components/BrandIcon";
 import type { AccountBreakdownRow } from "@/components/dashboard/usePortfolioOverviewInsights";
 
 type AccountBreakdownCardProps = {
@@ -57,7 +58,10 @@ export function AccountBreakdownCard({ accounts, totalValue, onOpenAccount, onOp
                   </div>
                 ) : (
                   <button key={child.id} type="button" onClick={() => child.kind === "provider" ? onOpenProvider(child.id) : onOpenPortfolio(child.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5rem_6.5rem] items-center gap-3 px-1 py-2 text-left transition-colors hover:bg-white/[0.025]">
-                    <span className="min-w-0 truncate pl-6 text-xs text-zinc-400">{child.name}</span>
+                    <span className="flex min-w-0 items-center gap-2 pl-6">
+                      {child.kind === "provider" && <BrandIcon provider={child.name} size={16} />}
+                      <span className="min-w-0 truncate text-xs text-zinc-400">{child.name}</span>
+                    </span>
                     <span className="text-right text-xs tabular-nums text-zinc-400">{fmtGBP(child.value)}</span>
                     <GainValue value={child.gain} />
                   </button>

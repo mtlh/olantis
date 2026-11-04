@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/Logo";
+import { BrandIcon } from "@/components/BrandIcon";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PALETTE, resolvePortfolioColor } from "@/lib/colors";
@@ -715,7 +716,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             onToggle={() => togglePortfolio(portfolio.id)}
             label={`${isOpen ? "Collapse" : "Expand"} ${portfolio.name}`}
           />
-          <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: portfolioColor }} />
+          {providerName
+            ? <BrandIcon provider={providerName} size={22} />
+            : <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: portfolioColor }} />}
           <div className="min-w-0 flex-1">
             <button
               type="button"
@@ -753,7 +756,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const isHoldingActive = holding.id === activeHoldingId;
               return (
                 <button key={holding.id} type="button" onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
-                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-white/[0.06] text-[8px] font-semibold uppercase text-zinc-400">{holding.symbol.slice(0, 3)}</span>
+                  <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={22} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
                     <span className="block truncate text-[9px] text-zinc-600">{holding.name}</span>
@@ -899,7 +902,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         {railPortfolios.map((portfolio) => (
           <RailButton
             key={portfolio.id}
-            icon={<Layers className="h-[17px] w-[17px]" />}
+            icon={portfolio.providerId && providerById.get(portfolio.providerId)?.name
+              ? <BrandIcon provider={providerById.get(portfolio.providerId)!.name} size={22} />
+              : <Layers className="h-[17px] w-[17px]" />}
             label={portfolio.name}
             subtitle={portfolioContext(portfolio)}
             rows={[
@@ -915,7 +920,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         {railDirectHoldings.map((holding) => (
           <RailButton
             key={holding.id}
-            icon={<span className="text-[9px] font-semibold uppercase">{holding.symbol.slice(0, 3)}</span>}
+            icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={22} />}
             label={holding.symbol}
             subtitle={holding.name}
             rows={[
@@ -1092,7 +1097,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                           <div className="px-1.5 pb-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-600">Direct</div>
                           {accountDirectHoldings.map((h: Holding) => (
                             <div key={h.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors ${onSelectHolding ? "cursor-pointer hover:bg-white/[0.035]" : ""}`} onClick={() => onSelectHolding?.(h)}>
-                              <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-white/[0.06] text-[8px] font-semibold uppercase text-zinc-400">{String(h.symbol).slice(0, 3)}</span>
+                              <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} size={22} />
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
                                 <span className="block truncate text-[9px] text-zinc-600">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
