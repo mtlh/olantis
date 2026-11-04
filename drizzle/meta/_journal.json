@@ -15,6 +15,13 @@
       "when": 1793723159345,
       "tag": "0002_perf_db_indexes_cache_headers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793823181718,
+      "tag": "0003_benchmark_daily",
+      "breakpoints": true
     }
   ]
 }
