@@ -49,6 +49,7 @@ export async function importFxHistory(
       .values(rows.slice(i, i + FX_CHUNK))
       .onConflictDoUpdate({ target: [fxRates.currency, fxRates.date], set: { rateToGbp: sql`excluded.rate_to_gbp` } });
   }
+  invalidateLatestFxRates();
   return rows.length;
 }
 
@@ -101,10 +102,25 @@ export async function refreshFxRates() {
     target: [fxRates.currency, fxRates.date],
     set: { rateToGbp: sql`excluded.rate_to_gbp` },
   });
+  invalidateLatestFxRates();
   return { date: payload.date, rates: Object.fromEntries(rates.map((row) => [row.currency, row.rateToGbp])) as FxRates };
 }
 
+/**
+ * Latest rates are read on nearly every workspace load (bootstrap, snapshots,
+ * backfill) but only change on the daily FX refresh. A short in-process TTL
+ * removes that query from the hot path without making a rate change wait longer
+ * than a few minutes.
+ */
+const LATEST_TTL_MS = 5 * 60_000;
+let latestCache: { at: number; value: { date: string | null; rates: FxRates } } | null = null;
+
+export function invalidateLatestFxRates() {
+  latestCache = null;
+}
+
 export async function getLatestFxRates(): Promise<{ date: string | null; rates: FxRates }> {
+  if (latestCache && Date.now() - latestCache.at < LATEST_TTL_MS) return latestCache.value;
   const db = getDb();
   const rows = await db.selectDistinctOn([fxRates.currency]).from(fxRates).orderBy(fxRates.currency, desc(fxRates.date));
   const rates: FxRates = { GBP: 1 };
@@ -113,5 +129,7 @@ export async function getLatestFxRates(): Promise<{ date: string | null; rates: 
     rates[row.currency] = row.rateToGbp;
     if (!date || row.date < date) date = row.date;
   }
-  return { date, rates };
+  const value = { date, rates };
+  latestCache = { at: Date.now(), value };
+  return value;
 }

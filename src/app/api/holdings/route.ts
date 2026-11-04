@@ -2,7 +2,7 @@ import { getDb } from "@/lib/db";
 import { holdings, portfolios, accounts, providers, transactions } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
-import { loadOwnedHoldings } from "@/lib/ownership";
+import { loadOwnedHoldings, ownedHoldingsQuery } from "@/lib/ownership";
 import { isCashSymbol } from "@/lib/format";
 import { refreshAggregatesForUser } from "@/lib/backfill";
 
@@ -156,13 +156,18 @@ export async function PATCH(req: Request) {
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
   const { symbols, force } = (await req.json()) as { symbols: Record<string, { price: number; currency: string }>; force?: boolean };
   const db = getDb();
+  // Both reads depend only on the user id, so one batch covers them instead of
+  // two sequential Neon round trips.
   let all: typeof holdings.$inferSelect[] = [];
+  let portfolioTypes: { id: string; type: string }[] = [];
   try {
-    all = await loadOwnedHoldings(db, userId);
+    [all, portfolioTypes] = (await db.batch([
+      ownedHoldingsQuery(db, userId),
+      db.select({ id: portfolios.id, type: portfolios.type }).from(portfolios).where(eq(portfolios.userId, userId)),
+    ])) as unknown as [typeof holdings.$inferSelect[], { id: string; type: string }[]];
   } catch (error) {
     return Response.json({ error: "Unable to load holdings", detail: error instanceof Error ? error.message : String(error) }, { status: 503 });
   }
-  const portfolioTypes = await db.select({ id: portfolios.id, type: portfolios.type }).from(portfolios).where(eq(portfolios.userId, userId));
   const manualIds = new Set(portfolioTypes.filter((p) => p.type === "manual").map((p) => p.id));
   const now = Math.floor(Date.now() / 1000);
   const DAY = 86400;
