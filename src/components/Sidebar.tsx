@@ -709,24 +709,29 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     const isOpen = expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding || searchMatchesHolding);
     return (
       <div key={portfolio.id}>
-        <div className={`group/portfolio flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`}>
+        <div className={`group/portfolio relative flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`}>
+          {/* The card itself opens the portfolio. The chevron, provider link and
+              edit menu are lifted above it so they keep their own actions. */}
+          <button
+            type="button"
+            aria-label={`Open ${portfolio.name}`}
+            aria-current={isActive ? "page" : undefined}
+            onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
+            className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+          />
           <TreeToggle
             open={isOpen}
             onToggle={() => togglePortfolio(portfolio.id)}
             label={`${isOpen ? "Collapse" : "Expand"} ${portfolio.name}`}
+            className="relative z-10"
           />
           <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: portfolioColor }} />
           <div className="min-w-0 flex-1">
-            <button
-              type="button"
-              aria-pressed={isActive}
-              onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
-              className={`block w-full truncate rounded text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${isActive ? "text-white" : "text-zinc-200"}`}
-            >
+            <span aria-hidden className={`block truncate text-xs font-medium ${isActive ? "text-white" : "text-zinc-200"}`}>
               {portfolio.name}
-            </button>
+            </span>
             {providerName ? (
-              <button type="button" onClick={() => { onSelectProvider?.(portfolio.providerId!); setMobileOpen(false); }} className="mt-0.5 block max-w-full truncate rounded text-left text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+              <button type="button" onClick={() => { onSelectProvider?.(portfolio.providerId!); setMobileOpen(false); }} className="relative z-10 mt-0.5 block max-w-full truncate rounded text-left text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
                 {providerName}
               </button>
             ) : (
@@ -737,7 +742,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           <span className="shrink-0 pl-1 text-xs tabular-nums text-zinc-400">{fmtGBP(total)}</span>
           {editMode && (
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`} className="text-zinc-500 hover:text-white"><MoreVertical className="h-3 w-3" /></Button>} />
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`} className="relative z-10 text-zinc-500 hover:text-white"><MoreVertical className="h-3 w-3" /></Button>} />
               <DropdownMenuContent className="border-white/10 bg-zinc-900 text-white">
                 <DropdownMenuItem onClick={() => { setEditingPortfolio(portfolio); setEditPName(portfolio.name); setEditPType(portfolio.type); setEditPAccount(portfolio.accountId ?? "__none"); setEditPProvider(portfolio.providerId ?? "__none"); }}><Pencil className="h-3 w-3" />Edit</DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={() => onDeletePortfolio?.(portfolio)}><Trash2 className="h-3 w-3" />Delete</DropdownMenuItem>
