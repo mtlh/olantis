@@ -1,7 +1,7 @@
 ﻿import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";
+import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, holdingSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
 import { clearDemo } from "@/lib/demo-cleanup";
@@ -203,6 +203,17 @@ async function seedDemo(userId: string) {
     return { date, total, byPort };
   });
   const portRows = snapRows.flatMap((r) => [...r.byPort].map(([pid, val]) => ({ userId, portfolioId: pid, date: r.date, value: val })));
+  // Per-holding history too: the holding view charts its own value series and
+  // only falls back to market price when there are fewer than two points.
+  // Without this a fresh demo tenant has only the cron/client rows for today.
+  const holdingRows = dates.flatMap((date, i) =>
+    hs.map((h) => ({
+      userId,
+      holdingId: h.id!,
+      date,
+      value: (seriesBySymbol.get(h.symbol)?.[i] ?? h.currentPrice ?? 0) * (h.shares ?? 0),
+    })),
+  );
 
   // Side rows don't depend on the account tree, so start them immediately and
   // let the four dependent waves below run in the foreground.
@@ -237,8 +248,19 @@ async function seedDemo(userId: string) {
   await db.insert(providers).values([provVanguard, provT212, provHL]);
   await db.insert(portfolios).values([p1, p2, p3]);
 
+  // Holding history references the holdings rows, so it has to wait for them.
+  // Chained inside the last wave instead of adding a wave: it stays concurrent
+  // with the snapshot and settings writes.
+  const holdingsWithHistory = (async () => {
+    await db.insert(holdings).values(hs);
+    if (!holdingRows.length) return;
+    await db.insert(holdingSnapshots)
+      .values(holdingRows)
+      .onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: holdingSnapshots.value } });
+  })();
+
   await Promise.all([
-    db.insert(holdings).values(hs),
+    holdingsWithHistory,
     db.insert(snapshots)
       .values(snapRows.map((r) => ({ userId, date: r.date, value: r.total })))
       .onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: snapshots.value } }),
