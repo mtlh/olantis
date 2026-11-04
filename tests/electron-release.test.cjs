@@ -51,6 +51,7 @@ test("desktop release is skipped unless desktop files changed", () => {
 
   assert.match(trigger, /paths:/, "the release must be path-filtered instead of rebuilding on every push");
   assert.match(trigger, /- "electron\/\*\*"/);
+  assert.match(trigger, /- "scripts\/run-electron-builder\.mjs"/, "builder changes must rebuild the installers");
   assert.match(trigger, /- "public\/brand\/\*\*"/);
   assert.doesNotMatch(trigger, /- "src\/\*\*"/, "web-only changes ship through Vercel, not a new installer");
   assert.match(trigger, /workflow_dispatch:/, "a skipped release still needs a manual way to rebuild");

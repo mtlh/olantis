@@ -12,6 +12,7 @@ on:
       - "electron/**"
       - "public/brand/**"
       - "scripts/electron-dev.mjs"
+      - "scripts/run-electron-builder.mjs"
       - "scripts/verify-electron-update-manifest.mjs"
       - "package.json"
       - "package-lock.json"
