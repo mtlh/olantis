@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db";
 import { accounts, providers, portfolios } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
 
 const TABLES = { accounts, providers, portfolios } as const;
@@ -18,6 +18,15 @@ export async function POST(req: Request) {
   if (!schema) return Response.json({ error: "invalid table" }, { status: 400 });
 
   const db = getDb();
-  await Promise.all(ids.map((id, i) => db.update(schema).set({ sortOrder: i }).where(and(eq(schema.id, id), eq(schema.userId, userId)))));
+  // One statement for the whole list. The previous `Promise.all` of one UPDATE
+  // per id still issued N HTTP round trips to Neon (in parallel, but each with
+  // its own request overhead); `UPDATE ... FROM (VALUES ...)` does it in one.
+  const values = ids.map((id, i) => sql`(${id}::text, ${i}::integer)`);
+  await db.execute(sql`
+    UPDATE ${schema} AS t
+    SET sort_order = v.sort_order
+    FROM (VALUES ${sql.join(values, sql`, `)}) AS v(id, sort_order)
+    WHERE t.id = v.id AND t.user_id = ${userId}
+  `);
   return Response.json({ ok: true });
 }

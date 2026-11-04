@@ -30,19 +30,15 @@ export async function GET(req: Request) {
 
 async function ownsHolding(db: ReturnType<typeof getDb>, h: typeof holdings.$inferSelect, userId: string) {
   if (h.userId === userId) return true;
-  if (h.portfolioId) {
-    const p = await db.select({ userId: portfolios.userId }).from(portfolios).where(eq(portfolios.id, h.portfolioId));
-    if (p[0]?.userId === userId) return true;
-  }
-  if (h.providerId) {
-    const pr = await db.select({ userId: providers.userId }).from(providers).where(eq(providers.id, h.providerId));
-    if (pr[0]?.userId === userId) return true;
-  }
-  if (h.accountId) {
-    const a = await db.select({ userId: accounts.userId }).from(accounts).where(eq(accounts.id, h.accountId));
-    if (a[0]?.userId === userId) return true;
-  }
-  return false;
+  // The three legacy ownership paths are independent, so probe them together
+  // instead of up to three sequential Neon round trips.
+  const checks: Array<Promise<Array<{ userId?: string }>>> = [];
+  if (h.portfolioId) checks.push(db.select({ userId: portfolios.userId }).from(portfolios).where(eq(portfolios.id, h.portfolioId)));
+  if (h.providerId) checks.push(db.select({ userId: providers.userId }).from(providers).where(eq(providers.id, h.providerId)));
+  if (h.accountId) checks.push(db.select({ userId: accounts.userId }).from(accounts).where(eq(accounts.id, h.accountId)));
+  if (!checks.length) return false;
+  const results = await Promise.all(checks);
+  return results.some((rows) => rows[0]?.userId === userId);
 }
 
 export async function POST(req: Request) {
@@ -77,10 +73,14 @@ export async function POST(req: Request) {
     targetSymbol = holding.symbol;
     targetName = holding.name;
   } else if (portfolioId) {
-    const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
+    // Ownership and the position list are independent reads, so fetch them in
+    // one round trip and reject afterwards.
+    const [p, all] = await db.batch([
+      db.select().from(portfolios).where(eq(portfolios.id, portfolioId)),
+      db.select().from(holdings).where(eq(holdings.portfolioId, portfolioId)),
+    ]);
     if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
     if (!targetSymbol) return Response.json({ error: "symbol required" }, { status: 400 });
-    const all = await db.select().from(holdings).where(eq(holdings.portfolioId, portfolioId));
     holding = all.find((h) => h.symbol === targetSymbol) ?? null;
   } else {
     return Response.json({ error: "holdingId or portfolioId required" }, { status: 400 });
@@ -179,9 +179,11 @@ export async function DELETE(req: Request) {
     .filter((h) => !tx.portfolioId || h.portfolioId === tx.portfolioId);
   let holding = candidates.find((h) => tx.holdingId === h.id);
   if (!holding) {
-    for (const candidate of candidates) {
-      if (await ownsHolding(db, candidate, userId)) { holding = candidate; break; }
-    }
+    // Resolve every candidate's ownership in one wave rather than one await
+    // per candidate.
+    const owned = await Promise.all(candidates.map((candidate) => ownsHolding(db, candidate, userId)));
+    const index = owned.indexOf(true);
+    if (index >= 0) holding = candidates[index];
   }
   if (!holding) return Response.json({ error: "The position for this transaction no longer exists" }, { status: 409 });
   if (!(await ownsHolding(db, holding, userId))) return Response.json({ error: "forbidden" }, { status: 403 });

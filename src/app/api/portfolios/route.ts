@@ -7,12 +7,21 @@ export async function GET() {
   const userId = await getUserId();
   if (!userId) return Response.json([]);
   const db = getDb();
-  const ps = await db.select().from(portfolios).where(eq(portfolios.userId, userId));
+  // Portfolios and their holdings are independent reads; one batch keeps this
+  // to a single Neon round trip.
+  const [ps, hs] = (await db.batch([
+    db.select().from(portfolios).where(eq(portfolios.userId, userId)),
+    // Holdings are scoped through their portfolio, so the subquery form keeps
+    // the ownership rule in the database instead of a second request.
+    db.select().from(holdings).where(inArray(
+      holdings.portfolioId,
+      db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId)),
+    )),
+  ])) as unknown as [typeof portfolios.$inferSelect[], typeof holdings.$inferSelect[]];
   if (ps.length === 0) return Response.json([]);
-  const pids = ps.map((p) => p.id);
-  const hs = (await db.select().from(holdings).where(inArray(holdings.portfolioId, pids))).filter((holding) => holding.shares > 0);
   const byPid = new Map<string, typeof hs>();
   for (const h of hs) {
+    if (!(h.shares > 0)) continue;
     const arr = byPid.get(h.portfolioId!) ?? [];
     arr.push(h);
     byPid.set(h.portfolioId!, arr);

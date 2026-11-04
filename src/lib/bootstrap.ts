@@ -1,5 +1,6 @@
-import { eq, inArray, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { ownedHoldingsQuery } from "@/lib/ownership";
 import {
   accounts,
   holdings as holdingsTable,
@@ -56,15 +57,18 @@ export type WorkspaceBootstrap = {
 export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceBootstrap> {
   const db = getDb();
 
-  // Wave 1 — every query that only needs the user id runs at once. Neon is
-  // HTTP-based, so each await is a network round trip; parallelising here turns
-  // eight sequential-ish trips into one.
+  // One wave, one round trip. Neon is HTTP-based, so each await is a network
+  // round trip; holdings used to need a *second* wave because its ownership
+  // predicate was built from the account/provider/portfolio ids from the first.
+  // `ownedHoldingsQuery` expresses that as `IN (subquery)` instead, so every
+  // read the workspace needs now travels in a single `db.batch()`.
   type AccountRow = typeof accounts.$inferSelect;
   type ProviderRow = typeof providersTable.$inferSelect;
   type PortfolioRow = typeof portfoliosTable.$inferSelect;
   type TransactionRow = typeof transactionsTable.$inferSelect;
   type SettingsRow = typeof userSettings.$inferSelect;
   type GoalRow = typeof goalsTable.$inferSelect;
+  type HoldingRow = typeof holdingsTable.$inferSelect;
 
   const [batchRes, fx] = await Promise.all([
     db.batch([
@@ -77,6 +81,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
       db.select().from(transactionsTable).where(eq(transactionsTable.userId, userId)),
       db.select().from(userSettings).where(eq(userSettings.userId, userId)),
       db.select().from(goalsTable).where(eq(goalsTable.userId, userId)),
+      ownedHoldingsQuery(db, userId),
     ]),
     getLatestFxRates().catch(() => ({ date: null, rates: {} as FxRates })),
   ]);
@@ -90,6 +95,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
     TransactionRow[],
     SettingsRow[],
     GoalRow[],
+    HoldingRow[],
   ];
   const accountRows = typed[0];
   const providerRows = typed[1];
@@ -100,19 +106,10 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   const transactionRows = typed[6];
   const settingsRows = typed[7];
   const goalRows = typed[8];
+  // Already restricted to `shares > 0` by the query, so no second filter pass.
+  const holdingRows = typed[9];
 
-  // Wave 2 — holdings can belong to the user directly, or to one of their
-  // accounts/providers/portfolios (legacy rows), so it needs the ids above.
-  const portfolioIds = portfolioRows.map((p) => p.id);
-  const accountIds = accountRows.map((a) => a.id);
-  const providerIds = providerRows.map((p) => p.id);
-  const clauses = [eq(holdingsTable.userId, userId)];
-  if (portfolioIds.length) clauses.push(inArray(holdingsTable.portfolioId, portfolioIds));
-  if (providerIds.length) clauses.push(inArray(holdingsTable.providerId, providerIds));
-  if (accountIds.length) clauses.push(inArray(holdingsTable.accountId, accountIds));
-  const holdingRows = await db.select().from(holdingsTable).where(or(...clauses));
-
-  const liveHoldings = holdingRows.filter((h) => h.shares > 0) as unknown as Holding[];
+  const liveHoldings = holdingRows as unknown as Holding[];
 
   // A demo tenant minted by an older build has no per-holding series (only the
   // latest day or two). Repair it here as well as in `/api/demo`, because a
