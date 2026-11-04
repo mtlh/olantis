@@ -34,7 +34,16 @@ const FMP_BASE = "https://financialmodelingprep.com/image-stock";
 const CMC_BASE = "https://companiesmarketcap.com/img/company-logos/128";
 
 /** Bump when the icon renderer changes so browsers drop cached marks. */
-export const BRAND_ICON_VERSION = "4";
+export const BRAND_ICON_VERSION = "5";
+
+/**
+ * A holding whose symbol is CASH is not a listed security — it is the user's
+ * uninvested balance, so it must never resolve to a company that happens to
+ * own the CASH ticker.
+ */
+export function isCashSymbol(symbol: string | null | undefined): boolean {
+  return !!symbol && /^cash$/i.test(symbol.trim());
+}
 
 /**
  * Word order matters for aliases: they are matched as whole words against the
@@ -45,12 +54,13 @@ const BRANDS: Brand[] = [
   // Brokers, platforms and banks -------------------------------------------------
   { key: "vanguard", label: "Vanguard", kind: "both", aliases: ["vanguard", "vanguard investor", "vanguard asset management"], domain: "vanguard.com", monogram: "V", iconUrls: ["https://www.vanguard.com/apple-touch-icon.png"], markColor: "#96151d" },
   { key: "invesco", label: "Invesco", kind: "both", aliases: ["invesco"], domain: "invesco.com", monogram: "IVZ", iconUrls: ["https://www.invesco.com/etc.clientlibs/invesco/clientlibs/main/resources/images/apple-touch-icon.png"] },
-  { key: "ishares", label: "iShares", kind: "issuer", aliases: ["ishares", "i shares"], domain: "blackrock.com", monogram: "iS" },
+  { key: "ishares", label: "iShares", kind: "issuer", aliases: ["ishares", "i shares"], domain: "ishares.com", monogram: "iS" },
   { key: "blackrock", label: "BlackRock", kind: "both", aliases: ["blackrock", "black rock"], domain: "blackrock.com", monogram: "BLK" },
   { key: "spdr", label: "SPDR", kind: "issuer", aliases: ["spdr", "state street", "ssga"], domain: "ssga.com", monogram: "SP" },
   { key: "trading212", label: "Trading 212", kind: "provider", aliases: ["trading 212", "trading212"], domain: "trading212.com", monogram: "T212", iconUrls: ["/brands/trading212.svg", "https://www.trading212.com/apple-touch-icon.png"] },
   { key: "hargreaves", label: "Hargreaves Lansdown", kind: "provider", aliases: ["hargreaves lansdown", "hargreaves"], domain: "hl.co.uk", monogram: "HL" },
-  { key: "ajbell", label: "AJ Bell", kind: "provider", aliases: ["aj bell", "ajbell"], domain: "ajbell.co.uk", monogram: "AJB", iconUrls: ["https://www.ajbell.co.uk/apple-touch-icon.png"], markColor: "#d6003c" },
+  { key: "ajbell", label: "AJ Bell", kind: "provider", aliases: ["aj bell", "ajbell", "aj bell youinvest", "youinvest"], domain: "ajbell.co.uk", monogram: "AJB", iconUrls: ["https://www.ajbell.co.uk/apple-touch-icon.png"], markColor: "#d6003c" },
+  { key: "dodl", label: "Dodl", kind: "provider", aliases: ["dodl by aj bell", "dodl"], domain: "dodl.co.uk", monogram: "D", iconUrls: ["https://www.dodl.co.uk/apple-touch-icon.png"] },
   { key: "interactiveinvestor", label: "Interactive Investor", kind: "provider", aliases: ["interactive investor"], domain: "ii.co.uk", monogram: "II" },
   { key: "fidelity", label: "Fidelity", kind: "both", aliases: ["fidelity", "fidelity international"], domain: "fidelity.co.uk", monogram: "F" },
   { key: "nutmeg", label: "Nutmeg", kind: "provider", aliases: ["nutmeg"], domain: "nutmeg.com", monogram: "N" },
@@ -261,6 +271,7 @@ export function holdingLogoSources({
   exchange?: string | null;
 }): LogoSource[] {
   const sources: LogoSource[] = [];
+  if (isCashSymbol(symbol)) return sources;
   const issuer = issuerBrandForHolding(name);
   if (issuer) sources.push(...brandSources(issuer));
 
@@ -299,6 +310,7 @@ export function brandIconSrc({
   name?: string | null;
   exchange?: string | null;
 }): string | null {
+  if (!provider && isCashSymbol(symbol)) return null;
   const brand = provider ? providerBrandForName(provider) : issuerBrandForHolding(name);
   // Local vector marks are already transparent and infinitely sharp; let the
   // browser draw them directly instead of rasterising through the icon route.
@@ -339,5 +351,9 @@ export function monogramFor({
       .join("");
     return (initials || provider).slice(0, 2).toUpperCase();
   }
+  // A fund name usually carries its issuer ("State Street SPDR …", "iShares …").
+  // Showing the issuer's monogram reads far better than a random ticker stub.
+  const issuer = issuerBrandForHolding(name);
+  if (issuer) return issuer.monogram.slice(0, 3);
   return (symbol?.trim() || name?.trim() || "?").slice(0, 3).toUpperCase();
 }

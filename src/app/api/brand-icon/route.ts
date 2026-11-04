@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   holdingLogoSources,
+  isCashSymbol,
   issuerBrandForHolding,
   providerBrandForName,
   providerLogoSources,
@@ -18,6 +19,8 @@ const ALLOWED_HOSTS = new Set([
   "www.vanguard.com",
   "www.trading212.com",
   "www.ajbell.co.uk",
+  "www.dodl.co.uk",
+  "www.ishares.com",
   "www.invesco.com",
   "www.interactivebrokers.com",
   "www.starlingbank.com",
@@ -79,7 +82,12 @@ async function resolveLogo(sources: Array<{ src: string }>, tint?: string): Prom
     const raw = await download(src);
     if (!raw) continue;
     try {
-      const normalized = await normalizeLogo(raw, { tint, aggressiveSpecks: Boolean(tint) });
+      const normalized = await normalizeLogo(raw, {
+        tint,
+        aggressiveSpecks: Boolean(tint),
+        // Below 32px a favicon turns to mush at tile size; let the monogram win.
+        minSourceSize: 32,
+      });
       if (normalized) return normalized;
     } catch {
       // Try the next source; a broken logo shouldn't blank the row.
@@ -119,6 +127,12 @@ export async function GET(request: Request) {
   const version = clean(params.get("v"), 8) ?? "0";
 
   if (!provider && !symbol) return new Response(null, { status: 404 });
+
+  // Cash is the user's own balance, not a listed security: the UI draws a
+  // currency glyph instead, so never look a "CASH" ticker logo up.
+  if (!provider && isCashSymbol(symbol)) {
+    return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
+  }
 
   const key = provider
     ? `${version}:provider:${provider.toLowerCase()}`

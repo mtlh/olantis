@@ -311,7 +311,7 @@ export function WatchlistPanel() {
                 <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-72 overflow-auto rounded-xl border border-white/10 bg-zinc-950 p-1 shadow-2xl">
                   {suggestions.slice(0, 5).map((result) => (
                     <button key={`${result.symbol}:${result.exchange ?? ""}`} type="button" onClick={() => void add(result)} disabled={saving} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.06] disabled:opacity-50">
-                      <BrandIcon symbol={result.symbol} name={result.name} exchange={result.exchange} size={36} />
+                      <BrandIcon symbol={result.symbol} name={result.name} exchange={result.exchange} currency={result.currency} size={36} />
                       <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-white">{result.name}</span><span className="block truncate text-xs text-zinc-500">{result.symbol}{result.exchange ? ` · ${result.exchange}` : ""}{result.type ? ` · ${result.type}` : ""}</span></span>
                       {result.price != null && <span className="text-sm tabular-nums text-zinc-300">{fmtPrice(result.price, result.currency)}</span>}
                       <Plus className="size-4 text-zinc-500" />
@@ -346,7 +346,7 @@ export function WatchlistPanel() {
                   return (
                     <div key={item.id} className={`group grid grid-cols-[minmax(0,1fr)_auto_24px] items-center gap-3 px-1 py-3 transition-colors ${isActive ? "bg-white/[0.045]" : "hover:bg-white/[0.025]"}`}>
                       <button type="button" onClick={() => setSelectedId(item.id)} className="flex min-w-0 items-center gap-3 text-left" aria-pressed={isActive}>
-                        <BrandIcon symbol={item.symbol} name={item.name} exchange={item.exchange} size={36} />
+                        <BrandIcon symbol={item.symbol} name={item.name} exchange={item.exchange} currency={item.currency ?? quote?.currency} size={36} />
                         <span className="min-w-0"><span className="block truncate text-sm font-medium text-white">{item.name || item.symbol}</span><span className="mt-0.5 block truncate text-[11px] text-zinc-600">{item.symbol}{item.exchange ? ` · ${item.exchange}` : ""}</span></span>
                       </button>
                       <span className="text-right text-sm tabular-nums text-zinc-200">{quote?.price != null ? fmtPrice(quote.price, quote.currency ?? item.currency) : <span className="text-zinc-600">—</span>}</span>

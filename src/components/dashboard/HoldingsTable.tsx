@@ -158,7 +158,7 @@ export function HoldingsTable({
                 <TableRow key={holding.id} className="cursor-pointer border-white/[0.05] hover:bg-white/[0.025]" onClick={() => onSelect(holding)}>
                   <TableCell className="pl-1">
                     <div className="flex items-center gap-3">
-                      <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={32} />
+                      <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={32} />
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-white">{holding.symbol}</div>
                         <div className="max-w-[128px] truncate text-[11px] text-zinc-500 sm:max-w-[160px]">{holding.name}</div>

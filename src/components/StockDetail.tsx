@@ -156,7 +156,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={32} shape="circle" />
+            <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={32} shape="circle" />
             <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{holding.symbol}</h1>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">

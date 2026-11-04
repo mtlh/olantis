@@ -758,7 +758,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const isHoldingActive = holding.id === activeHoldingId;
               return (
                 <button key={holding.id} type="button" onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
-                  <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={22} />
+                  <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
                     <span className="block truncate text-[9px] text-zinc-600">{holding.name}</span>
@@ -915,7 +915,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         {railDirectHoldings.map((holding) => (
           <RailButton
             key={holding.id}
-            icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={22} />}
+            icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />}
             label={holding.symbol}
             subtitle={holding.name}
             rows={[
@@ -1092,7 +1092,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                           <div className="px-1.5 pb-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-600">Direct</div>
                           {accountDirectHoldings.map((h: Holding) => (
                             <div key={h.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors ${onSelectHolding ? "cursor-pointer hover:bg-white/[0.035]" : ""}`} onClick={() => onSelectHolding?.(h)}>
-                              <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} size={22} />
+                              <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={22} />
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
                                 <span className="block truncate text-[9px] text-zinc-600">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
