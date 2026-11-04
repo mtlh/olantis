@@ -160,6 +160,21 @@ export const goals = pgTable("goals", {
   createdAt: integer("created_at").notNull(),
 }, (t) => ({ userIdIdx: index("goals_user_id_idx").on(t.userId) }));
 
+/**
+ * Daily closes for the market benchmarks the performance chart compares
+ * against. Stored rather than fetched on every render so the series is stable,
+ * cheap to read, and can be backfilled from the earliest portfolio date any
+ * user has. `price` is the raw exchange close (no dividends), matching the
+ * "price only" note on the chart.
+ */
+export const benchmarkDaily = pgTable("benchmark_daily", {
+  symbol: text("symbol").notNull(),
+  date: text("date").notNull(),
+  price: money("price").notNull(),
+  currency: text("currency"),
+  updatedAt: integer("updated_at").notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.symbol, t.date] }) }));
+
 export const quoteDaily = pgTable("quote_daily", {
   symbol: text("symbol").notNull(),
   date: text("date").notNull(),

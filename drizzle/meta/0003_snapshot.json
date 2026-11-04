@@ -1,5 +1,5 @@
 {
-  "id": "116c1b3e-03e8-4ffc-9afe-96c76bb268da",
+  "id": "90fa78f3-4080-4dd2-a8ee-b50419a98a52",
   "prevId": "3d8289a4-c4cd-42dd-a160-b71f2336c6c8",
   "version": "7",
   "dialect": "postgresql",
@@ -64,6 +64,57 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.benchmark_daily": {
+      "name": "benchmark_daily",
+      "schema": "",
+      "columns": {
+        "symbol": {
+          "name": "symbol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price": {
+          "name": "price",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "benchmark_daily_symbol_date_pk": {
+          "name": "benchmark_daily_symbol_date_pk",
+          "columns": [
+            "symbol",
+            "date"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -200,13 +251,6 @@
           "type": "numeric",
           "primaryKey": false,
           "notNull": true
-        },
-        "origin": {
-          "name": "origin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'recorded'"
         }
       },
       "indexes": {},
@@ -331,25 +375,6 @@
         "last_refreshed_at": {
           "name": "last_refreshed_at",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "history_backfilled_at": {
-          "name": "history_backfilled_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "history_backfill_attempts": {
-          "name": "history_backfill_attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "history_backfill_error": {
-          "name": "history_backfill_error",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -490,13 +515,6 @@
           "type": "numeric",
           "primaryKey": false,
           "notNull": true
-        },
-        "origin": {
-          "name": "origin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'recorded'"
         }
       },
       "indexes": {},
@@ -842,13 +860,6 @@
           "type": "numeric",
           "primaryKey": false,
           "notNull": true
-        },
-        "origin": {
-          "name": "origin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'recorded'"
         }
       },
       "indexes": {},

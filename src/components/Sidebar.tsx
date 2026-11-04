@@ -1,7 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/Logo";
 import { BrandIcon } from "@/components/BrandIcon";
 import { EditPortfolioDialog } from "@/components/dashboard/EditPortfolioDialog";
@@ -425,10 +425,9 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
   );
 }
 
-export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onCreateProvider, onOpenWizard, onRefresh, onRefreshPrices, refreshing, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeleteProvider, onDeletePortfolio }: {
+export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onOpenWizard, onRefresh, onRefreshPrices, refreshing, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeletePortfolio }: {
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; activeHoldingId?: string | null; activeProviderId?: string | null; activeAccountId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectAccount?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
-  onCreateAccount: (name: string) => void | Promise<void>;
-  onCreateProvider?: (name: string, accountId: string) => Promise<void>;
+  onCreateAccount: (name: string) => Promise<unknown>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
   onRefresh?: () => Promise<void>;
   onRefreshPrices?: () => void;
@@ -438,7 +437,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   onRenameProvider?: (id: string, name: string) => Promise<void>;
   onRenamePortfolio?: (id: string, patch: { name?: string; type?: string; accountId?: string | null; providerId?: string | null }) => Promise<void>;
   onDeleteAccount?: (a: Account) => void;
-  onDeleteProvider?: (p: Provider) => void;
   onDeletePortfolio?: (p: Portfolio) => void;
 }) {
   const { toast } = useToast();
@@ -448,9 +446,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [editAccountName, setEditAccountName] = useState("");
   const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null);
-  const [showProviderDialog, setShowProviderDialog] = useState(false);
-  const [providerAccountId, setProviderAccountId] = useState<string | null>(null);
-  const [providerName, setProviderName] = useState("");
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [editProviderName, setEditProviderName] = useState("");
   const [showDirectHolding, setShowDirectHolding] = useState(false);
@@ -688,6 +683,29 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const accColorFor = (acc: Account) => acc.color || PALETTE[(accountIndex.get(acc.id) ?? 0) % PALETTE.length].value;
 
   const togglePortfolio = (id: string) => setExpandedPortfolio((e) => ({ ...e, [id]: !e[id] }));
+  // A portfolio only looks expanded by default while it is the active one, so
+  // switching selection would silently collapse it. Pin the open state before
+  // the selection moves on, so expanding several portfolios at once sticks.
+  const pinPortfolioOpen = (id: string | null) => {
+    if (!id) return;
+    setExpandedPortfolio((e) => (e[id] !== undefined ? e : { ...e, [id]: true }));
+  };
+  const selectPortfolio = (id: string) => {
+    if (activeId && activeId !== id) pinPortfolioOpen(activeId);
+    onSelect(id);
+    setMobileOpen(false);
+  };
+  const selectHolding = (holding: Holding) => {
+    if (activeId && activeId !== holding.portfolioId) pinPortfolioOpen(activeId);
+    onSelectHolding?.(holding);
+    setMobileOpen(false);
+  };
+  const prevActivePortfolioIdRef = useRef<string | null>(activeId);
+  useEffect(() => {
+    const previous = prevActivePortfolioIdRef.current;
+    prevActivePortfolioIdRef.current = activeId;
+    if (previous && previous !== activeId) pinPortfolioOpen(previous);
+  }, [activeId]);
   const openWizard = (accountId: string | null = null, providerId: string | null = null) => { onOpenWizard(accountId, providerId); setMobileOpen(false); };
   const validateName = (n: string) => n.trim().length >= 2 ? "" : "Min 2 characters";
 
@@ -714,7 +732,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             type="button"
             aria-label={`Open ${portfolio.name}`}
             aria-current={isActive ? "page" : undefined}
-            onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
+            onClick={() => selectPortfolio(portfolio.id)}
             className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           />
           <TreeToggle
@@ -757,7 +775,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const allocation = total > 0 ? holdingValue / total * 100 : 0;
               const isHoldingActive = holding.id === activeHoldingId;
               return (
-                <button key={holding.id} type="button" onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
+                <button key={holding.id} type="button" onClick={() => selectHolding(holding)} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
                   <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
@@ -788,13 +806,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     if (err) return toast({title:err,variant:"error"});
     setSaving(true);
     try { await onRenameAccount?.(editingAccount.id, editAccountName.trim()); setEditingAccount(null); toast({title:"Account renamed",variant:"success"});} catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Rename failed",description:msg,variant:"error"});} finally{setSaving(false);}
-  };
-  const handleCreateProvider = async () => {
-    if(!providerAccountId) return toast({title:"Select account",variant:"error"});
-    const err = validateName(providerName);
-    if(err) return toast({title:err,variant:"error"});
-    setSaving(true);
-    try{ await onCreateProvider?.(providerName.trim(), providerAccountId); setShowProviderDialog(false); setProviderName(""); toast({title:"Provider created",variant:"success"});} catch(e: unknown){ const msg = e instanceof Error ? e.message : String(e); toast({title:"Create failed",description:msg,variant:"error"});} finally{setSaving(false);}
   };
   const handleRenameProvider = async () => {
     if(!editingProvider) return;
@@ -998,18 +1009,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                   <DropdownMenuItem onClick={() => setShowAccountDialog(true)}>
                     <Building2 className="w-3.5 h-3.5"/> Account
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={accounts.length === 0}
-                    onClick={() => {
-                      const targetAccount = activeAccountId ?? accounts[0]?.id;
-                      if (!targetAccount) return;
-                      setProviderAccountId(targetAccount);
-                      setProviderName("");
-                      setShowProviderDialog(true);
-                    }}
-                  >
-                    <Briefcase className="w-3.5 h-3.5"/> Provider
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => openWizard(activeAccountId ?? null, activeProviderId ?? null)}>
                     <Layers className="w-3.5 h-3.5"/> Portfolio
                   </DropdownMenuItem>
@@ -1030,7 +1029,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const total = accountTotalsById.get(acc.id) ?? 0;
               const accountActive = activeAccountId === acc.id;
               const accColor = accColorFor(acc);
-              const accountProviders = providers.filter((provider) => provider.accountId === acc.id);
               const accountPortfolios = filteredPortfolios(
                 portfolios.filter((portfolio) => accountIdForPortfolio(portfolio) === acc.id),
                 accountNameMatches,
@@ -1052,21 +1050,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                       <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Account actions" className="text-zinc-500 hover:text-white"><MoreVertical className="w-3.5 h-3.5"/></Button>} />
                       <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-40">
                         <DropdownMenuItem onClick={()=>{ setEditingAccount(acc); setEditAccountName(acc.name); }}><Pencil className="w-3.5 h-3.5"/>Rename account</DropdownMenuItem>
-                        <DropdownMenuItem onClick={()=>{ setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true); }}><Briefcase className="w-3.5 h-3.5"/>New provider</DropdownMenuItem>
-                        {accountProviders.length > 0 && (
-                          <DropdownMenuSub>
-                            <DropdownMenuSubTrigger><Briefcase className="w-3.5 h-3.5"/>Providers</DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="bg-zinc-900 border-white/10 text-white">
-                              {accountProviders.map((provider) => (
-                                <DropdownMenuItem key={provider.id} onClick={() => onSelectProvider?.(provider.id)}>{provider.name}</DropdownMenuItem>
-                              ))}
-                              <DropdownMenuSeparator className="bg-white/10"/>
-                              {accountProviders.map((provider) => (
-                                <DropdownMenuItem key={`delete-${provider.id}`} variant="destructive" onClick={() => onDeleteProvider?.(provider)}><Trash2 className="w-3.5 h-3.5"/>Delete {provider.name}</DropdownMenuItem>
-                              ))}
-                            </DropdownMenuSubContent>
-                          </DropdownMenuSub>
-                        )}
                         <DropdownMenuItem onClick={()=>{ setDirectTarget({accountId: acc.id}); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>openWizard(acc.id, null)}><Layers className="w-3.5 h-3.5"/>New portfolio</DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-white/10"/>
@@ -1151,27 +1134,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowAccountDialog(false)}>Cancel</Button>
               <Button onClick={handleCreateAccount} disabled={!accountName.trim() || saving}>{saving?"Creating…":"Create account"}</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showProviderDialog} onOpenChange={setShowProviderDialog}>
-        <DialogContent className="bg-zinc-900 border-white/10 text-white">
-          <DialogHeader><DialogTitle>New provider</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2"><Label>Provider name</Label><Input value={providerName} onChange={e=>setProviderName(e.target.value)} placeholder="e.g. Vanguard, Hargreaves Lansdown, Trading 212" autoFocus /></div>
-            <div className="space-y-2"><Label>Account</Label>
-              <Select value={providerAccountId ?? "__none"} onValueChange={v=>setProviderAccountId(v==="__none"?null:v)}>
-                <SelectTrigger><span className="flex-1 text-left truncate">{providerAccountId ? accounts.find(a=>a.id===providerAccountId)?.name ?? "—" : "Select account"}</span></SelectTrigger>
-                <SelectContent>
-                  {accounts.map(a=> <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={()=>setShowProviderDialog(false)}>Cancel</Button>
-              <Button onClick={handleCreateProvider} disabled={!providerName.trim() || !providerAccountId || saving}>{saving?"Creating…":"Create provider"}</Button>
             </div>
           </div>
         </DialogContent>

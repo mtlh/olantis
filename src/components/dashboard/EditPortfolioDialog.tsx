@@ -196,7 +196,7 @@ export function EditPortfolioDialog({ portfolio, accounts, providers, onOpenChan
                     ? "Choose an account to see its providers."
                     : availableProviders.length
                       ? "Providers live inside the selected account."
-                      : "No providers here yet — add one from the sidebar."}
+                      : "No providers here yet — create a portfolio under this account."}
                 </p>
               </div>
             </div>

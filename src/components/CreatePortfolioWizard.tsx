@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { ProviderPicker, type ProviderSelection } from "@/components/ProviderPicker";
 import { Account, Provider } from "@/lib/store";
 import { ArrowLeft, ArrowRight, Briefcase, Check, Layers, TrendingUp, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -17,6 +18,10 @@ type Props = {
   defaultAccountId?: string | null;
   defaultProviderId?: string | null;
   onCreate: (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => void | Promise<void>;
+  /** Creates the provider brand selected in step 1, inside the chosen account. */
+  onCreateProvider?: (name: string, accountId: string) => Promise<{ id: string } | void>;
+  /** Lets the wizard bootstrap its first account instead of dead-ending. */
+  onCreateAccount?: (name: string) => Promise<{ id: string } | void>;
   inline?: boolean;
 };
 
@@ -36,12 +41,14 @@ function StepHeading({ icon: Icon, title, description }: { icon: LucideIcon; tit
   );
 }
 
-export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers = [], defaultAccountId, defaultProviderId, onCreate, inline }: Props) {
+export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers = [], defaultAccountId, defaultProviderId, onCreate, onCreateProvider, onCreateAccount, inline }: Props) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [type, setType] = useState<"live" | "manual">("live");
   const [accountId, setAccountId] = useState<string | null>(defaultAccountId ?? null);
-  const [providerId, setProviderId] = useState<string | null>(defaultProviderId ?? null);
+  const [provider, setProvider] = useState<ProviderSelection | null>(null);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [creatingAccount, setCreatingAccount] = useState(false);
   const [symbol, setSymbol] = useState("");
   const [shares, setShares] = useState("");
   const [creating, setCreating] = useState(false);
@@ -51,25 +58,55 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
   useEffect(() => {
     if (open && (prevDefaultsRef.current.accountId !== defaultAccountId || prevDefaultsRef.current.providerId !== defaultProviderId)) {
       setAccountId(defaultAccountId ?? null);
-      setProviderId(defaultProviderId ?? null);
+      const preselected = defaultProviderId ? providers.find((item) => item.id === defaultProviderId) ?? null : null;
+      setProvider(preselected ? { id: preselected.id, name: preselected.name } : null);
     }
     prevDefaultsRef.current = { accountId: defaultAccountId, providerId: defaultProviderId };
-  }, [open, defaultAccountId, defaultProviderId]);
+  }, [open, defaultAccountId, defaultProviderId, providers]);
 
-  const filteredProviders = useMemo(() => (accountId ? providers.filter((p) => p.accountId === accountId) : []), [providers, accountId]);
-  const prevFilteredRef = useRef<Provider[]>([]);
-  useEffect(() => {
-    if (providerId && accountId && prevFilteredRef.current.find((p) => p.id === providerId) && !filteredProviders.find((p) => p.id === providerId)) setProviderId(null);
-    prevFilteredRef.current = filteredProviders;
-  }, [accountId, filteredProviders, providerId]);
+  const accountProviders = useMemo(() => (accountId ? providers.filter((item) => item.accountId === accountId) : []), [providers, accountId]);
+
+  const selectAccount = (value: string) => {
+    setAccountId(value);
+    // A saved provider belongs to exactly one account; a brand can follow the
+    // user to any account and is created on save.
+    if (provider?.id && !providers.some((item) => item.id === provider.id && item.accountId === value)) {
+      setProvider(null);
+    }
+  };
+
+  const createAccount = async () => {
+    const trimmed = newAccountName.trim();
+    if (trimmed.length < 2 || !onCreateAccount) return;
+    setCreatingAccount(true);
+    setError("");
+    try {
+      const created = await onCreateAccount(trimmed);
+      if (created && "id" in created && created.id) setAccountId(created.id);
+      setNewAccountName("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreatingAccount(false);
+    }
+  };
 
   if (!open) return null;
-  const canNext = step !== 1 || name.trim().length >= 2;
+  const hasLocation = !!accountId && !!provider;
+  const canNext = step !== 1 || (name.trim().length >= 2 && hasLocation);
 
   const handleCreate = async () => {
     setCreating(true);
     setError("");
     try {
+      let providerId = provider?.id ?? null;
+      if (!providerId && provider) {
+        if (!accountId) throw new Error("Choose an account before adding a provider");
+        if (!onCreateProvider) throw new Error("Provider creation is unavailable");
+        const created = await onCreateProvider(provider.name, accountId);
+        providerId = created && "id" in created ? created.id : null;
+        if (!providerId) throw new Error("Could not create provider");
+      }
       await onCreate(name.trim(), type, accountId, providerId, { symbol: symbol.toUpperCase().trim(), shares });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -92,7 +129,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
 
   const detailsStep = (
     <div className="space-y-7">
-      <StepHeading icon={Wallet} title="Portfolio details" description="Choose a name and where this portfolio belongs. You can change these later." />
+      <StepHeading icon={Wallet} title="Portfolio details" description="Name the portfolio and assign it to the account and provider that hold it." />
 
       <div className="space-y-5">
         <div className="space-y-2">
@@ -107,7 +144,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
             className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600 focus-visible:border-white/25 focus-visible:ring-white/10"
           />
           <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
-            <span>2–32 characters. Lives inside its provider.</span>
+            <span>2–32 characters.</span>
             <span aria-live="polite" className="tabular-nums">{name.length}/32</span>
           </div>
         </div>
@@ -115,30 +152,65 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="portfolio-account">Account</Label>
-            <Select value={accountId ?? "__none"} onValueChange={(v) => setAccountId(v === "__none" ? null : v)}>
-              <SelectTrigger id="portfolio-account" className="h-11 w-full rounded-xl border-white/[.12] bg-black/20 px-3.5">
-                <span className="flex-1 truncate text-left">{accountId ? accounts.find((a) => a.id === accountId)?.name ?? "—" : "No account (unassigned)"}</span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">No account (unassigned)</SelectItem>
-                {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <p className="text-xs leading-relaxed text-zinc-500">A top-level folder, like Personal or Joint.</p>
+            {accounts.length === 0 && onCreateAccount ? (
+              <>
+                <div className="flex gap-2">
+                  <Input
+                    id="portfolio-account"
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") void createAccount(); }}
+                    placeholder="e.g. Household"
+                    maxLength={64}
+                    className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600 focus-visible:border-white/25 focus-visible:ring-white/10"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void createAccount()}
+                    disabled={creatingAccount || newAccountName.trim().length < 2}
+                    className="h-11 shrink-0 rounded-xl border-white/[.12] bg-white/[.04] px-3 text-zinc-200 hover:bg-white/[.08]"
+                  >
+                    {creatingAccount ? "Creating…" : "Create"}
+                  </Button>
+                </div>
+                <p className="text-xs leading-relaxed text-zinc-500">Create the top-level folder first, like Household or Personal.</p>
+              </>
+            ) : (
+              <>
+                <Select value={accountId ?? ""} onValueChange={(v) => selectAccount(v ?? "")} disabled={accounts.length === 0}>
+                  <SelectTrigger id="portfolio-account" className="h-11 w-full rounded-xl border-white/[.12] bg-black/20 px-3.5">
+                    <span className="flex flex-1 items-center gap-2 truncate text-left">
+                      {accountId ? accounts.find((a) => a.id === accountId)?.name ?? "—" : <span className="text-zinc-600">{accounts.length === 0 ? "No accounts yet" : "Select an account"}</span>}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs leading-relaxed text-zinc-500">
+                  {accounts.length === 0 ? "Create an account from the sidebar first." : "The top-level folder, like Personal or Joint."}
+                </p>
+              </>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="portfolio-provider" className="flex items-center gap-1.5"><Briefcase className="size-3.5" /> Provider <span className="font-normal text-zinc-500">(optional)</span></Label>
-            <Select value={providerId ?? "__none"} onValueChange={(v) => setProviderId(v === "__none" ? null : v)} disabled={!accountId}>
-              <SelectTrigger id="portfolio-provider" className="h-11 w-full rounded-xl border-white/[.12] bg-black/20 px-3.5">
-                <span className="flex-1 truncate text-left">{providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? "—" : accountId ? (filteredProviders.length ? "No provider (direct)" : "No providers yet") : "Select an account first"}</span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">No provider — direct under account</SelectItem>
-                {filteredProviders.map((pr) => <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <p className="text-xs leading-relaxed text-zinc-500">{accountId ? filteredProviders.length ? "Providers live inside this account." : "Add providers like Vanguard or Trading 212 from the sidebar." : "Choose an account to see its providers."}</p>
+            <Label htmlFor="portfolio-provider" className="flex items-center gap-1.5"><Briefcase className="size-3.5" /> Provider</Label>
+            <ProviderPicker
+              id="portfolio-provider"
+              value={provider}
+              onChange={setProvider}
+              providers={accountProviders}
+              disabled={!accountId}
+            />
+            <p className="text-xs leading-relaxed text-zinc-500">
+              {!accountId
+                ? "Choose an account to see its providers."
+                : provider && !provider.id
+                  ? `“${provider.name}” will be added to this account.`
+                  : "The broker or platform that holds it."}
+            </p>
           </div>
         </div>
 
@@ -207,7 +279,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
           { label: "Portfolio name", value: name || "—" },
           { label: "Type", value: type === "live" ? "Live portfolio" : "Manual portfolio" },
           { label: "Account", value: accountId ? accounts.find((a) => a.id === accountId)?.name ?? "Unassigned" : "Unassigned" },
-          { label: "Provider", value: providerId ? filteredProviders.find((p) => p.id === providerId)?.name ?? providers.find((p) => p.id === providerId)?.name ?? "—" : "No provider" },
+          { label: "Provider", value: provider?.name ?? "—" },
           { label: "First holding", value: symbol ? `${symbol.toUpperCase()} · ${shares || 0} shares` : "None — add later" },
         ].map((item, index) => (
           <div key={item.label} className={`min-w-0 rounded-xl border border-white/[.08] bg-white/[.025] px-4 py-3.5 ${index === 4 ? "sm:col-span-2" : ""}`}>
@@ -244,8 +316,8 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
   const content = step === 1 ? detailsStep : step === 2 ? holdingsStep : reviewStep;
 
   const wizard = (
-    <section className="overflow-hidden rounded-2xl border border-white/[.09] bg-[#0b0b0d]/85 shadow-[0_24px_80px_rgba(0,0,0,.42)] backdrop-blur-xl">
-      <div className="border-b border-white/[.07] px-5 py-5 sm:px-7">
+    <section className="rounded-2xl border border-white/[.09] bg-[#0b0b0d]/85 shadow-[0_24px_80px_rgba(0,0,0,.42)] backdrop-blur-xl">
+      <div className="rounded-t-2xl border-b border-white/[.07] px-5 py-5 sm:px-7">
         {stepper}
       </div>
 
@@ -254,7 +326,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
         {content}
       </div>
 
-      <div className="flex min-h-[76px] items-center justify-between gap-4 border-t border-white/[.07] bg-white/[.012] px-4 py-3.5 sm:px-7">
+      <div className="flex min-h-[76px] items-center justify-between gap-4 rounded-b-2xl border-t border-white/[.07] bg-white/[.012] px-4 py-3.5 sm:px-7">
         <div className="min-w-0">
           {step > 1 ? (
             <Button variant="ghost" onClick={() => setStep(step - 1)} className="-ml-2 gap-2 text-zinc-400 hover:text-white">

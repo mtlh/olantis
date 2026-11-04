@@ -134,6 +134,7 @@ export function useAccounts() {
   const create = useCallback(async (name: string) => {
     const r = await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) }) as { id: string };
     setAccounts((prev) => [...prev, { id: r.id, name, color: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) }]);
+    return r;
   }, []);
   const remove = useCallback(async (id: string) => {
     await api(`/api/accounts?id=${encodeURIComponent(id)}`, { method: "DELETE" });

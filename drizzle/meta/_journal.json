@@ -19,8 +19,15 @@
     {
       "idx": 2,
       "version": "7",
+      "when": 1793823181718,
+      "tag": "0003_benchmark_daily",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
       "when": 1793823343422,
-      "tag": "0003_history_backfill",
+      "tag": "0004_history_backfill",
       "breakpoints": true
     }
   ]

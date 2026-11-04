@@ -174,7 +174,7 @@ Data access stays `db.batch`-friendly; inserts are chunked (≈400 rows per stat
 
 ## 5. Migration
 
-`drizzle/0003_history_backfill.sql` (plus regenerated `drizzle/meta`):
+`drizzle/0004_history_backfill.sql` (plus regenerated `drizzle/meta`):
 
 ```sql
 ALTER TABLE "snapshots"           ADD COLUMN IF NOT EXISTS "origin" text NOT NULL DEFAULT 'recorded';
@@ -265,7 +265,7 @@ spans it, `1Y` mover is non-null, and a second page load does not call Yahoo aga
 
 | Area | File |
 | --- | --- |
-| Schema + migration | `src/lib/db/schema.ts`, `drizzle/0003_history_backfill.sql` |
+| Schema + migration | `src/lib/db/schema.ts`, `drizzle/0004_history_backfill.sql` |
 | Pure series maths + tests | `src/lib/backfill-series.ts`, `tests/backfill.test.mts` |
 | Engine + cron sweep | `src/lib/backfill.ts` |
 | On-demand endpoint | `src/app/api/snapshots/backfill/route.ts` |

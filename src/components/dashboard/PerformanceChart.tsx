@@ -57,9 +57,20 @@ export function PerformanceChart({
   const [benchmarkPrices, setBenchmarkPrices] = useState<{ key: string; rows: Array<{ date: string; price: number }> } | null>(null);
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(() => new Set());
 
+  // The benchmark is anchored to the first day any series has data, so the
+  // comparison starts from the same point as the portfolio.
+  const dataStart = useMemo(() => {
+    let earliest: string | null = null;
+    for (const snapshot of snapshots) if (!earliest || snapshot.date < earliest) earliest = snapshot.date;
+    for (const info of Object.values(byPortfolio)) {
+      for (const snapshot of info.data) if (!earliest || snapshot.date < earliest) earliest = snapshot.date;
+    }
+    return earliest;
+  }, [snapshots, byPortfolio]);
+
   useEffect(() => {
-    if (benchmark === "__none__") return;
-    const cacheKey = `${benchmark}:MAX`;
+    if (benchmark === "__none__" || !dataStart) return;
+    const cacheKey = `${benchmark}:${dataStart}`;
     const cachedRows = benchmarkCache.get(cacheKey);
     if (cachedRows) {
       const rows = cachedRows;
@@ -67,8 +78,8 @@ export function PerformanceChart({
       return;
     }
     let cancelled = false;
-    fetch(`/api/chart?symbol=${encodeURIComponent(benchmark)}&range=MAX`)
-      .then(async (response) => response.ok ? (await response.json()).chart as Array<{ date: string; price: number }> : [])
+    fetch(`/api/benchmark?symbol=${encodeURIComponent(benchmark)}&from=${encodeURIComponent(dataStart)}`)
+      .then(async (response) => response.ok ? (await response.json()).prices as Array<{ date: string; price: number }> : [])
       .then((rows) => {
         if (rows.length) benchmarkCache.set(cacheKey, rows);
         if (!cancelled) setBenchmarkPrices({ key: cacheKey, rows });
@@ -77,7 +88,7 @@ export function PerformanceChart({
         if (!cancelled) setBenchmarkPrices({ key: cacheKey, rows: [] });
       });
     return () => { cancelled = true; };
-  }, [benchmark]);
+  }, [benchmark, dataStart]);
 
   const data = useMemo<PerformanceChartRow[]>(() => {
     const totalHistory = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
@@ -107,7 +118,7 @@ export function PerformanceChart({
       return value == null ? null : ((value / curve.base) - 1) * 100;
     };
 
-    const benchmarkHistory = benchmarkPrices?.key === `${benchmark}:MAX`
+    const benchmarkHistory = benchmarkPrices?.key === `${benchmark}:${dataStart}`
       ? [...benchmarkPrices.rows].filter((point) => Number.isFinite(point.price) && point.price > 0).sort((a, b) => a.date.localeCompare(b.date))
       : [];
     const userDataStart = orderedDates[0];
@@ -129,7 +140,7 @@ export function PerformanceChart({
       }
       return row;
     });
-  }, [snapshots, byPortfolio, benchmarkPrices, benchmark]);
+  }, [snapshots, byPortfolio, benchmarkPrices, benchmark, dataStart]);
   // Rows carry a formatted `date` label for the axis, so the range cut has to
   // compare against `dateISO` — comparing labels against an ISO cutoff never matches.
   const rangedData = useMemo(() => {
