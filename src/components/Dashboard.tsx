@@ -14,6 +14,7 @@ import { ProviderDashboard } from "@/components/dashboard/ProviderDashboard";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { HoldingsTable } from "@/components/dashboard/HoldingsTable";
 import { useAccountProviderDashboardData } from "@/components/dashboard/useAccountProviderDashboardData";
+import { useBrandIconWarmup } from "@/components/useBrandIconWarmup";
 import { usePortfolioOverviewInsights } from "@/components/dashboard/usePortfolioOverviewInsights";
 import { ValueTimeChart } from "@/components/dashboard/ValueTimeChart";
 import { useStaleHoldings } from "@/components/dashboard/useStaleHoldings";
@@ -179,6 +180,10 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const { portfolios, create, remove, upsertHolding, deleteHolding, moveHolding, refresh: refreshPortfolios, setPortfolios, ready: portfoliosReady, error: portfoliosError } = usePortfolios();
   const { holdings: allHoldingsList, refresh: refreshAllHoldings, setHoldings: setAllHoldings, error: holdingsError } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
+  // Marks for collapsed sidebar portfolios and views the user has not opened
+  // yet are fetched in the background, so expanding a portfolio does not kick
+  // off a cold remote lookup at that moment.
+  useBrandIconWarmup({ providers, portfolios, holdings: allHoldingsList });
   const { settings } = useSettings();
   const { snapshots, byPortfolio, byHolding, moverChanges } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
