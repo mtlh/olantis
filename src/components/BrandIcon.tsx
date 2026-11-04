@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Banknote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { brandIconSrc, isCashSymbol, monogramFor } from "@/lib/brands";
@@ -32,32 +32,17 @@ function tileRadius(size: number, shape: "rounded" | "circle"): string {
   return shape === "circle" ? "9999px" : `${Math.max(4, Math.round(size * 0.24))}px`;
 }
 
-function Mark({ src, monogram, size, shape, className }: MarkProps) {
-  const [failed, setFailed] = useState(false);
-  const radius = tileRadius(size, shape);
-
-  if (src && !failed) {
-    return (
-      // The mark sits straight on the surface: the icon route already stripped
-      // the source's white/coloured square and trimmed to the artwork.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt=""
-        aria-hidden="true"
-        width={size}
-        height={size}
-        loading="lazy"
-        decoding="async"
-        draggable={false}
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
-        className={cn("shrink-0 object-contain align-middle", className)}
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-
+function Monogram({
+  monogram,
+  size,
+  shape,
+  className,
+}: {
+  monogram: string;
+  size: number;
+  shape: "rounded" | "circle";
+  className?: string;
+}) {
   return (
     <span
       aria-hidden="true"
@@ -68,11 +53,66 @@ function Mark({ src, monogram, size, shape, className }: MarkProps) {
       style={{
         width: size,
         height: size,
-        borderRadius: radius,
+        borderRadius: tileRadius(size, shape),
         fontSize: size <= 20 ? 8 : Math.min(12, Math.round(size * 0.34)),
       }}
     >
       {monogram}
+    </span>
+  );
+}
+
+/**
+ * Shows the monogram while the remote mark is still arriving, then swaps in the
+ * artwork once it has decoded. A pending icon used to paint as an empty square,
+ * which read as "the icon didn't load" on a cold cache; the placeholder keeps
+ * the row looking finished either way.
+ */
+function Mark({ src, monogram, size, shape, className }: MarkProps) {
+  const [state, setState] = useState<"pending" | "ready" | "failed">("pending");
+
+  // An icon restored from the browser cache can finish before React hydrates,
+  // in which case onLoad never fires. Settle the state from the DOM instead.
+  const attach = useCallback((node: HTMLImageElement | null) => {
+    if (!node?.complete) return;
+    setState(node.naturalWidth > 0 ? "ready" : "failed");
+  }, []);
+
+  if (!src || state === "failed") {
+    return <Monogram monogram={monogram} size={size} shape={shape} className={className} />;
+  }
+
+  return (
+    <span
+      className="relative inline-grid shrink-0 place-items-center"
+      style={{ width: size, height: size }}
+    >
+      {state !== "ready" && <Monogram monogram={monogram} size={size} shape={shape} className={className} />}
+      {/* The mark sits straight on the surface: the icon route already stripped
+          the source's white/coloured square and trimmed to the artwork. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        ref={attach}
+        src={src}
+        alt=""
+        aria-hidden="true"
+        width={size}
+        height={size}
+        // Icons are tile-sized and cheap; lazy loading only delayed the artwork
+        // that the server-rendered HTML already points at.
+        loading="eager"
+        decoding="async"
+        draggable={false}
+        referrerPolicy="no-referrer"
+        onLoad={() => setState("ready")}
+        onError={() => setState("failed")}
+        className={cn(
+          "shrink-0 object-contain align-middle transition-opacity duration-150",
+          state === "ready" ? "opacity-100" : "absolute inset-0 opacity-0",
+          className,
+        )}
+        style={{ width: size, height: size }}
+      />
     </span>
   );
 }
