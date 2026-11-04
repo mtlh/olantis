@@ -6,12 +6,8 @@ import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus, AlertTriangle } from "lucide-react";
 import dynamic from "next/dynamic";
-import { IndividualDashboard } from "@/components/dashboard/IndividualDashboard";
-import { AccountDashboard } from "@/components/dashboard/AccountDashboard";
 import { MainDashboard } from "@/components/dashboard/MainDashboard";
 import { PortfolioDashboard } from "@/components/dashboard/PortfolioDashboard";
-import { ProviderDashboard } from "@/components/dashboard/ProviderDashboard";
-import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { HoldingsTable } from "@/components/dashboard/HoldingsTable";
 import { useAccountProviderDashboardData } from "@/components/dashboard/useAccountProviderDashboardData";
 import { useBrandIconWarmup } from "@/components/useBrandIconWarmup";
@@ -42,6 +38,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 // does not show. The placeholders copy each section's stable frame (heading,
 // hairlines, card edges) so a late chunk cannot move what is already on screen.
 const SettingsView = dynamic(() => import("@/components/Settings").then((module) => module.SettingsView), { loading: () => <SettingsFallback /> });
+// Only one dashboard level renders at a time, so the account, provider and
+// holding trees (and the performance page) are split out of the overview chunk
+// and loaded when the user actually opens them.
+const PerformanceChart = dynamic(() => import("@/components/dashboard/PerformanceChart").then((module) => module.PerformanceChart), { loading: () => <ViewFallback /> });
+const IndividualDashboard = dynamic(() => import("@/components/dashboard/IndividualDashboard").then((module) => module.IndividualDashboard), { loading: () => <ViewFallback /> });
+const AccountDashboard = dynamic(() => import("@/components/dashboard/AccountDashboard").then((module) => module.AccountDashboard), { loading: () => <ViewFallback /> });
+const ProviderDashboard = dynamic(() => import("@/components/dashboard/ProviderDashboard").then((module) => module.ProviderDashboard), { loading: () => <ViewFallback /> });
 const WatchlistPanel = dynamic(() => import("@/components/WatchlistPanel").then((module) => module.WatchlistPanel), { loading: () => <WatchlistFallback /> });
 const GoalPanel = dynamic(() => import("@/components/GoalPanel").then((module) => module.GoalPanel), { loading: () => <GoalsFallback /> });
 const CreatePortfolioWizard = dynamic(() => import("@/components/CreatePortfolioWizard").then((module) => module.CreatePortfolioWizard), { ssr: false, loading: () => <WizardFallback /> });
@@ -75,6 +78,18 @@ function SectionFallback({ rows = 4, header = true }: { rows?: number; header?: 
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Matches the header + metric strip + chart frame of every drill-down level so
+// the deferred chunk cannot shift the content that is already painted.
+function ViewFallback() {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <Skeleton className="h-7 w-48 bg-white/[0.05]" />
+      <SectionFallback rows={3} />
+      <Skeleton className="h-[320px] w-full rounded-2xl bg-white/[0.04]" />
     </div>
   );
 }
@@ -312,6 +327,28 @@ const pickRange = useCallback((r: ChartRange) => {
 
   const staleHoldings = useStaleHoldings(allHoldingsList, portfolios);
 
+  // Staleness counts are needed by whichever level is open. Derive them once
+  // per render instead of filtering the stale list against each level's
+  // holdings (three O(stale × holdings) scans in the JSX).
+  const staleCounts = useMemo(() => {
+    const accountIds = new Set(accountData.holdings.map((holding) => holding.id));
+    const providerIds = new Set(providerData.holdings.map((holding) => holding.id));
+    let account = 0;
+    let provider = 0;
+    let portfolio = 0;
+    for (const holding of staleHoldings) {
+      if (accountIds.has(holding.id)) account += 1;
+      if (providerIds.has(holding.id)) provider += 1;
+      if (active && holding.portfolioId === active.id) portfolio += 1;
+    }
+    return { account, provider, portfolio };
+  }, [accountData.holdings, active, providerData.holdings, staleHoldings]);
+
+  const holdingCount = useMemo(
+    () => portfolios.reduce((sum, portfolio) => sum + portfolio.holdings.length, 0) + directHoldings.length,
+    [directHoldings.length, portfolios],
+  );
+
   const { breakdown: overviewBreakdown, insights: accountInsights, periodMovers } = usePortfolioOverviewInsights({
     accounts,
     providers,
@@ -406,10 +443,17 @@ const pickRange = useCallback((r: ChartRange) => {
     await upsertHolding(activeId, { ...data, id: holdingId ?? undefined });
   };
 
-  const activeValue = active ? active.holdings.reduce((s, h: Holding) => s + holdingValueGBP(h, settings.fxRates), 0) : totalValue;
-  const activeCost = active ? active.holdings.reduce((s, h: Holding) => s + holdingCostGBP(h, settings.fxRates), 0) : totalCost;
-  const activeGain = activeValue - activeCost;
-  const activeGainPct = activeCost ? (activeGain / activeCost) * 100 : 0;
+  const { value: activeValue, cost: activeCost, gain: activeGain, gainPct: activeGainPct } = useMemo(() => {
+    if (!active) return { value: totalValue, cost: totalCost, gain: totalGain, gainPct: totalGainPct };
+    let value = 0;
+    let cost = 0;
+    for (const holding of active.holdings) {
+      value += holdingValueGBP(holding, settings.fxRates);
+      cost += holdingCostGBP(holding, settings.fxRates);
+    }
+    const gain = value - cost;
+    return { value, cost, gain, gainPct: cost ? (gain / cost) * 100 : 0 };
+  }, [active, settings.fxRates, totalCost, totalGain, totalGainPct, totalValue]);
   const portfolioChartColor = activeBaseColor ?? "#60a5fa";
 
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
@@ -419,6 +463,15 @@ const pickRange = useCallback((r: ChartRange) => {
   const openWizard = useCallback((accountId: string | null = null, providerId: string | null = null) => {
     setWizardContext({ accountId, providerId });
   }, []);
+  // Stable element so the memoised allocation chart does not re-render just
+  // because the dashboard re-rendered.
+  const emptyAllocationContent = useMemo(() => (
+    <div>
+      <p className="text-sm text-zinc-500">No holdings</p>
+      <p className="mt-1 text-xs text-zinc-600">Create a portfolio and add holdings</p>
+      <Button size="sm" className="mt-3" onClick={() => openWizard(null)}><Plus className="h-3.5 w-3.5" />New portfolio</Button>
+    </div>
+  ), [openWizard]);
 
   const [assignHolding, setAssignHolding] = useState<Holding | null>(null);
   const openAssign = (holding: Holding) => setAssignHolding(holding);
@@ -490,6 +543,7 @@ const pickRange = useCallback((r: ChartRange) => {
   const requestDeleteAccount = useCallback((account: Account) => setDeleteRequest({ kind: "account", item: account }), []);
   const requestDeleteProvider = useCallback((provider: Provider) => setDeleteRequest({ kind: "provider", item: provider }), []);
   const requestDeletePortfolio = useCallback((portfolio: Portfolio) => setDeleteRequest({ kind: "portfolio", item: portfolio }), []);
+  const requestDeleteHolding = useCallback((holding: Holding) => setDeleteRequest({ kind: "holding", item: { id: holding.id, symbol: holding.symbol } }), []);
 
   const confirmDelete = async () => {
     if (!deleteRequest) return;
@@ -598,7 +652,7 @@ range={range}
               portfolioCount={accountData.allPortfolios.length}
               holdingCount={accountData.holdings.length}
               latestRefresh={accountData.latestRefresh}
-              staleCount={staleHoldings.filter((holding) => accountData.holdings.some((item) => item.id === holding.id)).length}
+              staleCount={staleCounts.account}
               value={accountData.value}
               cost={accountData.cost}
               gain={accountData.gain}
@@ -626,7 +680,7 @@ range={range}
               allocation={providerData.allocation}
               holdingCount={providerData.holdings.length}
               latestRefresh={providerData.latestRefresh}
-              staleCount={staleHoldings.filter((holding) => providerData.holdings.some((item) => item.id === holding.id)).length}
+              staleCount={staleCounts.provider}
               value={providerData.value}
               cost={providerData.cost}
               gain={providerData.gain}
@@ -651,7 +705,7 @@ range={range}
               cost={activeCost}
               gain={activeGain}
               gainPct={activeGainPct}
-              staleCount={staleHoldings.filter((holding) => holding.portfolioId === active.id).length}
+              staleCount={staleCounts.portfolio}
               onBack={() => {
                 const parentProvider = providers.find((provider) => provider.id === active.providerId);
                 if (parentProvider) selectProvider(parentProvider.id);
@@ -691,7 +745,7 @@ range={range}
                 onSelect={selectHolding}
                 onTrade={openTrade}
                 onEdit={openEdit}
-                onDelete={(holding) => setDeleteRequest({ kind: "holding", item: { id: holding.id, symbol: holding.symbol } })}
+                onDelete={requestDeleteHolding}
               />
 
               <PortfolioTradeHistory
@@ -709,7 +763,7 @@ range={range}
               providersCount={providers.length}
               portfoliosCount={portfolios.length}
               latestSnapshot={snapshots.at(-1)?.date ?? "—"}
-              holdingCount={portfolios.reduce((sum, portfolio) => sum + portfolio.holdings.length, 0) + directHoldings.length}
+              holdingCount={holdingCount}
               totalValue={totalValue}
               totalCost={totalCost}
               totalGain={totalGain}
@@ -719,7 +773,7 @@ range={range}
               isLoading={isLoading}
               refreshing={refreshing}
               canRefresh={portfolios.length > 0 || directHoldings.length > 0}
-              onRefresh={() => { void refreshPrices(); }}
+              onRefresh={handleRefreshPrices}
               onNewPortfolio={() => openWizard(null)}
               onCreateFirstPortfolio={() => openWizard(null)}
             >
@@ -741,7 +795,7 @@ range={range}
                   mode={allocMode}
                   onModeChange={setAllocMode}
                   surface="panel"
-                  emptyContent={<div><p className="text-sm text-zinc-500">No holdings</p><p className="mt-1 text-xs text-zinc-600">Create a portfolio and add holdings</p><Button size="sm" className="mt-3" onClick={() => openWizard(null)}><Plus className="h-3.5 w-3.5" />New portfolio</Button></div>}
+                  emptyContent={emptyAllocationContent}
                 />
               </div>
 
@@ -761,7 +815,7 @@ range={range}
                     dateFormat={settings.dateFormat}
                     refreshing={refreshing}
                     onSelectHolding={selectHolding}
-                    onRefresh={() => { void refreshPrices(); }}
+                    onRefresh={handleRefreshPrices}
                   />
                 </div>
               </div>

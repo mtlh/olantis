@@ -1,5 +1,6 @@
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { fmtDayMonth } from "@/lib/format";
 import type { Holding, Transaction } from "@/lib/store";
 
 type TradeType = "buy" | "sell";
@@ -49,12 +50,12 @@ export function PortfolioTradeHistory({ holdings, transactions, dateFormat, onTr
                     <span className="tabular-nums text-zinc-500">{transaction.shares} @ £{Number(transaction.price).toFixed(2)}</span>
                   </div>
                   <div className="mt-0.5 text-[11px] tabular-nums text-zinc-600 sm:hidden">
-                    {new Date(transaction.date).toLocaleDateString(dateFormat, { month: "short", day: "numeric" })} · £{total.toFixed(2)}
+                    {fmtDayMonth(transaction.date, dateFormat)} · £{total.toFixed(2)}
                   </div>
                 </div>
                 <span className="hidden shrink-0 text-xs tabular-nums text-zinc-500 sm:block">£{total.toFixed(2)}</span>
                 <span className="hidden shrink-0 text-[11px] tabular-nums text-zinc-600 sm:block">
-                  {new Date(transaction.date).toLocaleDateString(dateFormat, { month: "short", day: "numeric" })}
+                  {fmtDayMonth(transaction.date, dateFormat)}
                 </span>
                 <Button type="button" variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" title="Delete trade and reverse its position impact" aria-label={`Delete ${isBuy ? "buy" : "sell"} of ${transaction.symbol}`} onClick={() => onDelete(transaction.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>

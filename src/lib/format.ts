@@ -72,13 +72,23 @@ export function valueChangeOverRange(
   range: string,
   currentValue: number,
 ): ValueChange | null {
-  const ordered = rows
-    .filter((row) => Number.isFinite(row.value))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const ordered = rows.filter((row) => Number.isFinite(row.value));
   if (!ordered.length || !Number.isFinite(currentValue)) return null;
+  // Snapshot series arrive ascending from the API; only pay for a sort when a
+  // caller hands us unordered rows.
+  let ascending = true;
+  for (let i = 1; i < ordered.length; i++) {
+    if (ordered[i - 1].date > ordered[i].date) { ascending = false; break; }
+  }
+  if (!ascending) ordered.sort((a, b) => a.date.localeCompare(b.date));
 
   const cutoff = rangeCutoff(range) ?? ordered[0].date;
-  const baseline = [...ordered].reverse().find((row) => row.date <= cutoff) ?? ordered[0];
+  // Walk backwards instead of reversing a copy just to find the newest row at
+  // or before the cutoff.
+  let baseline = ordered[0];
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    if (ordered[i].date <= cutoff) { baseline = ordered[i]; break; }
+  }
   const amount = currentValue - baseline.value;
 
   return {
@@ -210,6 +220,13 @@ export function fmtSnapshotDate(iso: string, locale = "en-GB"): string {
   const [year, month, day] = iso.split("-").map(Number);
   if (!year || !month || !day) return iso;
   return dateFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(new Date(year, month - 1, day));
+}
+
+/** ISO day ("2026-01-05") → "5 Jan" in the user's locale. */
+export function fmtDayMonth(iso: string, locale = "en-GB"): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return dateFormat(locale, { day: "numeric", month: "short" }).format(new Date(year, month - 1, day));
 }
 
 /** Unix seconds → localised date and time (holding row tooltip; same text as `toLocaleString`). */

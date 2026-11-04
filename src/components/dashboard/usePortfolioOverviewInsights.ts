@@ -81,35 +81,89 @@ export function usePortfolioOverviewInsights({
       const portfolio = holding.portfolioId ? portfolioById.get(holding.portfolioId) : null;
       return portfolio?.accountId ?? null;
     };
-    const summarize = (holdings: Holding[]) => {
-      const value = holdings.reduce((sum, holding) => sum + holdingValueGBP(holding, fxRates), 0);
-      const cost = holdings.reduce((sum, holding) => sum + holdingCostGBP(holding, fxRates), 0);
-      return { value, gain: value - cost };
+
+    // One pass over the holdings, bucketed by account/provider/portfolio. The
+    // previous implementation re-filtered every holding for every account,
+    // provider and portfolio, which is quadratic on a large import.
+    type Totals = { value: number; cost: number; count: number };
+    const emptyTotals = (): Totals => ({ value: 0, cost: 0, count: 0 });
+    const addTo = (totals: Totals, holding: Holding) => {
+      totals.value += holdingValueGBP(holding, fxRates);
+      totals.cost += holdingCostGBP(holding, fxRates);
+      totals.count += 1;
     };
+    type AccountBucket = {
+      total: Totals;
+      byProvider: Map<string, Totals>;
+      byPortfolio: Map<string, Totals>;
+      ungrouped: Totals;
+    };
+    const buckets = new Map<string, AccountBucket>();
+    for (const account of accounts) {
+      buckets.set(account.id, { total: emptyTotals(), byProvider: new Map(), byPortfolio: new Map(), ungrouped: emptyTotals() });
+    }
+    for (const holding of allHoldings) {
+      const accountId = resolveAccountId(holding);
+      if (!accountId) continue;
+      const bucket = buckets.get(accountId);
+      if (!bucket) continue;
+
+      addTo(bucket.total, holding);
+      const providerId = resolveProviderId(holding);
+      if (providerId) {
+        let totals = bucket.byProvider.get(providerId);
+        if (!totals) bucket.byProvider.set(providerId, totals = emptyTotals());
+        addTo(totals, holding);
+      }
+      if (holding.portfolioId) {
+        let totals = bucket.byPortfolio.get(holding.portfolioId);
+        if (!totals) bucket.byPortfolio.set(holding.portfolioId, totals = emptyTotals());
+        addTo(totals, holding);
+      }
+      if (!holding.portfolioId && !holding.providerId) addTo(bucket.ungrouped, holding);
+    }
 
     return accounts.map((account) => {
-      const accountHoldings = allHoldings.filter((holding) => resolveAccountId(holding) === account.id);
-      const accountTotals = summarize(accountHoldings);
+      const bucket = buckets.get(account.id) ?? { total: emptyTotals(), byProvider: new Map(), byPortfolio: new Map(), ungrouped: emptyTotals() };
       const children: AccountBreakdownChild[] = [
-        ...providers.filter((provider) => provider.accountId === account.id).map((provider) => ({
-          id: provider.id,
-          name: provider.name,
-          kind: "provider" as const,
-          ...summarize(accountHoldings.filter((holding) => resolveProviderId(holding) === provider.id)),
-        })),
-        ...portfolios.filter((portfolio) => portfolio.accountId === account.id && !portfolio.providerId).map((portfolio) => ({
-          id: portfolio.id,
-          name: portfolio.name,
-          kind: "portfolio" as const,
-          ...summarize(accountHoldings.filter((holding) => holding.portfolioId === portfolio.id)),
-        })),
+        ...providers.filter((provider) => provider.accountId === account.id).map((provider) => {
+          const totals = bucket.byProvider.get(provider.id);
+          return {
+            id: provider.id,
+            name: provider.name,
+            kind: "provider" as const,
+            value: totals?.value ?? 0,
+            gain: (totals?.value ?? 0) - (totals?.cost ?? 0),
+          };
+        }),
+        ...portfolios.filter((portfolio) => portfolio.accountId === account.id && !portfolio.providerId).map((portfolio) => {
+          const totals = bucket.byPortfolio.get(portfolio.id);
+          return {
+            id: portfolio.id,
+            name: portfolio.name,
+            kind: "portfolio" as const,
+            value: totals?.value ?? 0,
+            gain: (totals?.value ?? 0) - (totals?.cost ?? 0),
+          };
+        }),
       ].sort((a, b) => b.value - a.value);
 
-      const ungroupedHoldings = accountHoldings.filter((holding) => !holding.portfolioId && !holding.providerId);
-      if (ungroupedHoldings.length) {
-        children.push({ id: account.id, name: "Direct holdings", kind: "direct", ...summarize(ungroupedHoldings) });
+      if (bucket.ungrouped.count) {
+        children.push({
+          id: account.id,
+          name: "Direct holdings",
+          kind: "direct",
+          value: bucket.ungrouped.value,
+          gain: bucket.ungrouped.value - bucket.ungrouped.cost,
+        });
       }
-      return { id: account.id, name: account.name, ...accountTotals, children };
+      return {
+        id: account.id,
+        name: account.name,
+        value: bucket.total.value,
+        gain: bucket.total.value - bucket.total.cost,
+        children,
+      };
     }).sort((a, b) => b.value - a.value);
   }, [accounts, allHoldings, fxRates, portfolios, providers]);
 
@@ -122,26 +176,47 @@ export function usePortfolioOverviewInsights({
       if (!byId.has(holding.id)) byId.set(holding.id, { holding, portfolioName: "Direct holding" });
     }
 
-    const positions: PositionInsight[] = [...byId.values()].map(({ holding, portfolioName }) => {
+    const positions: PositionInsight[] = [];
+    let profitableCount = 0;
+    let losingCount = 0;
+    let unchangedCount = 0;
+    let largest: PositionInsight | null = null;
+    let latestRefresh: number | null = null;
+    let refreshedCount = 0;
+    for (const { holding, portfolioName } of byId.values()) {
       const value = holdingValueGBP(holding, fxRates);
       const cost = holdingCostGBP(holding, fxRates);
       const gain = value - cost;
-      return { holding, portfolioName, value, gain, returnPct: cost > 0 ? (gain / cost) * 100 : null };
-    });
-    const withCostBasis = positions.filter((position) => position.returnPct !== null);
-    const latestRefresh = positions.reduce<number | null>((latest, position) => {
-      const refreshedAt = position.holding.lastRefreshedAt;
-      return refreshedAt && (!latest || refreshedAt > latest) ? refreshedAt : latest;
-    }, null);
+      const position: PositionInsight = {
+        holding,
+        portfolioName,
+        value,
+        gain,
+        returnPct: cost > 0 ? (gain / cost) * 100 : null,
+      };
+      positions.push(position);
+      // Single pass over the positions instead of a filter per summary.
+      if (position.returnPct !== null) {
+        if (gain > 0) profitableCount += 1;
+        else if (gain < 0) losingCount += 1;
+        else unchangedCount += 1;
+      }
+      if (!largest || value > largest.value) largest = position;
+      const refreshedAt = holding.lastRefreshedAt;
+      if (refreshedAt) {
+        refreshedCount += 1;
+        if (!latestRefresh || refreshedAt > latestRefresh) latestRefresh = refreshedAt;
+      }
+    }
 
     return {
       positions,
-      profitableCount: withCostBasis.filter((position) => position.gain > 0).length,
-      losingCount: withCostBasis.filter((position) => position.gain < 0).length,
-      unchangedCount: withCostBasis.filter((position) => position.gain === 0).length,
-      largest: positions.reduce<PositionInsight | null>((best, position) => !best || position.value > best.value ? position : best, null),
+      profitableCount,
+      losingCount,
+      unchangedCount,
+      largest,
       latestRefresh,
-      refreshedCount: positions.filter((position) => position.holding.lastRefreshedAt).length,
+      refreshedCount,
     };
   }, [directHoldings, fxRates, portfolios]);
 

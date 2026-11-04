@@ -41,16 +41,52 @@ type ColorAccount = ColorItem;
 type ColorProvider = ColorItem & { accountId: string };
 type ColorPortfolio = ColorItem & { accountId: string | null; providerId: string | null };
 
-function orderedIndex<T extends ColorItem>(items: readonly T[], id: string) {
-  const index = [...items]
-    .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999))
-    .findIndex((item) => item.id === id);
-  return Math.max(0, index);
+// Color resolution runs per portfolio row and per chart series. Building the
+// sibling order from scratch each time is O(n log n) per lookup — quadratic for
+// a list of portfolios. Cache one ordered index per group on the array itself;
+// store updates replace the array, so the cache cannot go stale.
+type OrderedIndex = Map<string, number>;
+const orderedIndexCache = new WeakMap<readonly ColorItem[], Map<string, OrderedIndex>>();
+
+function orderedIndexInGroup<T extends ColorItem>(
+  items: readonly T[],
+  groupKey: string,
+  groupOf: (item: T) => string,
+  id: string,
+) {
+  let groups = orderedIndexCache.get(items);
+  if (!groups) {
+    groups = new Map();
+    orderedIndexCache.set(items, groups);
+  }
+  let index = groups.get(groupKey);
+  if (!index) {
+    const siblings = items
+      .filter((item) => groupOf(item) === groupKey)
+      .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+    index = new Map();
+    siblings.forEach((item, position) => {
+      if (!index!.has(item.id)) index!.set(item.id, position);
+    });
+    groups.set(groupKey, index);
+  }
+  return Math.max(0, index.get(id) ?? -1);
 }
 
+const accountIndexCache = new WeakMap<readonly ColorAccount[], Map<string, number>>();
+
 export function resolveAccountColor(account: ColorAccount, accounts: readonly ColorAccount[]) {
-  const index = accounts.findIndex((item) => item.id === account.id);
-  return account.color || PALETTE[(index < 0 ? 0 : index) % PALETTE.length].value;
+  if (account.color) return account.color;
+  let index = accountIndexCache.get(accounts);
+  if (!index) {
+    index = new Map<string, number>();
+    accounts.forEach((item, position) => {
+      if (!index!.has(item.id)) index!.set(item.id, position);
+    });
+    accountIndexCache.set(accounts, index);
+  }
+  const position = index.get(account.id);
+  return PALETTE[(position === undefined || position < 0 ? 0 : position) % PALETTE.length].value;
 }
 
 export function resolveProviderColor(
@@ -61,8 +97,10 @@ export function resolveProviderColor(
   if (provider.color) return provider.color;
   const account = accounts.find((item) => item.id === provider.accountId);
   const accountColor = account ? resolveAccountColor(account, accounts) : PALETTE[0].value;
-  const siblings = providers.filter((item) => item.accountId === provider.accountId);
-  return portfolioTint(accountColor, orderedIndex(siblings, provider.id));
+  return portfolioTint(
+    accountColor,
+    orderedIndexInGroup(providers, `account:${provider.accountId}`, (item) => item.accountId, provider.id),
+  );
 }
 
 export function resolvePortfolioColor(
@@ -78,8 +116,10 @@ export function resolvePortfolioColor(
     : undefined;
   if (provider) {
     const providerColor = resolveProviderColor(provider, providers, accounts);
-    const siblings = portfolios.filter((item) => item.providerId === provider.id);
-    return portfolioTint(providerColor, orderedIndex(siblings, portfolio.id));
+    return portfolioTint(
+      providerColor,
+      orderedIndexInGroup(portfolios, `provider:${provider.id}`, (item) => item.providerId ?? "", portfolio.id),
+    );
   }
 
   const account = portfolio.accountId
@@ -87,10 +127,19 @@ export function resolvePortfolioColor(
     : undefined;
   if (account) {
     const accountColor = resolveAccountColor(account, accounts);
-    const siblings = portfolios.filter((item) => item.accountId === account.id && !item.providerId);
-    return portfolioTint(accountColor, orderedIndex(siblings, portfolio.id));
+    return portfolioTint(
+      accountColor,
+      orderedIndexInGroup(
+        portfolios,
+        `account:${account.id}`,
+        (item) => (item.providerId ? "" : item.accountId ?? ""),
+        portfolio.id,
+      ),
+    );
   }
 
-  const unassigned = portfolios.filter((item) => !item.accountId && !item.providerId);
-  return portfolioTint(null, orderedIndex(unassigned, portfolio.id));
+  return portfolioTint(
+    null,
+    orderedIndexInGroup(portfolios, "unassigned", (item) => (!item.accountId && !item.providerId ? "unassigned" : ""), portfolio.id),
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
@@ -59,15 +59,20 @@ const TOOLTIP_STYLE = {
   color: "#fff",
 };
 
-export function ValueTimeChart({
+// Module-level defaults keep the props referentially stable so `memo` can skip
+// re-rendering the chart when unrelated dashboard state changes.
+const NO_SERIES: ValueTimeChartSeries[] = [];
+const NO_DOTS: ValueTimeChartDot[] = [];
+
+export const ValueTimeChart = memo(function ValueTimeChart({
   data,
   title,
   range,
   onRangeChange,
   color = "#ffffff",
   totalName = "Total",
-  series = [],
-  dots = [],
+  series = NO_SERIES,
+  dots = NO_DOTS,
   showTradeMarkers = false,
   showSeriesToggle = false,
   description,
@@ -191,4 +196,4 @@ export function ValueTimeChart({
       </CardContent>
     </Card>
   );
-}
+});

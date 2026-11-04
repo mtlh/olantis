@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { Banknote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { brandIconSrc, isCashSymbol, monogramFor } from "@/lib/brands";
@@ -190,7 +190,7 @@ function CashMark({
  * or a provider, with a monogram tile when no remote mark is available. A cash
  * holding renders the glyph for the currency it is held in.
  */
-export function BrandIcon({
+export const BrandIcon = memo(function BrandIcon({
   provider,
   symbol,
   name,
@@ -220,4 +220,4 @@ export function BrandIcon({
       className={className}
     />
   );
-}
+});

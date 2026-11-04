@@ -5,6 +5,7 @@ import {
   combineHistories,
   evenAxisTicks,
   filterByRange,
+  fmtDayMonth,
   fmtGBP,
   fmtMoney,
   fmtPrice,
@@ -87,6 +88,10 @@ test("period value change uses the last saved value at or before the range start
     baselineValue: 30,
   });
   assert.equal(valueChangeOverRange([], "1M", 50), null);
+
+  // Unsorted input still resolves the same baseline as the sorted path.
+  const shuffled = [rows[2], rows[0], rows[3], rows[1]];
+  assert.deepEqual(valueChangeOverRange(shuffled, "1M", 50), valueChangeOverRange(rows, "1M", 50));
 });
 
 // --- chart data merges -------------------------------------------------------
@@ -237,6 +242,9 @@ test("cached date formatters match the uncached Intl output", () => {
   assert.equal(fmtSnapshotDate("2026-01-05"), "5 Jan 2026");
   assert.equal(fmtSnapshotDate("2026-01-05", "en-US"), "Jan 5, 2026");
   assert.equal(fmtSnapshotDate("nope"), "nope");
+  assert.equal(fmtDayMonth("2026-01-05"), "5 Jan");
+  assert.equal(fmtDayMonth("2026-01-05", "en-US"), "Jan 5");
+  assert.equal(fmtDayMonth("nope"), "nope");
 
   const ts = 1767225600;
   assert.equal(fmtTimestamp(ts, "en-GB"), new Date(ts * 1000).toLocaleString("en-GB"));

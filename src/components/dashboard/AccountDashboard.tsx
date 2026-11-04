@@ -71,6 +71,7 @@ type AccountDashboardProps = {
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const SUB = "mt-2 text-[11px] text-zinc-600";
+const NOOP = () => {};
 
 function shareOfAccount(value: number, total: number) {
   return total > 0 ? `${(value / total * 100).toFixed(1)}%` : "0.0%";
@@ -219,7 +220,7 @@ export function AccountDashboard({
           className="min-w-0 lg:col-span-3"
         />
         <div className="min-w-0 lg:col-span-2">
-          <AllocationCard allocation={allocation} mode="holding" onModeChange={() => {}} layout="fill" showModeSelector={false} compactChart surface="panel" emptyMessage="No holdings in this account yet" />
+          <AllocationCard allocation={allocation} mode="holding" onModeChange={NOOP} layout="fill" showModeSelector={false} compactChart surface="panel" emptyMessage="No holdings in this account yet" />
         </div>
       </div>
 

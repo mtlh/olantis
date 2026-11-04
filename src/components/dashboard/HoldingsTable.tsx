@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Download, Minus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandIcon } from "@/components/BrandIcon";
@@ -42,23 +42,30 @@ export function HoldingsTable({
 }: HoldingsTableProps) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<HoldingSort>("value");
+  // Filtering a long holdings list on every keystroke can block the input.
+  // Keep the field immediate and let the table catch up in a lower-priority
+  // render.
+  const deferredQuery = useDeferredValue(query);
 
   const staleHoldingIds = useMemo(() => new Set(staleHoldings.map((holding) => holding.id)), [staleHoldings]);
-  const filteredHoldings = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const holdings = portfolio.holdings.filter((holding) => !normalizedQuery
-      || holding.symbol.toLowerCase().includes(normalizedQuery)
-      || holding.name.toLowerCase().includes(normalizedQuery));
+  const rows = useMemo(() => {
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
+    // Compute value/cost once per row; the previous comparator recomputed them
+    // O(n log n) times while sorting.
+    const scored = portfolio.holdings
+      .filter((holding) => !normalizedQuery
+        || holding.symbol.toLowerCase().includes(normalizedQuery)
+        || holding.name.toLowerCase().includes(normalizedQuery))
+      .map((holding) => ({
+        holding,
+        value: holdingValueGBP(holding, fxRates),
+        cost: holdingCostGBP(holding, fxRates),
+      }));
 
-    if (sort === "symbol") return [...holdings].sort((a, b) => a.symbol.localeCompare(b.symbol));
-    return [...holdings].sort((a, b) => {
-      const valueA = holdingValueGBP(a, fxRates);
-      const valueB = holdingValueGBP(b, fxRates);
-      const scoreA = sort === "gain" ? valueA - holdingCostGBP(a, fxRates) : valueA;
-      const scoreB = sort === "gain" ? valueB - holdingCostGBP(b, fxRates) : valueB;
-      return scoreB - scoreA;
-    });
-  }, [fxRates, portfolio.holdings, query, sort]);
+    if (sort === "symbol") return scored.sort((a, b) => a.holding.symbol.localeCompare(b.holding.symbol));
+    if (sort === "gain") return scored.sort((a, b) => (b.value - b.cost) - (a.value - a.cost));
+    return scored.sort((a, b) => b.value - a.value);
+  }, [deferredQuery, fxRates, portfolio.holdings, sort]);
 
   const exportCsv = () => {
     const rows = ["Symbol,Name,Shares,AvgPrice,CurrentPrice,Value,Gain,PurchaseDate"];
@@ -91,7 +98,7 @@ export function HoldingsTable({
         <div className="flex items-baseline gap-2">
           <h2 id="holdings-heading" className="text-sm font-medium text-white">Holdings</h2>
           <span className="text-[11px] tabular-nums text-zinc-600">
-            {query ? `${filteredHoldings.length} of ${portfolio.holdings.length}` : filteredHoldings.length}
+            {query ? `${rows.length} of ${portfolio.holdings.length}` : rows.length}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -123,7 +130,7 @@ export function HoldingsTable({
         </div>
       </div>
 
-      {filteredHoldings.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="border-y border-white/[0.06] px-4 py-14 text-center">
           <p className="text-sm text-zinc-400">{query ? "No holdings match your search." : "No holdings yet."}</p>
           <p className="mt-1 text-[11px] text-zinc-600">{query ? "Try a different symbol or name." : "Add your first position to start tracking it."}</p>
@@ -146,9 +153,7 @@ export function HoldingsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredHoldings.map((holding) => {
-              const value = holdingValueGBP(holding, fxRates);
-              const cost = holdingCostGBP(holding, fxRates);
+            {rows.map(({ holding, value, cost }) => {
               const gain = value - cost;
               const returnPct = cost ? (gain / cost) * 100 : 0;
               const weight = totalValue > 0 ? value / totalValue * 100 : 0;
