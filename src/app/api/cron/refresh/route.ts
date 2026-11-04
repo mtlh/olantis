@@ -3,7 +3,7 @@ import { fetchQuotes, lookupQuote } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
 import { holdings, snapshots, portfolioSnapshots, holdingSnapshots, portfolios } from "@/lib/db/schema";
 import { eq, sql, notLike, isNull, or } from "drizzle-orm";
-import { toGBP, todayISODate, DEFAULT_FX_RATES } from "@/lib/format";
+import { holdingValueGBP, todayISODate, DEFAULT_FX_RATES } from "@/lib/format";
 import { getLatestFxRates, refreshFxRates } from "@/lib/fx";
 import { pruneDemoSessions } from "@/lib/demo-cleanup";
 
@@ -98,7 +98,7 @@ async function createSnapshots(allHoldings: HoldingRow[], fxRates: Record<string
     userHoldings.set(h.userId, arr);
   }
 
-  const valGBP = (h: HoldingRow) => toGBP(h.shares * (h.currentPrice ?? 0), h.currency, fxRates);
+  const valGBP = (h: HoldingRow) => holdingValueGBP(h, fxRates);
 
   // Hoist a single portfolios query for all users instead of one per user.
   const allPortfolios = await db.select().from(portfolios);

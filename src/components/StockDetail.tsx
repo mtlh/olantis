@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, FolderPlus, Minus, Plus, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
-import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, filterByRange, type MoneyHolding } from "@/lib/format";
+import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingCostGBP, holdingCurrency, holdingValueGBP, isListedSymbol, chartDateLabel, filterByRange, type MoneyHolding } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ValueTimeChart, type ValueTimeChartDot, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
@@ -140,6 +140,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
 
   const val = holdingValueGBP(holding as MoneyHolding, settings.fxRates);
   const cost = holdingCostGBP(holding as MoneyHolding, settings.fxRates);
+  const currency = holdingCurrency(holding);
   const gain = val - cost;
   const pct = cost ? (gain / cost) * 100 : 0;
   const weightPct = portfolioValue > 0 ? (val / portfolioValue) * 100 : null;
@@ -200,20 +201,20 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
 
         <div className="lg:border-l lg:border-white/[0.06] lg:px-6">
           <p className={LABEL}>Price</p>
-          <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{fmtPrice(holding.currentPrice, holding.currency)}</p>
-          <p className={SUB}>{holding.currency} · updated {fmtRelative(holding.lastRefreshedAt, settings.dateFormat)}</p>
+          <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{fmtPrice(holding.currentPrice, currency)}</p>
+          <p className={SUB}>{currency} · updated {fmtRelative(holding.lastRefreshedAt, settings.dateFormat)}</p>
         </div>
 
         <div className="lg:border-l lg:border-white/[0.06] lg:px-6">
           <p className={LABEL}>Shares</p>
           <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{holding.shares}</p>
-          <p className={SUB}>Avg {fmtPrice(holding.avgPrice, holding.currency)}</p>
+          <p className={SUB}>Avg {fmtPrice(holding.avgPrice, currency)}</p>
         </div>
 
         <div className="lg:border-l lg:border-white/[0.06] lg:pl-6">
           <p className={LABEL}>Latest move</p>
           <p className={`mt-2 whitespace-nowrap text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${moveTone}`}>
-            {latestMarketMove ? `${latestMarketMove.amount >= 0 ? "+" : "−"}${fmtPrice(Math.abs(latestMarketMove.amount), holding.currency)}` : "—"}
+            {latestMarketMove ? `${latestMarketMove.amount >= 0 ? "+" : "−"}${fmtPrice(Math.abs(latestMarketMove.amount), currency)}` : "—"}
           </p>
           <p className={SUB}>{latestMarketMove ? `${fmtPct(latestMarketMove.percent)} · ${shortDate(latestMarketMove.date, settings.dateFormat)}` : "No recent quote history"}</p>
         </div>
@@ -241,7 +242,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
             onRangeChange={pickRange}
             color={color}
             totalName={hasValueSeries ? "Value" : `${holding.symbol} price`}
-            currency={hasValueSeries ? undefined : holding.currency}
+            currency={hasValueSeries ? undefined : currency}
             dots={dots}
             showTradeMarkers={settings.showTradeMarkers}
             surface="panel"
@@ -264,10 +265,10 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
                       <span className={t.type === "buy" ? "text-emerald-400" : "text-red-400"}>{t.type === "buy" ? "Buy" : "Sell"}</span>
-                      <span className="tabular-nums text-zinc-500">{t.shares} @ {fmtPrice(t.price, holding.currency)}</span>
+                      <span className="tabular-nums text-zinc-500">{t.shares} @ {fmtPrice(t.price, currency)}</span>
                     </div>
                   </div>
-                  <span className="hidden shrink-0 text-xs tabular-nums text-zinc-500 sm:block">{fmtPrice(t.shares * Number(t.price), holding.currency)}</span>
+                  <span className="hidden shrink-0 text-xs tabular-nums text-zinc-500 sm:block">{fmtPrice(t.shares * Number(t.price), currency)}</span>
                   <span className="w-14 shrink-0 text-right text-xs tabular-nums text-zinc-600">{new Date(t.date).toLocaleDateString(settings.dateFormat, { month: "short", day: "numeric" })}</span>
                 </div>
               ))}

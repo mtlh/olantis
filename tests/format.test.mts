@@ -12,6 +12,7 @@ import {
   fmtTimestamp,
   gbpAxisFormatter,
   holdingCostGBP,
+  holdingCurrency,
   holdingValueGBP,
   seriesCursor,
   toGBP,
@@ -33,6 +34,14 @@ test("holding market value and cost both use the same FX rate", () => {
   const rates = { GBP: 1, USD: 0.8 };
   assert.equal(holdingValueGBP(holding, rates), 80);
   assert.equal(holdingCostGBP(holding, rates), 64);
+});
+
+test("cash is a GBP balance even when a quote put a foreign currency on it", () => {
+  const holding = { symbol: "CASH", shares: 1, currentPrice: 2899, avgPrice: 2899, currency: "USD" };
+  const rates = { GBP: 1, USD: 0.8 };
+  assert.equal(holdingCurrency(holding), "GBP");
+  assert.equal(holdingValueGBP(holding, rates), 2899);
+  assert.equal(holdingCostGBP(holding, rates), 2899);
 });
 
 test("range filtering uses calendar age rather than snapshot count", () => {
