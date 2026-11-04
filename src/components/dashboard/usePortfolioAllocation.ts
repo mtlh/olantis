@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { portfolioTint, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
 import { holdingValueGBP, type FxRates } from "@/lib/format";
+import { holdingSector } from "@/lib/sectors";
 import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
 import type { AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 
@@ -88,7 +89,7 @@ export function usePortfolioAllocation({
     if (mode === "sector") {
       const valuesBySector = new Map<string, number>();
       for (const holding of holdings) {
-        const sector = holding.sector?.trim() || "Unclassified";
+        const sector = holdingSector(holding);
         valuesBySector.set(sector, (valuesBySector.get(sector) ?? 0) + holdingValueGBP(holding, fxRates));
       }
       return [...valuesBySector.entries()]
