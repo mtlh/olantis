@@ -71,6 +71,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   let mainWindow;
   let appView;
+  let appRevealed = false;
 
   app.on("second-instance", () => {
     if (!mainWindow) return;
@@ -96,7 +97,9 @@ if (!app.requestSingleInstanceLock()) {
         '(() => { const img = document.getElementById("brand-icon"); return Boolean(img && img.complete && img.naturalWidth > 0); })()',
       );
       const splashMarkLoaded = await mainWindow.webContents.executeJavaScript(
-        '(() => { const img = document.getElementById("splash-icon"); return Boolean(img && img.complete && img.naturalWidth > 0); })()',
+        // The mark is removed from the DOM once the app view is revealed, so a
+        // missing element counts as loaded rather than as a failure.
+        '(() => { const img = document.getElementById("splash-icon"); return !img || Boolean(img.complete && img.naturalWidth > 0); })()',
       );
       const appViewVisible = appView.getVisible();
       if (!integratedToolbar || !toolbarIsIntegrated) {
@@ -141,6 +144,9 @@ if (!app.requestSingleInstanceLock()) {
   });
   ipcMain.on("olantis:window:close", (event) => shellWindowFor(event)?.close());
   ipcMain.handle("olantis:window:is-maximized", (event) => Boolean(shellWindowFor(event)?.isMaximized()));
+  // The shell asks once after loading, so a reveal that happened before it was
+  // listening still tears the startup mark down.
+  ipcMain.handle("olantis:app:is-ready", (event) => Boolean(shellWindowFor(event)) && appRevealed);
 
   function navigationHistory() {
     return appView?.webContents.navigationHistory;
@@ -217,6 +223,13 @@ if (!app.requestSingleInstanceLock()) {
     const revealApp = () => {
       if (!appView || appView.webContents.isDestroyed()) return;
       appView.setVisible(true);
+      appRevealed = true;
+      // Drop the startup mark for good. The splash lives in the shell page
+      // underneath this view, and leaving it in the DOM keeps a full-window
+      // element around that can swallow input (see shell.css).
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("olantis:app:ready");
+      }
       trace("view:revealed");
     };
     appView.webContents.once("did-finish-load", revealApp);
