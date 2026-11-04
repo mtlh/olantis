@@ -140,7 +140,7 @@ export function useAccountProviderDashboardData({
 
     const directHoldingSummaries = accountDirectHoldings.map((holding) => {
       const totals = summarizeHoldings([holding], fxRates);
-      return { id: holding.id, symbol: holding.symbol, name: holding.name, value: totals.value, gain: totals.gain };
+      return { id: holding.id, symbol: holding.symbol, name: holding.name, exchange: holding.exchange, value: totals.value, gain: totals.gain };
     });
 
     return {
@@ -196,7 +196,7 @@ export function useAccountProviderDashboardData({
     });
     const directHoldingSummaries = directProviderHoldings.map((holding) => {
       const totals = summarizeHoldings([holding], fxRates);
-      return { id: holding.id, symbol: holding.symbol, name: holding.name, value: totals.value, gain: totals.gain };
+      return { id: holding.id, symbol: holding.symbol, name: holding.name, exchange: holding.exchange, value: totals.value, gain: totals.gain };
     });
 
     return {

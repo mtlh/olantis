@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
 import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingValueGBP, holdingCostGBP, isListedSymbol, chartDateLabel, filterByRange, type MoneyHolding } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
+import { BrandIcon } from "@/components/BrandIcon";
 import { ValueTimeChart, type ValueTimeChartDot, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
 
 type PriceRow = { date: string; price: number };
@@ -155,7 +156,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-[10px] font-semibold tracking-wide text-zinc-300">{holding.symbol.slice(0, 3)}</span>
+            <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={32} shape="circle" />
             <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{holding.symbol}</h1>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">

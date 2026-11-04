@@ -5,6 +5,7 @@ import { Briefcase, Layers, Plus, Trash2 } from "lucide-react";
 import { AllocationCard, type AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import { ValueTimeChart, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
+import { BrandIcon } from "@/components/BrandIcon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ export type AccountHoldingSummary = {
   id: string;
   symbol: string;
   name: string;
+  exchange?: string | null;
   value: number;
   gain: number;
 };
@@ -260,7 +262,7 @@ export function AccountDashboard({
               {providers.map((provider) => (
                 <button key={provider.id} type="button" onClick={() => onOpenProvider(provider.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <Briefcase className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                    <BrandIcon provider={provider.name} size={28} />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-white">{provider.name}</span>
                       <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">
@@ -298,7 +300,7 @@ export function AccountDashboard({
               {directHoldings.map((holding) => (
                 <button key={holding.id} type="button" onClick={() => onOpenHolding(holding.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/[0.06] bg-white/[0.03] text-[9px] font-semibold tracking-wide text-zinc-400">{holding.symbol.slice(0, 3)}</span>
+                    <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={28} />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-white">{holding.symbol}</span>
                       <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">

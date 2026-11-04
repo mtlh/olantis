@@ -6,6 +6,7 @@ import { AllocationCard, type AllocationItem } from "@/components/dashboard/shar
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { ValueTimeChart, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
+import { BrandIcon } from "@/components/BrandIcon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ type ProviderHoldingSummary = {
   id: string;
   symbol: string;
   name: string;
+  exchange?: string | null;
   value: number;
   gain: number;
 };
@@ -134,7 +136,10 @@ export function ProviderDashboard({
       <div>
         <button type="button" onClick={onBack} className="text-[11px] text-zinc-500 transition-colors hover:text-white">← {accountName}</button>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <h1 className="min-w-0 truncate text-[28px] font-semibold leading-none tracking-tight text-white">{name}</h1>
+          <div className="flex min-w-0 items-center gap-3">
+            <BrandIcon provider={name} size={28} />
+            <h1 className="min-w-0 truncate text-[28px] font-semibold leading-none tracking-tight text-white">{name}</h1>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={() => { setEditName(name); setEditOpen(true); }}>Edit</Button>
             <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onNewPortfolio}>
@@ -249,7 +254,7 @@ export function ProviderDashboard({
               {directHoldings.map((holding) => (
                 <button key={holding.id} type="button" onClick={() => onOpenHolding(holding.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/[0.06] bg-white/[0.03] text-[9px] font-semibold tracking-wide text-zinc-400">{holding.symbol.slice(0, 3)}</span>
+                    <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} size={28} />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-white">{holding.symbol}</span>
                       <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">
