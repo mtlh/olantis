@@ -1,7 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
-import { LayoutDashboard, Eye, Target, Plus, Folder, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Trash2, X, Menu, Briefcase, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -11,11 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PALETTE, portfolioTint } from "@/lib/colors";
+import { PALETTE, resolvePortfolioColor } from "@/lib/colors";
 import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
@@ -466,8 +466,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [directSearchResults, setDirectSearchResults] = useState<SearchResult[]>([]);
   const [directShowMenu, setDirectShowMenu] = useState(false);
   const [directQuery, setDirectQuery] = useState("");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [expandedProv, setExpandedProv] = useState<Record<string, boolean>>({});
   const [expandedPortfolio, setExpandedPortfolio] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -624,24 +622,18 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const directHoldings = useMemo(() => holdings ?? [], [holdings]);
   const unassigned = useMemo(()=> sortByOrder(portfolios.filter(p=> !p.accountId && !p.providerId)), [portfolios]);
 
-  const providersByAccount = useMemo(()=>{
-    const m = new Map<string, Provider[]>();
-    for(const pr of providers){ const arr=m.get(pr.accountId)??[]; arr.push(pr); m.set(pr.accountId, arr); }
-    for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    return m;
-  },[providers]);
-  const portfoliosByProvider = useMemo(()=>{
-    const m = new Map<string, Portfolio[]>();
-    for(const p of portfolios){ if(p.providerId){ const arr=m.get(p.providerId)??[]; arr.push(p); m.set(p.providerId, arr); } }
-    for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    return m;
-  },[portfolios]);
-  const directByAccount = useMemo(()=>{
-    const m = new Map<string, Portfolio[]>();
-    for(const p of portfolios){ if(p.accountId && !p.providerId){ const arr=m.get(p.accountId)??[]; arr.push(p); m.set(p.accountId, arr); } }
-    for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    return m;
-  },[portfolios]);
+  const providerById = useMemo(() => new Map(providers.map((provider) => [provider.id, provider])), [providers]);
+  const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
+  // Portfolios and direct stocks inherit their account from their provider when
+  // one is set, so the sidebar groups them under the same account card.
+  const accountIdForPortfolio = useCallback((portfolio: Portfolio) => {
+    if (portfolio.providerId) return providerById.get(portfolio.providerId)?.accountId ?? portfolio.accountId ?? null;
+    return portfolio.accountId ?? null;
+  }, [providerById]);
+  const accountIdForHolding = useCallback((holding: Holding) => {
+    if (holding.providerId) return providerById.get(holding.providerId)?.accountId ?? holding.accountId ?? null;
+    return holding.accountId ?? null;
+  }, [providerById]);
 
   const portfolioValuations = useMemo(() => {
     const valuations = new Map<string, PortfolioValuation>();
@@ -665,76 +657,84 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const searchTerm = q.trim().toLowerCase();
   const matchesHolding = (holding: Holding) => holding.symbol.toLowerCase().includes(searchTerm) || holding.name.toLowerCase().includes(searchTerm);
-  const matchesPortfolio = (portfolio: Portfolio) => portfolio.name.toLowerCase().includes(searchTerm) || portfolio.holdings.some(matchesHolding);
-  const matchesProvider = (provider: Provider) => provider.name.toLowerCase().includes(searchTerm)
-    || portfolios.some((portfolio) => portfolio.providerId === provider.id && matchesPortfolio(portfolio))
-    || directHoldings.some((holding) => holding.providerId === provider.id && !holding.portfolioId && matchesHolding(holding));
+  const matchesPortfolio = (portfolio: Portfolio) => {
+    if (portfolio.name.toLowerCase().includes(searchTerm) || portfolio.holdings.some(matchesHolding)) return true;
+    if (!searchTerm) return true;
+    const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name ?? "" : "";
+    const accountId = accountIdForPortfolio(portfolio);
+    const accountName = accountId ? accountById.get(accountId)?.name ?? "" : "";
+    return providerName.toLowerCase().includes(searchTerm) || accountName.toLowerCase().includes(searchTerm);
+  };
   const filteredAccounts = sortByOrder(accounts.filter((account) => {
     if (!searchTerm || account.name.toLowerCase().includes(searchTerm)) return true;
-    const accountProviderIds = new Set(providers.filter((provider) => provider.accountId === account.id).map((provider) => provider.id));
-    return providers.some((provider) => provider.accountId === account.id && matchesProvider(provider))
-      || portfolios.some((portfolio) => (portfolio.accountId === account.id || (portfolio.providerId && accountProviderIds.has(portfolio.providerId))) && matchesPortfolio(portfolio))
-      || directHoldings.some((holding) => (holding.accountId === account.id || (holding.providerId && accountProviderIds.has(holding.providerId))) && matchesHolding(holding));
+    return portfolios.some((portfolio) => accountIdForPortfolio(portfolio) === account.id && matchesPortfolio(portfolio))
+      || directHoldings.some((holding) => accountIdForHolding(holding) === account.id && matchesHolding(holding));
   }));
   const filteredPortfolios = (list: Portfolio[], showAll = false) => sortByOrder(list.filter((portfolio) => !searchTerm || showAll || matchesPortfolio(portfolio)));
-  const filteredProviders = (list: Provider[], showAll = false) => sortByOrder(list.filter((provider) => !searchTerm || showAll || matchesProvider(provider)));
   const accountIndex = useMemo(() => new Map(accounts.map((a, i) => [a.id, i])), [accounts]);
-  // Totals are derived once per data change instead of re-filtering every
-  // holding for every account/provider on each render of the tree.
-  const { accountTotalsById, providerTotalsById } = useMemo(() => {
-    const totalFor = (portfolio: Portfolio) => portfolioValuations.get(portfolio.id)?.total ?? 0;
-    const providerTotals = new Map<string, number>();
-    for (const provider of providers) {
-      let sum = 0;
-      for (const portfolio of portfoliosByProvider.get(provider.id) ?? []) sum += totalFor(portfolio);
-      for (const holding of directHoldings) {
-        if (holding.providerId === provider.id) sum += holdingValueGBP(holding, fxRates);
-      }
-      providerTotals.set(provider.id, sum);
+  const accountTotalsById = useMemo(() => {
+    const totals = new Map<string, number>(accounts.map((account) => [account.id, 0]));
+    for (const portfolio of portfolios) {
+      const accountId = accountIdForPortfolio(portfolio);
+      if (!accountId || !totals.has(accountId)) continue;
+      totals.set(accountId, (totals.get(accountId) ?? 0) + (portfolioValuations.get(portfolio.id)?.total ?? 0));
     }
-    const accountTotals = new Map<string, number>();
-    for (const account of accounts) {
-      let sum = 0;
-      for (const portfolio of directByAccount.get(account.id) ?? []) sum += totalFor(portfolio);
-      for (const provider of providersByAccount.get(account.id) ?? []) sum += providerTotals.get(provider.id) ?? 0;
-      for (const holding of directHoldings) {
-        if (holding.accountId === account.id && !holding.providerId && !holding.portfolioId) {
-          sum += holdingValueGBP(holding, fxRates);
-        }
-      }
-      accountTotals.set(account.id, sum);
+    for (const holding of directHoldings) {
+      if (holding.portfolioId) continue;
+      const accountId = accountIdForHolding(holding);
+      if (!accountId || !totals.has(accountId)) continue;
+      totals.set(accountId, (totals.get(accountId) ?? 0) + holdingValueGBP(holding, fxRates));
     }
-    return { accountTotalsById: accountTotals, providerTotalsById: providerTotals };
-  }, [accounts, providers, providersByAccount, portfoliosByProvider, directByAccount, portfolioValuations, directHoldings, fxRates]);
+    return totals;
+  }, [accounts, accountIdForHolding, accountIdForPortfolio, directHoldings, fxRates, portfolioValuations, portfolios]);
   const accColorFor = (acc: Account) => acc.color || PALETTE[(accountIndex.get(acc.id) ?? 0) % PALETTE.length].value;
 
-  const toggle = (id: string) => setExpanded((e) => ({ ...e, [id]: !(e[id] ?? true) }));
-  const toggleProv = (id: string) => setExpandedProv((e)=> ({...e, [id]: !(e[id] ?? true)}));
   const togglePortfolio = (id: string) => setExpandedPortfolio((e) => ({ ...e, [id]: !e[id] }));
   const openWizard = (accountId: string | null = null, providerId: string | null = null) => { onOpenWizard(accountId, providerId); setMobileOpen(false); };
   const validateName = (n: string) => n.trim().length >= 2 ? "" : "Min 2 characters";
 
-  const renderPortfolioItem = (portfolio: Portfolio, color: string) => {
+  const portfolioContext = (portfolio: Portfolio) => {
+    const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name : null;
+    if (providerName) return providerName;
+    return portfolio.accountId ? "Direct portfolio" : "Unassigned";
+  };
+
+  const renderPortfolioItem = (portfolio: Portfolio) => {
     const { total, holdings: holdingsInValueOrder, values } = valuationFor(portfolio);
+    const portfolioColor = resolvePortfolioColor(portfolio, portfolios, providers, accounts);
+    const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name ?? null : null;
     const isActive = activeId === portfolio.id;
     const selectedHolding = holdingsInValueOrder.some((holding) => holding.id === activeHoldingId);
     const searchMatchesHolding = !!searchTerm && holdingsInValueOrder.some(matchesHolding);
     const isOpen = expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding || searchMatchesHolding);
     return (
-      <div key={portfolio.id} className={`overflow-hidden rounded-lg border border-transparent transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`} style={isActive ? { borderColor: `color-mix(in srgb, ${color} 44%, transparent)` } : undefined}>
-        <div className="flex items-center gap-1 px-1 py-0.5">
+      <div key={portfolio.id}>
+        <div className={`group/portfolio flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`}>
           <TreeToggle
             open={isOpen}
             onToggle={() => togglePortfolio(portfolio.id)}
             label={`${isOpen ? "Collapse" : "Expand"} ${portfolio.name}`}
-            className="ml-0.5"
           />
-          <Button variant="ghost" size="sm" aria-pressed={isActive} className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 hover:bg-transparent" style={isActive ? { color: "#fff" } : undefined} onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}>
-            <Layers className="h-3.5 w-3.5 shrink-0" style={{ color }} />
-            <span className="truncate text-xs font-medium">{portfolio.name}</span>
-            <span className="ml-auto rounded-full bg-white/[0.04] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500">{portfolio.type}</span>
-          </Button>
-          <span className="shrink-0 pr-1 text-xs tabular-nums text-zinc-400">{fmtGBP(total)}</span>
+          <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: portfolioColor }} />
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
+              className={`block w-full truncate rounded text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${isActive ? "text-white" : "text-zinc-200"}`}
+            >
+              {portfolio.name}
+            </button>
+            {providerName ? (
+              <button type="button" onClick={() => { onSelectProvider?.(portfolio.providerId!); setMobileOpen(false); }} className="mt-0.5 block max-w-full truncate rounded text-left text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+                {providerName}
+              </button>
+            ) : (
+              <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{portfolio.accountId ? "Direct portfolio" : "Unassigned"}</span>
+            )}
+          </div>
+          <span className="shrink-0 rounded-full border border-white/[0.06] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500">{portfolio.type}</span>
+          <span className="shrink-0 pl-1 text-xs tabular-nums text-zinc-400">{fmtGBP(total)}</span>
           {editMode && (
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`} className="text-zinc-500 hover:text-white"><MoreVertical className="h-3 w-3" /></Button>} />
@@ -746,25 +746,25 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           )}
         </div>
         {isOpen && (
-          <div className="ml-8 border-l border-white/[0.06] pb-1 pl-2">
+          <div className="ml-[2.375rem] border-l border-white/[0.06] pb-1.5 pl-2 pr-1">
             {holdingsInValueOrder.length ? holdingsInValueOrder.map((holding) => {
               const holdingValue = values.get(holding.id) ?? 0;
               const allocation = total > 0 ? holdingValue / total * 100 : 0;
               const isHoldingActive = holding.id === activeHoldingId;
               return (
                 <button key={holding.id} type="button" onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-white/[0.06] text-[9px] font-semibold text-zinc-300">{holding.symbol.slice(0, 3)}</span>
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-white/[0.06] text-[8px] font-semibold uppercase text-zinc-400">{holding.symbol.slice(0, 3)}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
-                    <span className="block truncate text-[10px] text-zinc-600">{holding.name}</span>
+                    <span className="block truncate text-[9px] text-zinc-600">{holding.name}</span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block text-[11px] font-medium tabular-nums text-zinc-300">{allocation.toFixed(1)}%</span>
+                    <span className="block text-[10px] font-medium tabular-nums text-zinc-300">{allocation.toFixed(1)}%</span>
                     <span className="block text-[9px] tabular-nums text-zinc-600">{fmtGBP(holdingValue)}</span>
                   </span>
                 </button>
               );
-            }) : <p className="px-2 py-2 text-[10px] text-zinc-600">No holdings in this portfolio.</p>}
+            }) : <p className="px-1.5 py-1.5 text-[10px] text-zinc-600">No holdings yet.</p>}
           </div>
         )}
       </div>
@@ -876,159 +876,56 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         </div>
       );
     }
-    if (accounts.length === 0 && unassigned.length === 0) {
+
+    const railPortfolios = sortByOrder(filteredPortfolios(portfolios));
+    const railDirectHoldings = directHoldings.filter((holding) => !holding.portfolioId && (!searchTerm || matchesHolding(holding)));
+    if (railPortfolios.length === 0 && railDirectHoldings.length === 0) {
+      const hasAccounts = accounts.length > 0;
       return (
         <div className="pt-1">
           <RailButton
             icon={<Plus className="h-4 w-4" />}
-            label="New account"
-            subtitle="No accounts yet"
+            label={hasAccounts ? "New portfolio" : "New account"}
+            subtitle={hasAccounts ? "No portfolios yet" : "No accounts yet"}
             rows={[{ label: "Next", value: "Create one" }]}
-            onClick={() => setShowAccountDialog(true)}
+            onClick={() => hasAccounts ? openWizard(accounts[0]?.id ?? null) : setShowAccountDialog(true)}
           />
         </div>
       );
     }
 
-    const portfolioTotal = (portfolio: Portfolio) => valuationFor(portfolio).total;
-    const holdingRow = (holding: Holding) => (
-      <RailButton
-        key={holding.id}
-        level={3}
-        icon={<span className="text-[9px] font-semibold uppercase">{holding.symbol.slice(0, 3)}</span>}
-        label={holding.symbol}
-        subtitle={holding.name}
-        rows={[
-          { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
-          { label: "Value", value: fmtGBP(holdingValueGBP(holding, settings.fxRates)) },
-        ]}
-        onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }}
-      />
-    );
-
     return (
-      <div className="space-y-2 pt-1">
-        {filteredAccounts.map((acc) => {
-          const accColor = accColorFor(acc);
-          const accountActive = activeAccountId === acc.id;
-          const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
-          const accountProviders = providersByAccount.get(acc.id) ?? [];
-          const provs = filteredProviders(accountProviders, accountNameMatches);
-          const direct = filteredPortfolios(directByAccount.get(acc.id) ?? [], accountNameMatches);
-          const accountDirectHoldings = directHoldings.filter((holding) => holding.accountId === acc.id && !holding.providerId && !holding.portfolioId && (accountNameMatches || matchesHolding(holding)));
-          const portfolioCount = accountProviders.reduce((sum, pr) => sum + (portfoliosByProvider.get(pr.id)?.length ?? 0), 0) + (directByAccount.get(acc.id)?.length ?? 0);
-
-          return (
-            <div key={acc.id} className="space-y-1 border-b border-white/[0.05] pb-2 last:border-b-0 last:pb-1">
-              <RailButton
-                icon={<Folder className="h-[17px] w-[17px]" />}
-                label={acc.name}
-                subtitle="Account"
-                rows={[
-                  { label: "Value", value: fmtGBP(accountTotalsById.get(acc.id) ?? 0) },
-                  { label: "Providers", value: String(accountProviders.length) },
-                  { label: "Portfolios", value: String(portfolioCount) },
-                ]}
-                active={accountActive}
-                color={accColor}
-                onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }}
-              />
-
-              {provs.map((pr) => {
-                const providerIndex = accountProviders.findIndex((item) => item.id === pr.id);
-                const provColor = pr.color || portfolioTint(accColor, Math.max(0, providerIndex));
-                const providerNameMatches = accountNameMatches || !searchTerm || pr.name.toLowerCase().includes(searchTerm);
-                const providerPortfolios = portfoliosByProvider.get(pr.id) ?? [];
-                const ps = filteredPortfolios(providerPortfolios, providerNameMatches);
-                const providerDirectHoldings = directHoldings.filter((holding) => holding.providerId === pr.id && !holding.portfolioId && (providerNameMatches || matchesHolding(holding)));
-
-                return (
-                  <div key={pr.id} className="space-y-1">
-                    <RailButton
-                      level={1}
-                      icon={<Briefcase className="h-3.5 w-3.5" />}
-                      label={pr.name}
-                      subtitle={`${acc.name} · Provider`}
-                      rows={[
-                        { label: "Value", value: fmtGBP(providerTotalsById.get(pr.id) ?? 0) },
-                        { label: "Portfolios", value: String(providerPortfolios.length) },
-                      ]}
-                      active={activeProviderId === pr.id}
-                      color={provColor}
-                      onClick={() => { onSelectProvider?.(pr.id); setMobileOpen(false); }}
-                    />
-                    {ps.map((p) => {
-                      const portfolioIndex = providerPortfolios.findIndex((item) => item.id === p.id);
-                      return (
-                        <RailButton
-                          key={p.id}
-                          level={2}
-                          icon={<Layers className="h-3.5 w-3.5" />}
-                          label={p.name}
-                          subtitle={`${pr.name} · ${p.type}`}
-                          rows={[
-                            { label: "Value", value: fmtGBP(portfolioTotal(p)) },
-                            { label: "Holdings", value: String(p.holdings.length) },
-                          ]}
-                          active={activeId === p.id}
-                          color={p.color || portfolioTint(provColor, Math.max(0, portfolioIndex))}
-                          onClick={() => { onSelect(p.id); setMobileOpen(false); }}
-                        />
-                      );
-                    })}
-                    {providerDirectHoldings.map(holdingRow)}
-                  </div>
-                );
-              })}
-
-              {direct.map((p) => {
-                const portfolioIndex = (directByAccount.get(acc.id) ?? []).findIndex((item) => item.id === p.id);
-                return (
-                  <RailButton
-                    key={p.id}
-                    level={2}
-                    icon={<Layers className="h-3.5 w-3.5" />}
-                    label={p.name}
-                    subtitle={`${acc.name} · ${p.type}`}
-                    rows={[
-                      { label: "Value", value: fmtGBP(portfolioTotal(p)) },
-                      { label: "Holdings", value: String(p.holdings.length) },
-                    ]}
-                    active={activeId === p.id}
-                    color={p.color || portfolioTint(accColor, Math.max(0, portfolioIndex))}
-                    onClick={() => { onSelect(p.id); setMobileOpen(false); }}
-                  />
-                );
-              })}
-              {accountDirectHoldings.map(holdingRow)}
-            </div>
-          );
-        })}
-
-        {unassigned.length > 0 && (
-          <div className="space-y-1 border-t border-white/[0.05] pt-2">
-            <div className="py-1 text-center text-[9px] uppercase tracking-[0.14em] text-zinc-600">Unassigned</div>
-            {filteredPortfolios(unassigned).map((p) => {
-              const portfolioIndex = unassigned.findIndex((item) => item.id === p.id);
-              return (
-                <RailButton
-                  key={p.id}
-                  icon={<Layers className="h-3.5 w-3.5" />}
-                  label={p.name}
-                  subtitle={p.type}
-                  rows={[
-                    { label: "Value", value: fmtGBP(portfolioTotal(p)) },
-                    { label: "Holdings", value: String(p.holdings.length) },
-                    { label: "Account", value: "Unassigned" },
-                  ]}
-                  active={activeId === p.id}
-                  color={p.color || PALETTE[Math.max(0, portfolioIndex) % PALETTE.length].value}
-                  onClick={() => { onSelect(p.id); setMobileOpen(false); }}
-                />
-              );
-            })}
-          </div>
-        )}
+      <div className="space-y-1 pt-1">
+        {railPortfolios.map((portfolio) => (
+          <RailButton
+            key={portfolio.id}
+            icon={<Layers className="h-[17px] w-[17px]" />}
+            label={portfolio.name}
+            subtitle={portfolioContext(portfolio)}
+            rows={[
+              { label: "Value", value: fmtGBP(valuationFor(portfolio).total) },
+              { label: "Holdings", value: String(portfolio.holdings.length) },
+              { label: "Type", value: portfolio.type },
+            ]}
+            active={activeId === portfolio.id}
+            color={resolvePortfolioColor(portfolio, portfolios, providers, accounts)}
+            onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
+          />
+        ))}
+        {railDirectHoldings.map((holding) => (
+          <RailButton
+            key={holding.id}
+            icon={<span className="text-[9px] font-semibold uppercase">{holding.symbol.slice(0, 3)}</span>}
+            label={holding.symbol}
+            subtitle={holding.name}
+            rows={[
+              { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
+              { label: "Value", value: fmtGBP(holdingValueGBP(holding, settings.fxRates)) },
+            ]}
+            active={activeHoldingId === holding.id}
+            onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }}
+          />
+        ))}
       </div>
     );
   };
@@ -1092,7 +989,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         {rail ? <div className="mt-3">{renderRailTree()}</div> : (
         <div className="mt-3">
           <div className="flex items-center justify-between px-1 mb-2">
-            <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Accounts</span>
+            <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Portfolios</span>
             <div className="flex items-center gap-0.5">
               <Button variant="ghost" size="icon-sm" onClick={() => setEditMode(v => !v)} aria-pressed={editMode} aria-label="Toggle edit mode" title={editMode ? "Hide edit controls" : "Show edit controls"} className={editMode ? "bg-white/10 text-white hover:bg-white/15" : "text-zinc-500 hover:text-zinc-200"}><Pencil className="w-3.5 h-3.5" /></Button>
               <DropdownMenu>
@@ -1125,36 +1022,51 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           </div>
 
           {loading ? <div className="space-y-3">{[1,2].map(i=><Skeleton key={i} className="h-20 rounded-xl bg-white/5"/>)}</div>
-          : accounts.length === 0 && unassigned.length === 0 ? <Card className="p-6 text-center border-dashed bg-white/[0.02]"><p className="text-sm text-zinc-500">No accounts yet</p><p className="text-xs text-zinc-600 mt-1">Create an account to group providers & portfolios</p><Button size="sm" className="mt-3" onClick={()=>setShowAccountDialog(true)}><Plus className="w-3.5 h-3.5"/>New account</Button></Card>
+          : accounts.length === 0 && unassigned.length === 0 ? <Card className="p-6 text-center border-dashed bg-white/[0.02]"><p className="text-sm text-zinc-500">No portfolios yet</p><p className="text-xs text-zinc-600 mt-1">Create an account to start tracking portfolios</p><Button size="sm" className="mt-3" onClick={()=>setShowAccountDialog(true)}><Plus className="w-3.5 h-3.5"/>New account</Button></Card>
           : (
           <div className="space-y-3">
             {filteredAccounts.map((acc) => {
               const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
-              const isOpen = expanded[acc.id] ?? true;
               const total = accountTotalsById.get(acc.id) ?? 0;
               const accountActive = activeAccountId === acc.id;
-              const accountProviders = providersByAccount.get(acc.id) ?? [];
-              const provs = filteredProviders(accountProviders, accountNameMatches);
-              const direct = filteredPortfolios(directByAccount.get(acc.id) ?? [], accountNameMatches);
-              const accountDirectHoldings = directHoldings.filter((holding) => holding.accountId === acc.id && !holding.providerId && !holding.portfolioId && (accountNameMatches || matchesHolding(holding)));
               const accColor = accColorFor(acc);
+              const accountProviders = providers.filter((provider) => provider.accountId === acc.id);
+              const accountPortfolios = filteredPortfolios(
+                portfolios.filter((portfolio) => accountIdForPortfolio(portfolio) === acc.id),
+                accountNameMatches,
+              );
+              const accountDirectHoldings = directHoldings.filter((holding) =>
+                !holding.portfolioId
+                && accountIdForHolding(holding) === acc.id
+                && (accountNameMatches || matchesHolding(holding)));
               return (
-                <div key={acc.id} className={`group overflow-hidden rounded-2xl border shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-[filter] hover:brightness-110 ${accountActive ? "ring-1 ring-white/10" : ""}`} style={{ borderColor: accountActive ? `${accColor}90` : accColor + "38", background: accountActive ? `${accColor}18` : accColor + "0d" }}>
-                  <div className="flex items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-2 transition-colors hover:bg-white/[0.035]">
-                    <TreeToggle open={isOpen} onToggle={() => toggle(acc.id)} label={`${isOpen ? "Collapse" : "Expand"} ${acc.name}`} className="ml-0.5" />
-                    <button type="button" aria-pressed={accountActive} onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                      {isOpen
-                        ? <FolderOpen className="h-4 w-4 shrink-0" style={{ color: accColor }} />
-                        : <Folder className="h-4 w-4 shrink-0 text-zinc-500" />}
-                      <span className={`truncate text-sm font-semibold ${accountActive ? "text-white" : "text-zinc-200"}`}>{acc.name}</span>
+                <div key={acc.id} className={`group overflow-hidden rounded-2xl border transition-colors ${accountActive ? "ring-1 ring-white/10" : ""}`} style={{ borderColor: accountActive ? `${accColor}90` : `${accColor}38`, background: accountActive ? `${accColor}18` : `${accColor}0d` }}>
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    <button type="button" aria-pressed={accountActive} onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }} className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+                      <FolderOpen className="h-4 w-4 shrink-0" style={{ color: accColor }} />
+                      <span className={`truncate text-sm font-semibold ${accountActive ? "text-white" : "text-zinc-100"}`}>{acc.name}</span>
                     </button>
-                    <span className="pr-1 text-xs font-medium tabular-nums text-zinc-400">£{total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                    <span className="shrink-0 text-sm font-medium tabular-nums text-zinc-300">{fmtGBP(total)}</span>
                     {editMode && (
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Account actions" className="text-zinc-500 hover:text-white"><MoreVertical className="w-3.5 h-3.5"/></Button>} />
                       <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-40">
                         <DropdownMenuItem onClick={()=>{ setEditingAccount(acc); setEditAccountName(acc.name); }}><Pencil className="w-3.5 h-3.5"/>Rename account</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>{ setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true); }}><Briefcase className="w-3.5 h-3.5"/>New provider</DropdownMenuItem>
+                        {accountProviders.length > 0 && (
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger><Briefcase className="w-3.5 h-3.5"/>Providers</DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="bg-zinc-900 border-white/10 text-white">
+                              {accountProviders.map((provider) => (
+                                <DropdownMenuItem key={provider.id} onClick={() => onSelectProvider?.(provider.id)}>{provider.name}</DropdownMenuItem>
+                              ))}
+                              <DropdownMenuSeparator className="bg-white/10"/>
+                              {accountProviders.map((provider) => (
+                                <DropdownMenuItem key={`delete-${provider.id}`} variant="destructive" onClick={() => onDeleteProvider?.(provider)}><Trash2 className="w-3.5 h-3.5"/>Delete {provider.name}</DropdownMenuItem>
+                              ))}
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+                        )}
                         <DropdownMenuItem onClick={()=>{ setDirectTarget({accountId: acc.id}); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>openWizard(acc.id, null)}><Layers className="w-3.5 h-3.5"/>New portfolio</DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-white/10"/>
@@ -1163,90 +1075,34 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                     </DropdownMenu>
                     )}
                   </div>
-                  {isOpen && (
-                    <div className="space-y-2 px-2 pb-2">
-                      {provs.length===0 && direct.length===0 && <div className="p-4 rounded-xl border border-dashed border-white/10 bg-black/20 text-center"><p className="text-sm text-zinc-400">No providers yet</p><p className="text-xs text-zinc-600 mt-1">Add a provider like Vanguard or Trading 212</p><div className="flex gap-2 mt-3"><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>{setProviderAccountId(acc.id); setProviderName(""); setShowProviderDialog(true);}}><Plus className="w-3.5 h-3.5"/> Provider</Button><Button variant="outline" size="sm" className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-xs h-8" onClick={()=>openWizard(acc.id, null)}><Plus className="w-3.5 h-3.5"/> Portfolio</Button></div></div>}
-                      {provs.map((pr)=>{
-                        const providerIndex = accountProviders.findIndex((item) => item.id === pr.id);
-                        const providerNameMatches = accountNameMatches || !searchTerm || pr.name.toLowerCase().includes(searchTerm);
-                        const providerPortfolios = portfoliosByProvider.get(pr.id) ?? [];
-                        const ps = filteredPortfolios(providerPortfolios, providerNameMatches);
-                        const providerDirectHoldings = directHoldings.filter((holding) => holding.providerId === pr.id && !holding.portfolioId && (providerNameMatches || matchesHolding(holding)));
-                        const isProvOpen = expandedProv[pr.id] ?? true;
-                        const provTotal = providerTotalsById.get(pr.id) ?? 0;
-                        const provColor = pr.color || portfolioTint(accColorFor(acc), Math.max(0, providerIndex));
-                        const providerActive = activeProviderId === pr.id;
-                        return (
-                          <div key={pr.id} className="group">
-                            <div className={`flex items-center gap-1.5 rounded-md py-1 pl-1 pr-1.5 transition-colors hover:bg-white/[0.035] ${providerActive ? "bg-white/[0.035]" : ""}`}>
-                              <TreeToggle open={isProvOpen} onToggle={() => toggleProv(pr.id)} label={`${isProvOpen ? "Collapse" : "Expand"} ${pr.name}`} className="-ml-0.5" />
-                              <Briefcase className="h-3.5 w-3.5 shrink-0" style={{ color: provColor }} />
-                              <button type="button" aria-pressed={providerActive} onClick={() => { onSelectProvider?.(pr.id); setMobileOpen(false); }} className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-zinc-300" style={{ color: providerActive ? provColor : undefined }}>{pr.name}</button>
-                              <span className="text-xs tabular-nums text-zinc-400">£{provTotal.toLocaleString("en-GB",{maximumFractionDigits:0})}</span>
+
+                  {accountPortfolios.length === 0 && accountDirectHoldings.length === 0 ? (
+                    <div className="px-3 pb-3">
+                      <div className="flex items-center justify-between rounded-lg border border-dashed border-white/10 px-3 py-2">
+                        <span className="text-[11px] text-zinc-600">No portfolios</span>
+                        <Button variant="link" size="xs" className="h-auto p-0 text-[11px] text-zinc-400 hover:text-white" onClick={()=>openWizard(acc.id, null)}>Add</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="ml-3 mr-1 space-y-0.5 pb-2">
+                      {accountPortfolios.map((portfolio) => renderPortfolioItem(portfolio))}
+
+                      {accountDirectHoldings.length > 0 && (
+                        <div className="mt-1 border-t border-white/[0.05] pt-1.5">
+                          <div className="px-1.5 pb-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-600">Direct</div>
+                          {accountDirectHoldings.map((h: Holding) => (
+                            <div key={h.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors ${onSelectHolding ? "cursor-pointer hover:bg-white/[0.035]" : ""}`} onClick={() => onSelectHolding?.(h)}>
+                              <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-white/[0.06] text-[8px] font-semibold uppercase text-zinc-400">{String(h.symbol).slice(0, 3)}</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
+                                <span className="block truncate text-[9px] text-zinc-600">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
+                              </span>
+                              <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{fmtGBP(holdingValueGBP(h, settings.fxRates))}</span>
                               {editMode && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${pr.name} actions`} className="text-zinc-500 hover:text-white"><MoreVertical className="w-3 h-3"/></Button>} />
-                                <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-[220px]">
-                                  <DropdownMenuItem onClick={()=>{setEditingProvider(pr); setEditProviderName(pr.name);}}><Pencil className="w-3.5 h-3.5"/>Rename provider</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={()=>{ setDirectTarget({providerId: pr.id, accountId: pr.accountId}); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
-                                  <DropdownMenuItem className="whitespace-nowrap" onClick={()=>openWizard(acc.id, pr.id)}><Plus className="w-3.5 h-3.5"/>New portfolio here</DropdownMenuItem>
-                                  <DropdownMenuSeparator className="bg-white/10"/>
-                                  <DropdownMenuItem variant="destructive" onClick={()=>onDeleteProvider?.(pr)}><Trash2 className="w-3.5 h-3.5"/>Delete provider</DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              )}
-                            </div>
-                            {isProvOpen && (
-                              <div className="ml-3 space-y-1 border-l border-white/[0.06] pb-1 pl-2">
-                                {ps.length===0 && <p className="text-[11px] text-zinc-600 px-2 py-1">No portfolios</p>}
-                                {ps.map((p)=>{
-                                  const portfolioIndex = providerPortfolios.findIndex((item) => item.id === p.id);
-                                  const baseColor = p.color || portfolioTint(provColor, Math.max(0, portfolioIndex));
-                                  return renderPortfolioItem(p, baseColor);
-                                })}
-                                {providerDirectHoldings.length>0 && (
-                                  <div className="mt-2 pt-2 border-t border-white/5">
-                                    <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1 mb-1">Direct stocks</div>
-                                    {providerDirectHoldings.map((h:Holding)=>(
-                                      <div key={h.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs ${onSelectHolding?"cursor-pointer hover:bg-white/[0.07]":""}`} onClick={()=> onSelectHolding?.(h)}>
-                                        <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
-                                        <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
-                                        <span className="text-zinc-500">£{holdingValueGBP(h, settings.fxRates).toFixed(0)}</span>
-                                        {editMode && (
-                                        <>
-                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-white" aria-label={`Edit ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
-                                          <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
-                                        </>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {direct.length>0 && (
-                        <div className="space-y-1">
-                          <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct portfolios</div>
-                          {direct.map((p)=>{
-                            const portfolioIndex = (directByAccount.get(acc.id) ?? []).findIndex((item) => item.id === p.id);
-                            const baseColor = p.color || portfolioTint(accColorFor(acc), Math.max(0, portfolioIndex));
-                            return renderPortfolioItem(p, baseColor);
-                          })}
-                        </div>
-                      )}
-                      {accountDirectHoldings.length>0 && (
-                        <div className="space-y-1 mt-2 pt-2 border-t border-white/5">
-                          <div className="text-[10px] tracking-widest uppercase text-zinc-600 px-1">Direct stocks — {acc.name}</div>
-                          {accountDirectHoldings.map((h:Holding)=>(
-                            <div key={h.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.03] border border-white/5 text-xs ${onSelectHolding?"cursor-pointer hover:bg-white/[0.07]":""}`} onClick={()=> onSelectHolding?.(h)}>
-                              <span className="w-6 h-6 rounded grid place-items-center bg-white/10 text-[10px] font-bold">{String(h.symbol).slice(0,3)}</span>
-                              <span className="flex-1 truncate text-zinc-200">{h.symbol}</span>
-                              <span className="text-zinc-500">£{holdingValueGBP(h, settings.fxRates).toFixed(0)}</span>
-                              {editMode && (
-                              <Button variant="ghost" size="icon-xs" className="h-6 w-6 relative z-10 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                              <>
+                                <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Edit ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
+                                <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                              </>
                               )}
                             </div>
                           ))}
@@ -1264,12 +1120,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                   <span className="text-[11px] font-semibold tracking-widest uppercase text-zinc-600">Unassigned</span>
                   <Button variant="ghost" size="icon-xs" onClick={() => openWizard(null)} aria-label="New portfolio"><Plus className="w-3.5 h-3.5" /></Button>
                 </div>
-                <div className="px-1.5 pb-1.5 space-y-1">
-                  {filteredPortfolios(unassigned).map((p) => {
-                    const portfolioIndex = unassigned.findIndex((item) => item.id === p.id);
-                    const baseColor = p.color || PALETTE[Math.max(0, portfolioIndex) % PALETTE.length].value;
-                    return renderPortfolioItem(p, baseColor);
-                  })}
+                <div className="px-2 pb-2 space-y-1">
+                  {filteredPortfolios(unassigned).map((p) => renderPortfolioItem(p))}
                 </div>
               </div>
             )}
