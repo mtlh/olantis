@@ -81,6 +81,11 @@ export const holdings = pgTable("holdings", {
   purchaseDate: text("purchase_date"),
   exchange: text("exchange"),
   lastRefreshedAt: integer("last_refreshed_at"),
+  /** Unix seconds; NULL means the historical series has not been backfilled yet. */
+  historyBackfilledAt: integer("history_backfilled_at"),
+  /** Failed backfill attempts, so a delisted symbol is retried a few times, not forever. */
+  historyBackfillAttempts: integer("history_backfill_attempts").notNull().default(0),
+  historyBackfillError: text("history_backfill_error"),
 }, (t) => ({
   userIdIdx: index("holdings_user_id_idx").on(t.userId),
   portfolioIdIdx: index("holdings_portfolio_id_idx").on(t.portfolioId),
@@ -88,10 +93,17 @@ export const holdings = pgTable("holdings", {
   accountIdIdx: index("holdings_account_id_idx").on(t.accountId),
 }));
 
+/**
+ * `origin` separates values the app actually recorded (cron, client POST, demo
+ * seed) from rows reconstructed by the history backfill. Only backfilled rows may
+ * be deleted and rebuilt; recorded rows are ground truth and always win on
+ * conflict.
+ */
 export const snapshots = pgTable("snapshots", {
   userId: text("user_id").notNull(),
   date: text("date").notNull(),
   value: money("value").notNull(),
+  origin: text("origin").notNull().default("recorded"),
 }, (t) => ({ pk: primaryKey({ columns: [t.userId, t.date] }) }));
 
 export const portfolioSnapshots = pgTable("portfolio_snapshots", {
@@ -99,6 +111,7 @@ export const portfolioSnapshots = pgTable("portfolio_snapshots", {
   portfolioId: text("portfolio_id").notNull().references(() => portfolios.id, { onDelete: "cascade" }),
   date: text("date").notNull(),
   value: money("value").notNull(),
+  origin: text("origin").notNull().default("recorded"),
 }, (t) => ({ pk: primaryKey({ columns: [t.userId, t.portfolioId, t.date] }) }));
 
 export const holdingSnapshots = pgTable("holding_snapshots", {
@@ -106,6 +119,7 @@ export const holdingSnapshots = pgTable("holding_snapshots", {
   holdingId: text("holding_id").notNull().references(() => holdings.id, { onDelete: "cascade" }),
   date: text("date").notNull(),
   value: money("value").notNull(),
+  origin: text("origin").notNull().default("recorded"),
 }, (t) => ({ pk: primaryKey({ columns: [t.userId, t.holdingId, t.date] }) }));
 
 export const transactions = pgTable("transactions", {

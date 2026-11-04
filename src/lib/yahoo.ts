@@ -146,6 +146,21 @@ export function lookupQuote(
 
 export type ChartPoint = { date: string; price: number };
 
+/** Yahoo returns `Date` objects, epoch seconds or ISO strings depending on version. */
+function chartPointDate(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "number") {
+    const ms = value < 1e12 ? value * 1000 : value;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  }
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+
 const CHART_RANGES: Record<string, { days: number; interval: "1d" | "1wk" | "1mo" }> = {
   "1M": { days: 31, interval: "1d" },
   "3M": { days: 92, interval: "1d" },
@@ -182,25 +197,60 @@ export async function fetchChart(symbol: string, exchange?: string, range = "1Y"
 }
 
 /**
- * Arbitrary-window weekly history, used by the demo seed. Shares the same
- * cache/limiter as the rest of the Yahoo access so a demo burst cannot starve
- * real quote traffic or trip 429s.
+ * Arbitrary-window history, used by the demo seed and the history backfill.
+ * Shares the same cache/limiter as the rest of the Yahoo access so a backfill
+ * burst cannot starve real quote traffic or trip 429s.
  */
 export async function fetchHistory(
   symbol: string,
   period1: string,
   period2: string,
-  interval: "1d" | "1wk" | "1mo" = "1wk"
+  interval: "1d" | "1wk" | "1mo" = "1wk",
+  exchange?: string
 ): Promise<Array<{ date: string; close: number }>> {
-  return cached("chart", `${symbol}|${interval}|${period1}|${period2}`, async () => {
+  const ys = toYahooSymbol(symbol, exchange);
+  return cached("chart", `${ys}|${interval}|${period1}|${period2}`, async () => {
     try {
-      const res = await yf.chart(toYahooSymbol(symbol), { period1, period2, interval, return: "array" });
+      const res = await yf.chart(ys, { period1, period2, interval, return: "array" });
       type RawChart = { quotes?: Array<{ date?: string | number | Date; close?: number | null }> };
       const quotes = (res as unknown as RawChart).quotes ?? [];
       const out: Array<{ date: string; close: number }> = [];
       for (const q of quotes) {
-        if (q.close == null || q.date == null) continue;
-        out.push({ date: new Date(q.date).toISOString().slice(0, 10), close: q.close });
+        if (q.close == null) continue;
+        const date = chartPointDate(q.date);
+        if (!date || !Number.isFinite(q.close) || q.close <= 0) continue;
+        out.push({ date, close: q.close });
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  });
+}
+
+/**
+ * Daily closes for a symbol over an explicit window, exchange-aware (`LSE`
+ * resolves to `.L`). Used by the portfolio history backfill.
+ */
+export async function fetchDailyHistory(
+  symbol: string,
+  exchange: string | null | undefined,
+  period1: string,
+  period2: string
+): Promise<ChartPoint[]> {
+  const ys = toYahooSymbol(symbol, exchange ?? undefined);
+  const cacheKey = `${ys}|1d|${period1}|${period2}`;
+  return cached("chart", cacheKey, async () => {
+    try {
+      const res = await yf.chart(ys, { period1, period2, interval: "1d", return: "array" });
+      type RawChart = { quotes?: Array<{ date?: string | number | Date; close?: number | null }> };
+      const quotes = (res as unknown as RawChart).quotes ?? [];
+      const out: ChartPoint[] = [];
+      for (const q of quotes) {
+        if (q.close == null) continue;
+        const date = chartPointDate(q.date);
+        if (!date || !Number.isFinite(q.close) || q.close <= 0) continue;
+        out.push({ date, price: q.close });
       }
       return out;
     } catch {

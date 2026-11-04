@@ -155,7 +155,7 @@ export async function POST(req: Request) {
 
   const topValue = finiteNumber(body.value);
   if (topValue != null) {
-    await db.insert(snapshots).values({ userId, date: d, value: topValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: topValue } });
+    await db.insert(snapshots).values({ userId, date: d, value: topValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: topValue, origin: "recorded" } });
   }
 
   const batch: { portfolioId: string; value: number }[] = [];
@@ -172,7 +172,7 @@ export async function POST(req: Request) {
     if (v != null) batch.push({ portfolioId: body.portfolioId, value: v });
   }
   if (batch.length) {
-    await db.insert(portfolioSnapshots).values(batch.map((b) => ({ userId, portfolioId: b.portfolioId, date: d, value: b.value }))).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value` } });
+    await db.insert(portfolioSnapshots).values(batch.map((b) => ({ userId, portfolioId: b.portfolioId, date: d, value: b.value }))).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } });
   }
 
   if (holdingIds.length) {
@@ -186,7 +186,7 @@ export async function POST(req: Request) {
       holdingBatch.push({ holdingId: h.id, value: v });
     }
     if (holdingBatch.length) {
-      await db.insert(holdingSnapshots).values(holdingBatch.map((b) => ({ userId, holdingId: b.holdingId, date: d, value: b.value }))).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value` } });
+      await db.insert(holdingSnapshots).values(holdingBatch.map((b) => ({ userId, holdingId: b.holdingId, date: d, value: b.value }))).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } });
     }
   }
   return Response.json({ ok: true });

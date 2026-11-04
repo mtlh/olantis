@@ -6,6 +6,10 @@ import { eq, sql, notLike, isNull, or } from "drizzle-orm";
 import { holdingValueGBP, todayISODate, DEFAULT_FX_RATES } from "@/lib/format";
 import { getLatestFxRates, refreshFxRates } from "@/lib/fx";
 import { pruneDemoSessions } from "@/lib/demo-cleanup";
+import { backfillPending } from "@/lib/backfill";
+
+/** The daily refresh now also runs a bounded history-backfill sweep. */
+export const maxDuration = 60;
 
 const REFRESH_GUARD_SECONDS = 23 * 60 * 60;
 
@@ -51,7 +55,15 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
     symbols = [...map.values()];
   }
 
-  if (symbols.length === 0) return { success: true, symbolsUpdated: 0, skipped: 0, failed: [], updatedAt: new Date().toISOString(), message: "No holdings" };
+  if (symbols.length === 0) {
+    let backfill: Awaited<ReturnType<typeof backfillPending>> | null = null;
+    try {
+      backfill = await backfillPending({ limit: 5 });
+    } catch {
+      /* keep the refresh success response */
+    }
+    return { success: true, symbolsUpdated: 0, skipped: 0, failed: [], updatedAt: new Date().toISOString(), message: "No holdings", backfill };
+  }
 
   let quotes: Record<string, { price: number; currency: string }> = {};
   try {
@@ -84,7 +96,17 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   });
   await createSnapshots(refreshedHoldings, fxRates);
 
-  return { success: true, symbolsUpdated: updated, skipped, failed: [...new Set(failed)], updatedAt: new Date().toISOString() };
+  // Backstop for holdings the on-demand backfill never reached (imports made
+  // while offline, interrupted runs). Deliberately small: the cron function has
+  // a platform timeout and Yahoo calls are rate-limited.
+  let backfill: Awaited<ReturnType<typeof backfillPending>> | null = null;
+  try {
+    backfill = await backfillPending({ limit: 5 });
+  } catch {
+    /* history backfill must never fail the daily refresh */
+  }
+
+  return { success: true, symbolsUpdated: updated, skipped, failed: [...new Set(failed)], updatedAt: new Date().toISOString(), backfill };
 }
 
 async function createSnapshots(allHoldings: HoldingRow[], fxRates: Record<string, number>) {
@@ -136,13 +158,13 @@ async function createSnapshots(allHoldings: HoldingRow[], fxRates: Record<string
   }
 
   if (snapshotRows.length) {
-    await db.insert(snapshots).values(snapshotRows).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: sql`excluded.value` } });
+    await db.insert(snapshots).values(snapshotRows).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } });
   }
   if (portfolioSnapshotRows.length) {
-    await db.insert(portfolioSnapshots).values(portfolioSnapshotRows).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value` } });
+    await db.insert(portfolioSnapshots).values(portfolioSnapshotRows).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } });
   }
   if (holdingSnapshotRows.length) {
-    await db.insert(holdingSnapshots).values(holdingSnapshotRows).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value` } });
+    await db.insert(holdingSnapshots).values(holdingSnapshotRows).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } });
   }
 }
 

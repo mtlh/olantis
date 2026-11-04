@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
 import { loadOwnedHoldings } from "@/lib/ownership";
 import { isCashSymbol } from "@/lib/format";
+import { refreshAggregatesForUser } from "@/lib/backfill";
 
 export async function GET(req: Request) {
   const userId = await getUserId();
@@ -84,6 +85,8 @@ export async function POST(req: Request) {
       }
     }
     if (Object.keys(patch).length === 0) return Response.json({ error: "nothing to update" }, { status: 400 });
+    // Any edit can change the reconstructed past (shares, dates, symbol, portfolio).
+    patch.historyBackfilledAt = null;
     await db.update(holdings).set(patch).where(eq(holdings.id, id));
     if (patch.portfolioId !== undefined) {
       await db.update(transactions).set({ portfolioId: patch.portfolioId }).where(eq(transactions.holdingId, id));
@@ -138,6 +141,13 @@ export async function DELETE(req: Request) {
   } else if (row.userId === userId) allowed = true;
   if (!allowed) return Response.json({ error: "forbidden" }, { status: 403 });
   await db.delete(holdings).where(eq(holdings.id, id));
+  // The deleted position cascades out of holding_snapshots; rebuild the
+  // aggregate series so the chart does not keep counting it.
+  try {
+    await refreshAggregatesForUser(userId);
+  } catch {
+    /* history is best-effort and must not fail the delete */
+  }
   return Response.json({ ok: true });
 }
 
