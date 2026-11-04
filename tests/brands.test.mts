@@ -9,6 +9,7 @@ import {
   normalizeBrandName,
   providerBrandForName,
   providerLogoSources,
+  PROVIDER_BRANDS,
   tickerCandidates,
 } from "../src/lib/brands.ts";
 
@@ -32,6 +33,17 @@ test("matches Dodl and AJ Bell, preferring Dodl for its co-branded name", () => 
   assert.equal(providerBrandForName("Dodl by AJ Bell")?.label, "Dodl");
   assert.equal(providerBrandForName("AJBELL")?.label, "AJ Bell");
   assert.equal(providerBrandForName("AJ Bell Youinvest")?.label, "AJ Bell");
+});
+
+test("builds the provider picker from broker brands only", () => {
+  const labels = PROVIDER_BRANDS.map((brand) => brand.label);
+  assert.ok(labels.includes("Vanguard"));
+  assert.ok(labels.includes("Trading 212"));
+  assert.ok(labels.includes("Hargreaves Lansdown"));
+  // Fund issuers are not places to hold a portfolio.
+  assert.equal(labels.includes("iShares"), false);
+  assert.equal(labels.includes("SPDR"), false);
+  assert.deepEqual(labels, [...labels].sort((a, b) => a.localeCompare(b, "en-GB")));
 });
 
 test("prefers the crisp local mark for Trading 212", () => {
