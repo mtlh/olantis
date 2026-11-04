@@ -15,6 +15,8 @@ import {
 } from "@/lib/db/schema";
 import { getLatestFxRates } from "@/lib/fx";
 import { windowSeries } from "@/lib/snapshot-window";
+import { isDemoUserId } from "@/lib/auth";
+import { pointsByHolding as countPointsByHolding, topUpDemoHistory } from "@/lib/demo-history-store";
 import { DEFAULT_FX_RATES, holdingValueGBP, valueChangeOverRange, todayISODate, type FxRates } from "@/lib/format";
 import type {
   Account,
@@ -100,7 +102,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   const portfolioRows = typed[2];
   const totalSnapshots = typed[3];
   const perPortfolioSnapshots = typed[4];
-  const perHoldingSnapshots = typed[5];
+  let perHoldingSnapshots = typed[5];
   const transactionRows = typed[6];
   const settingsRows = typed[7];
   const goalRows = typed[8];
@@ -108,6 +110,33 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   const holdingRows = typed[9];
 
   const liveHoldings = holdingRows as unknown as Holding[];
+
+  // A demo tenant minted by an older build has no per-holding series (only the
+  // latest day or two). Repair it here as well as in `/api/demo`, because a
+  // visitor can open /dashboard directly with a cookie from a previous session
+  // and never hit the seeding endpoint. Demo-only and idempotent: a complete
+  // tenant costs one pass over rows we have already loaded.
+  if (isDemoUserId(userId)) {
+    const repaired = await topUpDemoHistory(
+      userId,
+      liveHoldings.map((h) => ({
+        id: h.id,
+        symbol: h.symbol,
+        shares: h.shares,
+        currentPrice: h.currentPrice,
+        portfolioId: h.portfolioId ?? null,
+      })),
+      countPointsByHolding(perHoldingSnapshots),
+    ).catch(() => false);
+    if (repaired) {
+      // Re-read only in the rare repair case, so the movers on the very first
+      // paint already reflect the full series instead of the stale one.
+      perHoldingSnapshots = await db
+        .select({ holdingId: holdingSnapshots.holdingId, date: holdingSnapshots.date, value: holdingSnapshots.value })
+        .from(holdingSnapshots)
+        .where(eq(holdingSnapshots.userId, userId));
+    }
+  }
 
   const holdingsByPortfolio = new Map<string, Holding[]>();
   for (const h of liveHoldings) {

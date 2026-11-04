@@ -5,7 +5,8 @@ import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshot
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
 import { clearDemo } from "@/lib/demo-cleanup";
-import { buildDemoHistory, demoHistoryIncomplete, weeklyDates, DEMO_HISTORY_YEARS, type DemoHistoryHolding } from "@/lib/demo-history";
+import { buildDemoHistory, weeklyDates, DEMO_HISTORY_YEARS, type DemoHistoryHolding } from "@/lib/demo-history";
+import { topUpDemoHistory } from "@/lib/demo-history-store";
 import { sectorForSymbol } from "@/lib/sectors";
 
 /**
@@ -54,30 +55,6 @@ const SEED_HOLDINGS: Record<string, SeedHolding[]> = {
     { symbol: "VWCE", name: "Vanguard FTSE All-World Acc", shares: 85, avgPrice: 95, currentPrice: 102.3, currency: "GBP", sector: "Global Equity", purchaseDate: "2024-02-10", exchange: "LSE" },
   ],
 };
-
-/**
- * Repair a demo tenant seeded before per-holding (or aggregate) history
- * existed. Only missing dates are written, so values the visitor's own session
- * recorded stay untouched and a complete tenant costs nothing beyond the check.
- */
-async function topUpDemoHistory(
-  userId: string,
-  holdingRows: readonly DemoHistoryHolding[],
-  pointsByHolding: ReadonlyMap<string, number>,
-) {
-  if (!holdingRows.length) return;
-  if (!demoHistoryIncomplete(holdingRows, pointsByHolding)) return;
-
-  const history = buildDemoHistory(userId, holdingRows, weeklyDates(DEMO_HISTORY_YEARS));
-  const db = getDb();
-  await Promise.all([
-    db.insert(snapshots).values(history.snapshotRows).onConflictDoNothing(),
-    history.portfolioRows.length
-      ? db.insert(portfolioSnapshots).values(history.portfolioRows).onConflictDoNothing()
-      : Promise.resolve(),
-    db.insert(holdingSnapshots).values(history.holdingRows).onConflictDoNothing(),
-  ]);
-}
 
 /**
  * Older demo tenants were seeded before holdings carried a sector. Fill those
@@ -129,10 +106,11 @@ async function seedDemo(userId: string) {
   if (existing.length > 0) {
     // Repair anything a tenant seeded by an older build is missing: per-holding
     // history (#67) and the sector used by the Sectors tab (#68).
-    const pointsByHolding = new Map(historyCounts.map((row) => [row.holdingId, Number(row.points)]));
+    const points = new Map(historyCounts.map((row) => [row.holdingId, Number(row.points)]));
+    // A repair failure must never block the demo from opening.
     await Promise.all([
-      topUpDemoHistory(userId, existingHoldings.filter((h) => h.shares > 0), pointsByHolding),
-      backfillDemoSectors(userId),
+      topUpDemoHistory(userId, existingHoldings.filter((h) => h.shares > 0), points).catch(() => false),
+      backfillDemoSectors(userId).catch(() => {}),
     ]);
     return;
   }

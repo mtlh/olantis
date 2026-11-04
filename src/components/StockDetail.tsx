@@ -83,7 +83,10 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
 
   useEffect(() => {
     let cancel = false;
-    fetch(`/api/snapshots?holdingId=${encodeURIComponent(holding.id)}`)
+    // Never paint a cached series: a demo tenant can be repaired server-side
+    // between two opens, and a stale response would swap the full history back
+    // to the single day it replaced.
+    fetch(`/api/snapshots?holdingId=${encodeURIComponent(holding.id)}`, { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) throw new Error();
         const j = await r.json();
