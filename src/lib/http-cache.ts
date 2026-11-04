@@ -25,6 +25,9 @@ const HARD_TTL = {
   quote: 24 * 60 * 60_000,
   chart: 15 * 60_000,
   search: 10 * 60_000,
+  // A company's sector essentially never changes intraday; keep it for a month
+  // so a portfolio refresh does not re-ask Yahoo for every symbol each day.
+  sector: 30 * 24 * 60 * 60_000,
 } as const;
 
 /** Soft TTL — fresh window; after this we refresh but can still serve stale. */
@@ -32,6 +35,7 @@ const SOFT_TTL = {
   quote: 90_000,
   chart: 5 * 60_000,
   search: 60_000,
+  sector: 7 * 24 * 60 * 60_000,
 } as const;
 
 export type CacheKind = keyof typeof HARD_TTL;

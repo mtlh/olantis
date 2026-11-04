@@ -2,10 +2,11 @@
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, holdingSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
 import { clearDemo } from "@/lib/demo-cleanup";
 import { buildDemoHistory, demoHistoryIncomplete, weeklyDates, DEMO_HISTORY_YEARS, type DemoHistoryHolding } from "@/lib/demo-history";
+import { sectorForSymbol } from "@/lib/sectors";
 
 /**
  * Demo mode — deliberately UNAUTHENTICATED.
@@ -35,21 +36,22 @@ type SeedHolding = {
   avgPrice: number;
   currentPrice: number;
   currency: string;
+  sector: string;
   purchaseDate: string;
   exchange: string;
 };
 
 const SEED_HOLDINGS: Record<string, SeedHolding[]> = {
   p1: [
-    { symbol: "VWRP", name: "Vanguard FTSE All-World", shares: 120, avgPrice: 98, currentPrice: 106.4, currency: "GBP", purchaseDate: "2024-01-15", exchange: "LSE" },
-    { symbol: "AAPL", name: "Apple Inc", shares: 15, avgPrice: 145, currentPrice: 178, currency: "USD", purchaseDate: "2024-03-10", exchange: "NASDAQ" },
-    { symbol: "NVDA", name: "NVIDIA", shares: 8, avgPrice: 420, currentPrice: 485, currency: "USD", purchaseDate: "2024-05-20", exchange: "NASDAQ" },
+    { symbol: "VWRP", name: "Vanguard FTSE All-World", shares: 120, avgPrice: 98, currentPrice: 106.4, currency: "GBP", sector: "Global Equity", purchaseDate: "2024-01-15", exchange: "LSE" },
+    { symbol: "AAPL", name: "Apple Inc", shares: 15, avgPrice: 145, currentPrice: 178, currency: "USD", sector: "Technology", purchaseDate: "2024-03-10", exchange: "NASDAQ" },
+    { symbol: "NVDA", name: "NVIDIA", shares: 8, avgPrice: 420, currentPrice: 485, currency: "USD", sector: "Technology", purchaseDate: "2024-05-20", exchange: "NASDAQ" },
   ],
   p2: [
-    { symbol: "VUAG", name: "Vanguard S&P 500", shares: 200, avgPrice: 68, currentPrice: 74.2, currency: "GBP", purchaseDate: "2023-11-01", exchange: "LSE" },
+    { symbol: "VUAG", name: "Vanguard S&P 500", shares: 200, avgPrice: 68, currentPrice: 74.2, currency: "GBP", sector: "US Equity", purchaseDate: "2023-11-01", exchange: "LSE" },
   ],
   p3: [
-    { symbol: "VWCE", name: "Vanguard FTSE All-World Acc", shares: 85, avgPrice: 95, currentPrice: 102.3, currency: "GBP", purchaseDate: "2024-02-10", exchange: "LSE" },
+    { symbol: "VWCE", name: "Vanguard FTSE All-World Acc", shares: 85, avgPrice: 95, currentPrice: 102.3, currency: "GBP", sector: "Global Equity", purchaseDate: "2024-02-10", exchange: "LSE" },
   ],
 };
 
@@ -75,6 +77,24 @@ async function topUpDemoHistory(
       : Promise.resolve(),
     db.insert(holdingSnapshots).values(history.holdingRows).onConflictDoNothing(),
   ]);
+}
+
+/**
+ * Older demo tenants were seeded before holdings carried a sector. Fill those
+ * in from the deterministic map so a returning visitor's Sectors tab is as
+ * complete as a fresh tenant's.
+ */
+async function backfillDemoSectors(userId: string) {
+  const db = getDb();
+  const rows = await db
+    .select({ id: holdings.id, symbol: holdings.symbol })
+    .from(holdings)
+    .where(and(eq(holdings.userId, userId), or(isNull(holdings.sector), eq(holdings.sector, ""))));
+  const updates = rows
+    .map((row) => ({ id: row.id, sector: sectorForSymbol(row.symbol) }))
+    .filter((row): row is { id: string; sector: string } => !!row.sector);
+  if (!updates.length) return;
+  await db.execute(sql`UPDATE holdings SET sector = v.sector FROM (VALUES ${sql.join(updates.map((row) => sql`(${row.id}, ${row.sector})`), sql`, `)}) AS v(id, sector) WHERE holdings.id = v.id`);
 }
 
 async function seedDemo(userId: string) {
@@ -107,10 +127,13 @@ async function seedDemo(userId: string) {
     DemoHistoryHolding[],
   ];
   if (existing.length > 0) {
-    // Tenants created before the per-holding seed only had a day or two of
-    // holding rows; fill them in so the holding view shows its full series.
+    // Repair anything a tenant seeded by an older build is missing: per-holding
+    // history (#67) and the sector used by the Sectors tab (#68).
     const pointsByHolding = new Map(historyCounts.map((row) => [row.holdingId, Number(row.points)]));
-    await topUpDemoHistory(userId, existingHoldings.filter((h) => h.shares > 0), pointsByHolding);
+    await Promise.all([
+      topUpDemoHistory(userId, existingHoldings.filter((h) => h.shares > 0), pointsByHolding),
+      backfillDemoSectors(userId),
+    ]);
     return;
   }
 
