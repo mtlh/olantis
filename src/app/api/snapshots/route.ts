@@ -154,8 +154,9 @@ export async function POST(req: Request) {
   const ownedAids = new Set(ownedAcc.map((a) => a.id));
 
   const topValue = finiteNumber(body.value);
+  const writes: Array<Promise<unknown>> = [];
   if (topValue != null) {
-    await db.insert(snapshots).values({ userId, date: d, value: topValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: topValue, origin: "recorded" } });
+    writes.push(db.insert(snapshots).values({ userId, date: d, value: topValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: topValue, origin: "recorded" } }));
   }
 
   const batch: { portfolioId: string; value: number }[] = [];
@@ -172,22 +173,31 @@ export async function POST(req: Request) {
     if (v != null) batch.push({ portfolioId: body.portfolioId, value: v });
   }
   if (batch.length) {
-    await db.insert(portfolioSnapshots).values(batch.map((b) => ({ userId, portfolioId: b.portfolioId, date: d, value: b.value }))).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } });
+    writes.push(db.insert(portfolioSnapshots).values(batch.map((b) => ({ userId, portfolioId: b.portfolioId, date: d, value: b.value }))).onConflictDoUpdate({ target: [portfolioSnapshots.userId, portfolioSnapshots.portfolioId, portfolioSnapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } }));
   }
 
   if (holdingIds.length) {
+    // Map lookup: the loop below used to scan `holdingValues` per row, which is
+    // quadratic on a large holdings list.
+    const valueById = new Map<string, number>();
+    for (const h of holdingValues) {
+      if (typeof h?.id !== "string") continue;
+      const v = finiteNumber(h.value);
+      if (v != null) valueById.set(h.id, v);
+    }
     const holdingBatch: { holdingId: string; value: number }[] = [];
     for (const h of holdingRows) {
       const owned = (h.portfolioId && ownedPids.has(h.portfolioId)) || (h.providerId && ownedPrids.has(h.providerId)) || (h.accountId && ownedAids.has(h.accountId)) || h.userId === userId;
       if (!owned) continue;
-      const src = holdingValues.find((x) => x?.id === h.id);
-      const v = finiteNumber(src?.value);
+      const v = valueById.get(h.id);
       if (v == null) continue;
       holdingBatch.push({ holdingId: h.id, value: v });
     }
     if (holdingBatch.length) {
-      await db.insert(holdingSnapshots).values(holdingBatch.map((b) => ({ userId, holdingId: b.holdingId, date: d, value: b.value }))).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } });
+      writes.push(db.insert(holdingSnapshots).values(holdingBatch.map((b) => ({ userId, holdingId: b.holdingId, date: d, value: b.value }))).onConflictDoUpdate({ target: [holdingSnapshots.userId, holdingSnapshots.holdingId, holdingSnapshots.date], set: { value: sql`excluded.value`, origin: "recorded" } }));
     }
   }
+  // Independent table writes: run them together rather than awaiting each.
+  if (writes.length) await Promise.all(writes);
   return Response.json({ ok: true });
 }

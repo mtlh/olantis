@@ -31,8 +31,16 @@ const SYNC_TTL_MS = 30 * 60_000;
  * Earliest date with any portfolio history across every tenant. This is the
  * backfill floor: a benchmark never needs to start before the oldest snapshot
  * the chart can possibly render.
+ *
+ * Cached briefly: it is a `MIN()` over every tenant's history and the answer
+ * only moves when a new user backfills further back than anyone before, so
+ * recomputing it on every `/api/benchmark` request is wasted work.
  */
+const EARLIEST_TTL_MS = 10 * 60_000;
+let earliestCache: { at: number; value: string } | null = null;
+
 export async function earliestPortfolioDate(): Promise<string> {
+  if (earliestCache && Date.now() - earliestCache.at < EARLIEST_TTL_MS) return earliestCache.value;
   try {
     const db = getDb();
     const rows = (await db.execute(sql`
@@ -43,7 +51,9 @@ export async function earliestPortfolioDate(): Promise<string> {
       ) AS starts
     `)) as unknown as { rows?: Array<{ date: string | null }> };
     const value = rows?.rows?.[0]?.date;
-    return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "2020-01-01";
+    const resolved = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "2020-01-01";
+    earliestCache = { at: Date.now(), value: resolved };
+    return resolved;
   } catch {
     return "2020-01-01";
   }
