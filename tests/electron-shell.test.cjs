@@ -25,3 +25,27 @@ test("the app view stays hidden until the splash has a page to replace it", () =
   assert.match(main, /"did-fail-load"/);
   assert.match(main, /appView\.setVisible\(true\)/);
 });
+
+test("the startup mark can never swallow clicks meant for the app", () => {
+  const splashRule = shellCss.match(/\.splash\s*\{([^}]*)\}/s);
+  const cssRules = shellCss.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  assert.ok(splashRule, "the splash rule must exist");
+  // Electron applies draggable regions to the whole window, so a drag region in
+  // this page eats clicks even where the app view is painted over it. That is
+  // what made every button in the shipped app dead.
+  assert.doesNotMatch(splashRule[1], /app-region/, "the splash must not be a drag region");
+  assert.equal(
+    (cssRules.match(/app-region:\s*drag/g) || []).length,
+    1,
+    "the title bar is the only drag handle",
+  );
+  assert.match(cssRules, /\.titlebar\s*\{[^}]*-webkit-app-region:\s*drag/s);
+});
+
+test("the startup mark is removed once the app view is revealed", () => {
+  assert.match(main, /webContents\.send\("olantis:app:ready"\)/);
+  assert.match(main, /ipcMain\.handle\("olantis:app:is-ready"/);
+  assert.match(read("electron/shell-preload.cjs"), /onAppReady/);
+  assert.match(read("electron/shell.js"), /getElementById\("splash"\)\?\.remove\(\)/);
+});

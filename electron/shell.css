@@ -152,7 +152,12 @@ body {
 
 /* Startup screen. Sits under the app view, which stays hidden until the page
    has loaded (see main.cjs), so the mark is centred in the space below the
-   title bar for the whole load. */
+   title bar for the whole load.
+
+   Never mark this draggable. Electron applies `-webkit-app-region: drag` at the
+   window level, so a region in this page swallows the clicks meant for the app
+   view layered above it, even though the splash is invisible by then. The title
+   bar is the only drag handle. */
 .splash {
   position: fixed;
   top: 46px;
@@ -162,7 +167,6 @@ body {
   display: grid;
   place-items: center;
   background: #050507;
-  -webkit-app-region: drag;
 }
 
 .splash img {

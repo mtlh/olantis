@@ -9,6 +9,12 @@ contextBridge.exposeInMainWorld("olantisDesktop", {
   goBack: () => ipcRenderer.send("olantis:nav:back"),
   goForward: () => ipcRenderer.send("olantis:nav:forward"),
   navState: () => ipcRenderer.invoke("olantis:nav:state"),
+  isAppReady: () => ipcRenderer.invoke("olantis:app:is-ready"),
+  onAppReady: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("olantis:app:ready", listener);
+    return () => ipcRenderer.removeListener("olantis:app:ready", listener);
+  },
   onNavStateChange: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on("olantis:nav:state", listener);
