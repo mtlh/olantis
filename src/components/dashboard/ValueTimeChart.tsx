@@ -47,6 +47,8 @@ type ValueTimeChartProps = {
   currency?: string | null;
   /** `panel` uses the quieter overview surface; `glass` keeps the classic card. */
   surface?: "glass" | "panel";
+  /** Chart plot height utility. Defaults to `h-[320px]`. */
+  heightClassName?: string;
   className?: string;
 };
 
@@ -71,6 +73,7 @@ export function ValueTimeChart({
   description,
   currency,
   surface = "glass",
+  heightClassName = "h-[320px]",
   className = "",
 }: ValueTimeChartProps) {
   // Only the total is on by default so the Y axis stays tight around it;
@@ -134,7 +137,7 @@ export function ValueTimeChart({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[320px] select-none" role="img" aria-label={`${title} chart`}>
+        <div className={`${heightClassName} select-none`} role="img" aria-label={`${title} chart`}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
               {/* Grid lines follow the Y ticks (which `evenAxisTicks` keeps on
