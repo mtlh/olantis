@@ -1,7 +1,7 @@
 "use client";
 import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, Power, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/Logo";
 import { BrandIcon } from "@/components/BrandIcon";
+import { useDesktopUpdate } from "@/components/useDesktopUpdate";
 import { EditPortfolioDialog } from "@/components/dashboard/EditPortfolioDialog";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -300,6 +301,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
 }) {
   const pathname = usePathname();
   const page = pathname.split("/").filter(Boolean)[0] ?? "dashboard";
+  const update = useDesktopUpdate();
   const goDashboard = () => { onSelect(null); onClose(); };
   const navLink = (href: string, label: string, active: boolean, icon: ReactNode, detail: string) => {
     const link = (
@@ -361,7 +363,39 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
     </div>
   );
 
-  const refreshButton = onRefreshPrices && (
+  const refreshButton = onRefreshPrices && (update.ready ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={`${TOOL_BUTTON_CLASS} relative text-amber-300 hover:text-amber-200`}
+            aria-label={`Update ready${update.version ? ` (v${update.version})` : ""}. Open for refresh and restart options.`}
+            title={rail ? undefined : "Update ready"}
+          >
+            <RefreshCw className={`${TOOL_ICON_CLASS} ${refreshing ? "animate-spin" : ""}`} />
+            <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />
+          </Button>
+        }
+      />
+      <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-60 border border-white/10 bg-zinc-900/95 p-1 text-white shadow-xl backdrop-blur">
+        <div className="px-2 py-1.5">
+          <p className="text-xs font-semibold text-amber-300">Update ready{update.version ? ` · v${update.version}` : ""}</p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">Restart Olantis to install it, or refresh prices now.</p>
+        </div>
+        <DropdownMenuSeparator className="bg-white/10" />
+        <DropdownMenuItem onClick={onRefreshPrices} disabled={refreshing} className="text-[13px]">
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh prices
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={update.restart} className="text-[13px]">
+          <Power className="h-3.5 w-3.5" />
+          Restart to update
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : (
     <Button
       variant="ghost"
       size="icon-sm"
@@ -373,7 +407,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
     >
       <RefreshCw className={`${TOOL_ICON_CLASS} ${refreshing ? "animate-spin" : ""}`} />
     </Button>
-  );
+  ));
 
   const signOutLink = (
     <a
@@ -397,7 +431,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
           <div className="my-1 h-px w-6 bg-white/10" />
           {withTip("Prices update daily", "Scheduled for 06:00 UTC", clockButton, [{ label: "Last refresh", value: lastRefreshLabel }])}
-          {refreshButton && withTip("Refresh prices", "Pull the latest quotes", refreshButton)}
+          {refreshButton && withTip(update.ready ? "Update ready" : "Refresh prices", update.ready ? "Restart to install · or refresh now" : "Pull the latest quotes", refreshButton)}
           {withTip(isDemo ? "Exit demo" : "Sign out", isDemo ? "Return to the landing page" : "End your session", signOutLink)}
         </div>
       </div>

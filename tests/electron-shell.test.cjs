@@ -49,3 +49,17 @@ test("the startup mark is removed once the app view is revealed", () => {
   assert.match(read("electron/shell-preload.cjs"), /onAppReady/);
   assert.match(read("electron/shell.js"), /getElementById\("splash"\)\?\.remove\(\)/);
 });
+
+test("downloaded updates are handed to the app instead of a native dialog", () => {
+  assert.doesNotMatch(main, /showMessageBox/, "a background update must not block the window");
+  assert.match(main, /preload: path\.join\(__dirname, "app-preload\.cjs"\)/, "the app view needs the update bridge");
+  assert.match(main, /"update-downloaded", \(info\) => setUpdateStatus\("ready"/);
+  assert.match(main, /ipcMain\.handle\("olantis:update:status"/);
+  assert.match(main, /ipcMain\.on\("olantis:update:restart"/);
+  assert.match(main, /quitAndInstall\(true, true\)/, "restart keeps the normal install path");
+
+  const appPreload = read("electron/app-preload.cjs");
+  assert.match(appPreload, /exposeInMainWorld\("olantisDesktop"/);
+  assert.match(appPreload, /"olantis:update:status"/);
+  assert.match(appPreload, /"olantis:update:restart"/);
+});
