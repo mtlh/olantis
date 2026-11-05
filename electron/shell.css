@@ -169,29 +169,11 @@ body {
   background: #050507;
 }
 
+/* Deliberately static: the startup mark holds still instead of pulsing, so the
+   launch reads as calm rather than busy. */
 .splash img {
   width: 76px;
   height: 76px;
   object-fit: contain;
   border-radius: 20px;
-  animation: splash-breathe 1.8s ease-in-out infinite;
-}
-
-@keyframes splash-breathe {
-  0%,
-  100% {
-    opacity: 0.6;
-    transform: scale(0.97);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .splash img {
-    animation: none;
-    opacity: 1;
-  }
 }
