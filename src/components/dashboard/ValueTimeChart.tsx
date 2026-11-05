@@ -256,7 +256,14 @@ export const ValueTimeChart = memo(function ValueTimeChart({
       </Card>
 
       <Dialog open={expanded} onOpenChange={setExpanded}>
-        <DialogContent className="max-w-[95vw] sm:max-w-[95vw]">
+        {/* The chart itself is the first tabbable element, so the default
+            autofocus lands on it and draws its focus ring around the whole
+            plot. Opening with a pointer should not move focus there; keyboard
+            users still get the chart, where the ring is meaningful. */}
+        <DialogContent
+          className="max-w-[95vw] sm:max-w-[95vw]"
+          initialFocus={(openType) => openType === "keyboard"}
+        >
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
           </DialogHeader>
