@@ -3,17 +3,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { BrandIcon } from "@/components/BrandIcon";
-import { PROVIDER_BRANDS, normalizeBrandName, providerBrandForName } from "@/lib/brands";
+import { normalizeBrandName } from "@/lib/brands";
 import type { Provider } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-/**
- * A provider either already exists inside the account (`id`) or is one of the
- * curated brand marks we ship (`id: null`). A brand-only selection is created
- * when the portfolio is saved, so users never have to manage providers
- * separately.
- */
-export type ProviderSelection = { id: string | null; name: string };
+/** A provider already saved inside the selected account. */
+export type ProviderSelection = { id: string; name: string };
 
 export type ProviderPickerProps = {
   id?: string;
@@ -25,7 +20,7 @@ export type ProviderPickerProps = {
   className?: string;
 };
 
-type Option = { key: string; name: string; providerId: string | null };
+type Option = { key: string; name: string; providerId: string };
 
 function sortByName(a: Option, b: Option) {
   return a.name.localeCompare(b.name, "en-GB");
@@ -39,21 +34,13 @@ export function ProviderPicker({ id, value, onChange, providers, disabled, class
   const listId = useId();
 
   const options = useMemo<Option[]>(() => {
-    const existing = providers.map((provider) => ({
-      key: `provider:${provider.id}`,
-      name: provider.name,
-      providerId: provider.id,
-    }));
-    // An existing provider already represents its brand, so the brand entry is
-    // dropped instead of showing "Vanguard" twice.
-    const represented = new Set(
-      providers.map((provider) => providerBrandForName(provider.name)?.key ?? `name:${normalizeBrandName(provider.name)}`),
-    );
-    const brands = PROVIDER_BRANDS
-      .filter((brand) => !represented.has(brand.key))
-      .map((brand) => ({ key: `brand:${brand.key}`, name: brand.label, providerId: null }));
-
-    return [...existing.sort(sortByName), ...brands];
+    return providers
+      .map((provider) => ({
+        key: `provider:${provider.id}`,
+        name: provider.name,
+        providerId: provider.id,
+      }))
+      .sort(sortByName);
   }, [providers]);
 
   const filtered = useMemo(() => {
@@ -138,11 +125,7 @@ export function ProviderPicker({ id, value, onChange, providers, disabled, class
               <p className="px-2.5 py-3 text-xs text-zinc-500">No provider matches “{query.trim()}”.</p>
             ) : (
               filtered.map((option) => {
-                const selected = value
-                  ? option.providerId
-                    ? option.providerId === value.id
-                    : !value.id && option.name === value.name
-                  : false;
+                const selected = value ? option.providerId === value.id : false;
                 return (
                   <button
                     key={option.key}
@@ -157,9 +140,6 @@ export function ProviderPicker({ id, value, onChange, providers, disabled, class
                   >
                     <BrandIcon provider={option.name} size={20} />
                     <span className="min-w-0 flex-1 truncate">{option.name}</span>
-                    {option.providerId === null && (
-                      <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-zinc-600">New</span>
-                    )}
                     {selected && <Check className="size-3.5 shrink-0 text-white" aria-hidden="true" />}
                   </button>
                 );

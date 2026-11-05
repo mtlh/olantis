@@ -191,7 +191,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const { portfolioId: activeId, providerId: providerFromUrl, accountId: accountFromUrl, holdingId: holdingFromUrl } = selection;
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
-  const { providers, create: createProvider, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
+  const { providers, remove: removeProvider, rename: renameProvider, refresh: refreshProviders } = useProviders();
   const { portfolios, create, remove, upsertHolding, deleteHolding, moveHolding, refresh: refreshPortfolios, setPortfolios, ready: portfoliosReady, error: portfoliosError } = usePortfolios();
   const { holdings: allHoldingsList, refresh: refreshAllHoldings, setHoldings: setAllHoldings, error: holdingsError } = useHoldings();
   const directHoldings = useMemo(()=> allHoldingsList.filter((h: Holding)=> !h.portfolioId), [allHoldingsList]);
@@ -392,9 +392,6 @@ const pickRange = useCallback((r: ChartRange) => {
   const handleCreateAccount = useCallback(async (name: string) => {
     try { return await createAccount(name); } catch(e: unknown){ toast({title:"Failed",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
   }, [createAccount, toast]);
-  const handleCreateProvider = useCallback(async (name: string, accountId: string) => {
-    try { const created = await createProvider(name, accountId); toast({title:"Provider created",description:name,variant:"success"}); return created; } catch(e: unknown){toast({title:"Failed to create provider",description:e instanceof Error ? e.message : String(e),variant:"error"}); throw e;}
-  }, [createProvider, toast]);
   const handleRenameAccount = useCallback(async (id:string,name:string)=>{ await renameAccount(id,name); }, [renameAccount]);
   const handleRenameProvider = useCallback(async (id:string,name:string)=>{ await renameProvider(id,name); }, [renameProvider]);
   const handleRenamePortfolio = useCallback(async (id: string, patch: { name?: string; type?: string; accountId?: string | null; providerId?: string | null }) => {
@@ -605,7 +602,7 @@ range={range}
             />
           ) : wizardContext ? (
             <CreatePortfolioWizard open onOpenChange={(open) => { if (!open) setWizardContext(null); }} accounts={accounts} providers={providers} defaultAccountId={wizardContext.accountId} defaultProviderId={wizardContext.providerId}
-              onCreate={handleWizardCreate} onCreateProvider={handleCreateProvider} onCreateAccount={handleCreateAccount} inline />
+              onCreate={handleWizardCreate} onCreateAccount={handleCreateAccount} inline />
           ) : viewHolding ? (
             <IndividualDashboard
               holding={viewHolding}

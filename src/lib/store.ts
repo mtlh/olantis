@@ -166,11 +166,6 @@ export function useProviders() {
     setReady(true);
   }, []);
   useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
-  const create = useCallback(async (name: string, accountId: string, color?: string | null) => {
-    const r = await api("/api/providers", { method: "POST", body: JSON.stringify({ name, accountId, color: color ?? null }) }) as { id: string };
-    setProviders((prev) => [...prev, { id: r.id, name, color: color ?? null, accountId, sortOrder: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) } as Provider]);
-    return r;
-  }, []);
   const remove = useCallback(async (id: string) => {
     await api(`/api/providers?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     await refresh();
@@ -185,7 +180,7 @@ export function useProviders() {
     await api("/api/providers", { method: "POST", body: JSON.stringify({ id, color }) });
     setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
   }, []);
-  return { providers, ready, create, remove, rename, setColor, refresh, setProviders };
+  return { providers, ready, remove, rename, setColor, refresh, setProviders };
 }
 
 export function usePortfolios() {
