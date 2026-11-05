@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const path = require("node:path");
-const { app, BrowserWindow, Menu, WebContentsView, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, WebContentsView, ipcMain, shell } = require("electron");
 const { isAllowedNavigation, isExternalWebUrl } = require("./url-policy.cjs");
 
 const DEFAULT_APP_URL = "https://olantis.vercel.app";
@@ -72,6 +72,9 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow;
   let appView;
   let appRevealed = false;
+  // Surfaced in the app's refresh-prices control through app-preload.cjs.
+  let updateStatus = { state: "idle", version: null };
+  let updaterInstance;
 
   app.on("second-instance", () => {
     if (!mainWindow) return;
@@ -148,6 +151,17 @@ if (!app.requestSingleInstanceLock()) {
   // listening still tears the startup mark down.
   ipcMain.handle("olantis:app:is-ready", (event) => Boolean(shellWindowFor(event)) && appRevealed);
 
+  function appViewWindowFor(event) {
+    return Boolean(appView) && !appView.webContents.isDestroyed() && event.sender === appView.webContents;
+  }
+
+  ipcMain.handle("olantis:update:status", (event) => (appViewWindowFor(event) ? updateStatus : { state: "idle", version: null }));
+  ipcMain.on("olantis:update:restart", (event) => {
+    if (!appViewWindowFor(event) || updateStatus.state !== "ready" || !updaterInstance) return;
+    // Same handoff the native "Restart now" prompt used: quit, install, relaunch.
+    updaterInstance.quitAndInstall(true, true);
+  });
+
   function navigationHistory() {
     return appView?.webContents.navigationHistory;
   }
@@ -199,6 +213,8 @@ if (!app.requestSingleInstanceLock()) {
     trace("view:create");
     appView = new WebContentsView({
       webPreferences: {
+        // Only the update bridge is exposed to the remote page.
+        preload: path.join(__dirname, "app-preload.cjs"),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -258,6 +274,9 @@ if (!app.requestSingleInstanceLock()) {
     for (const eventName of ["did-navigate", "did-navigate-in-page", "did-finish-load"]) {
       appView.webContents.on(eventName, sendNavigationState);
     }
+    // A reload starts with an empty renderer world, so hand it the update state
+    // the shell already knows about.
+    appView.webContents.on("did-finish-load", sendUpdateStatus);
 
     if (STARTUP_TRACE) {
       appView.webContents.on("did-start-loading", () => trace("view:did-start-loading"));
@@ -351,19 +370,14 @@ if (!app.requestSingleInstanceLock()) {
     if (smokeTest) void runSmokeTest(shellReady, appReady);
   }
 
-  function promptToRestart(version) {
-    const options = {
-      type: "info",
-      buttons: ["Restart now", "Later"],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-      title: "Update ready",
-      message: `Olantis ${version} is ready to install.`,
-      detail: "Restart the app to finish updating. Choosing Later installs the update the next time you quit.",
-    };
-    const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-    return parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options);
+  function sendUpdateStatus() {
+    if (!appView || appView.webContents.isDestroyed()) return;
+    appView.webContents.send("olantis:update:status", updateStatus);
+  }
+
+  function setUpdateStatus(state, version) {
+    updateStatus = { state, version: version ?? null };
+    sendUpdateStatus();
   }
 
   function startAutoUpdates() {
@@ -381,18 +395,15 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
 
+    updaterInstance = updater;
     updater.logger = console;
     updater.autoDownload = true;
     updater.autoInstallOnAppQuit = true;
     updater.on("error", (error) => console.error("[updater]", error?.message ?? error));
-    updater.on("update-downloaded", async (info) => {
-      try {
-        const { response } = await promptToRestart(info?.version ?? "a new version");
-        if (response === 0) updater.quitAndInstall(true, true);
-      } catch (error) {
-        console.error("[updater] restart prompt failed:", error?.message ?? error);
-      }
-    });
+    // No native dialog: the app's refresh-prices control shows the update and
+    // offers the restart, so a background download never interrupts anyone.
+    updater.on("update-available", (info) => setUpdateStatus("downloading", info?.version));
+    updater.on("update-downloaded", (info) => setUpdateStatus("ready", info?.version));
 
     const check = () => {
       updater.checkForUpdates().catch((error) => console.error("[updater] check failed:", error?.message ?? error));
