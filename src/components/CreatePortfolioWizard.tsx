@@ -18,8 +18,6 @@ type Props = {
   defaultAccountId?: string | null;
   defaultProviderId?: string | null;
   onCreate: (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => void | Promise<void>;
-  /** Creates the provider brand selected in step 1, inside the chosen account. */
-  onCreateProvider?: (name: string, accountId: string) => Promise<{ id: string } | void>;
   /** Lets the wizard bootstrap its first account instead of dead-ending. */
   onCreateAccount?: (name: string) => Promise<{ id: string } | void>;
   inline?: boolean;
@@ -41,7 +39,7 @@ function StepHeading({ icon: Icon, title, description }: { icon: LucideIcon; tit
   );
 }
 
-export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers = [], defaultAccountId, defaultProviderId, onCreate, onCreateProvider, onCreateAccount, inline }: Props) {
+export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers = [], defaultAccountId, defaultProviderId, onCreate, onCreateAccount, inline }: Props) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [type, setType] = useState<"live" | "manual">("live");
@@ -68,8 +66,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
 
   const selectAccount = (value: string) => {
     setAccountId(value);
-    // A saved provider belongs to exactly one account; a brand can follow the
-    // user to any account and is created on save.
+    // A provider belongs to exactly one account.
     if (provider?.id && !providers.some((item) => item.id === provider.id && item.accountId === value)) {
       setProvider(null);
     }
@@ -92,21 +89,14 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
   };
 
   if (!open) return null;
-  const hasLocation = !!accountId && !!provider;
+  const hasLocation = !!accountId;
   const canNext = step !== 1 || (name.trim().length >= 2 && hasLocation);
 
   const handleCreate = async () => {
     setCreating(true);
     setError("");
     try {
-      let providerId = provider?.id ?? null;
-      if (!providerId && provider) {
-        if (!accountId) throw new Error("Choose an account before adding a provider");
-        if (!onCreateProvider) throw new Error("Provider creation is unavailable");
-        const created = await onCreateProvider(provider.name, accountId);
-        providerId = created && "id" in created ? created.id : null;
-        if (!providerId) throw new Error("Could not create provider");
-      }
+      const providerId = provider?.id ?? null;
       await onCreate(name.trim(), type, accountId, providerId, { symbol: symbol.toUpperCase().trim(), shares });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -129,7 +119,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
 
   const detailsStep = (
     <div className="space-y-7">
-      <StepHeading icon={Wallet} title="Portfolio details" description="Name the portfolio and assign it to the account and provider that hold it." />
+      <StepHeading icon={Wallet} title="Portfolio details" description="Name the portfolio and assign it to the account that holds it." />
 
       <div className="space-y-5">
         <div className="space-y-2">
@@ -196,7 +186,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="portfolio-provider" className="flex items-center gap-1.5"><Briefcase className="size-3.5" /> Provider</Label>
+            <Label htmlFor="portfolio-provider" className="flex items-center gap-1.5"><Briefcase className="size-3.5" /> Provider <span className="font-normal text-zinc-500">(optional)</span></Label>
             <ProviderPicker
               id="portfolio-provider"
               value={provider}
@@ -207,8 +197,8 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
             <p className="text-xs leading-relaxed text-zinc-500">
               {!accountId
                 ? "Choose an account to see its providers."
-                : provider && !provider.id
-                  ? `“${provider.name}” will be added to this account.`
+                : accountProviders.length === 0
+                  ? "No providers in this account yet."
                   : "The broker or platform that holds it."}
             </p>
           </div>
