@@ -233,11 +233,11 @@ export function WatchlistPanel() {
   return (
     <div className="space-y-6">
       {loading ? (
-        <div className="grid grid-cols-2 gap-6 border-y border-white/[0.06] py-7 sm:gap-x-10 lg:grid-cols-[1.6fr_1fr_1fr] lg:gap-0">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.6fr_1fr_1fr] lg:gap-0 lg:py-7">
           {[1, 2, 3].map((index) => (
             <div key={index} className={index === 1 ? "col-span-2 lg:col-span-1 lg:pr-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
               <div className="h-2.5 w-20 animate-pulse rounded bg-white/[0.07]" />
-              <div className="mt-3 h-8 w-28 animate-pulse rounded bg-white/[0.09]" />
+              <div className={`mt-2 animate-pulse rounded bg-white/[0.09] ${index === 1 ? "h-[38px] w-28 sm:h-[42px]" : "h-7 w-16 sm:h-8"}`} />
               <div className="mt-2 h-2.5 w-16 animate-pulse rounded bg-white/[0.05]" />
             </div>
           ))}
@@ -327,7 +327,16 @@ export function WatchlistPanel() {
 
           {loading ? (
             <div className="mt-4 border-t border-white/[0.06]" aria-label="Loading watchlist">
-              {[1, 2, 3].map((row) => <div key={row} className="h-14 animate-pulse border-b border-white/[0.05] bg-white/[0.02]" />)}
+              {[1, 2, 3].map((row) => (
+                <div key={row} className="flex items-center gap-3 border-b border-white/[0.05] px-1 py-3">
+                  <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-white/[0.04]" />
+                  <div className="min-w-0 flex-1">
+                    <div className="h-3.5 w-32 animate-pulse rounded bg-white/[0.05]" />
+                    <div className="mt-1 h-2.5 w-20 animate-pulse rounded bg-white/[0.04]" />
+                  </div>
+                  <div className="h-3.5 w-16 animate-pulse rounded bg-white/[0.05]" />
+                </div>
+              ))}
             </div>
           ) : items.length === 0 ? (
             <div className="mt-4 border-t border-white/[0.06] py-14 text-center">

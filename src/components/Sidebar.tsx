@@ -920,7 +920,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const renderRailTree = () => {
     if (loading) {
       return (
-        <div className="space-y-2 pt-1">
+        <div className="space-y-1 pt-1">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="mx-auto h-9 w-9 rounded-lg bg-white/5" />)}
         </div>
       );
@@ -1060,7 +1060,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             </div>
           </div>
 
-          {loading ? <div className="space-y-3">{[1,2].map(i=><Skeleton key={i} className="h-20 rounded-xl bg-white/5"/>)}</div>
+          {loading ? <div className="space-y-3">{[1,2,3].map(i=><Skeleton key={i} className="h-[92px] rounded-2xl bg-white/5"/>)}</div>
           : accounts.length === 0 && unassigned.length === 0 ? <Card className="p-6 text-center border-dashed bg-white/[0.02]"><p className="text-sm text-zinc-500">No portfolios yet</p><p className="text-xs text-zinc-600 mt-1">Create an account to start tracking portfolios</p><Button size="sm" className="mt-3" onClick={()=>setShowAccountDialog(true)}><Plus className="w-3.5 h-3.5"/>New account</Button></Card>
           : (
           <div className="space-y-3">
