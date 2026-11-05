@@ -181,6 +181,18 @@ body {
       outline-offset: 2px;
     }
   }
+  /* Recharts 3 puts tabIndex=0 on every chart for keyboard navigation, which
+     opts them into the browser's default focus ring: a hard box around the
+     plot. Draw a quieter one instead, and never on pointer focus. */
+  .recharts-wrapper {
+    &:focus {
+      outline: none;
+    }
+    &:focus-visible {
+      outline: 1px solid rgba(255, 255, 255, 0.2);
+      outline-offset: 2px;
+    }
+  }
 }
 
 @layer utilities {
