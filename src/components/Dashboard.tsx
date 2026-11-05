@@ -41,8 +41,8 @@ const SettingsView = dynamic(() => import("@/components/Settings").then((module)
 // Only one dashboard level renders at a time, so the account, provider and
 // holding trees (and the performance page) are split out of the overview chunk
 // and loaded when the user actually opens them.
-const PerformanceChart = dynamic(() => import("@/components/dashboard/PerformanceChart").then((module) => module.PerformanceChart), { loading: () => <ViewFallback /> });
-const IndividualDashboard = dynamic(() => import("@/components/dashboard/IndividualDashboard").then((module) => module.IndividualDashboard), { loading: () => <ViewFallback /> });
+const PerformanceChart = dynamic(() => import("@/components/dashboard/PerformanceChart").then((module) => module.PerformanceChart), { loading: () => <PerformanceFallback /> });
+const IndividualDashboard = dynamic(() => import("@/components/dashboard/IndividualDashboard").then((module) => module.IndividualDashboard), { loading: () => <StockFallback /> });
 const AccountDashboard = dynamic(() => import("@/components/dashboard/AccountDashboard").then((module) => module.AccountDashboard), { loading: () => <ViewFallback /> });
 const ProviderDashboard = dynamic(() => import("@/components/dashboard/ProviderDashboard").then((module) => module.ProviderDashboard), { loading: () => <ViewFallback /> });
 const WatchlistPanel = dynamic(() => import("@/components/WatchlistPanel").then((module) => module.WatchlistPanel), { loading: () => <WatchlistFallback /> });
@@ -54,57 +54,307 @@ const AssignHoldingDialog = dynamic(() => import("@/components/dashboard/AssignH
 const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPortfolioDialog").then((module) => module.EditPortfolioDialog), { ssr: false });
 const DeleteConfirmationDialog = dynamic(() => import("@/components/dashboard/shared/DeleteConfirmationDialog").then((module) => module.DeleteConfirmationDialog), { ssr: false });
 
-// One skeleton shape for every deferred section: a fixed leading block plus a
-// few rows, so the placeholder occupies the same frame the real section will.
-function SectionFallback({ rows = 4, header = true }: { rows?: number; header?: boolean }) {
+// Shared metric-band frame: every dashboard level leads with a label/value/sub
+// strip between hairlines, so one placeholder covers the overview, account,
+// provider and performance headers.
+function MetricStripSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.3fr_1fr_1fr_0.75fr] lg:gap-0 lg:py-7">
+      <div className="col-span-2 lg:col-span-1 lg:pr-8">
+        <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
+        <Skeleton className="mt-2 h-[38px] w-28 bg-white/[0.09] sm:h-[42px]" />
+        <Skeleton className="mt-2 h-2.5 w-24 bg-white/[0.04]" />
+      </div>
+      {[1, 2, 3].map((index) => (
+        <div key={index} className={index === 3 ? "hidden lg:block lg:border-l lg:border-white/[0.06] lg:pl-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
+          <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
+          <Skeleton className="mt-2 h-7 w-20 bg-white/[0.05] sm:h-8" />
+          <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.04]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Account and provider drill-downs: back link + title/actions, the metric band,
+// a chart/allocation row and the providers/portfolios tree.
+function ViewFallback() {
   return (
     <div className="space-y-6" aria-busy="true">
-      {header && (
-        <div className="grid grid-cols-2 gap-6 border-y border-white/[0.06] py-7 sm:gap-x-10 lg:grid-cols-3 lg:gap-0">
-          {[0, 1, 2].map((index) => (
-            <div key={index} className={index === 0 ? "col-span-2 lg:col-span-1 lg:pr-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
-              <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
-              <Skeleton className="mt-3 h-8 w-28 bg-white/[0.05]" />
-              <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.05]" />
+      <div>
+        <Skeleton className="h-4 w-24 bg-white/[0.04]" />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <Skeleton className="h-7 w-48 bg-white/[0.09]" />
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-7 w-16 rounded-full bg-white/[0.05]" />
+            <Skeleton className="h-7 w-32 rounded-full bg-white/[0.08]" />
+            <Skeleton className="h-7 w-20 rounded-full bg-white/[0.05]" />
+          </div>
+        </div>
+        <Skeleton className="mt-2 h-4 w-56 bg-white/[0.05]" />
+      </div>
+
+      <MetricStripSkeleton />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+        <Skeleton className="h-[400px] rounded-[1.25rem] bg-white/[0.03] lg:col-span-3" />
+        <Skeleton className="h-[400px] rounded-[1.25rem] bg-white/[0.03] lg:col-span-2" />
+      </div>
+
+      <div>
+        <div className="flex items-baseline justify-between gap-3 pb-3">
+          <Skeleton className="h-5 w-40 bg-white/[0.05]" />
+        </div>
+        <div className="border-y border-white/[0.06]">
+          {[1, 2, 3].map((index) => (
+            <div key={index} className="flex items-center justify-between gap-3 border-b border-white/[0.05] px-1 py-4 last:border-b-0">
+              <div className="flex items-center gap-2.5">
+                <Skeleton className="h-7 w-7 rounded-lg bg-white/[0.05]" />
+                <Skeleton className="h-4 w-36 bg-white/[0.05]" />
+              </div>
+              <Skeleton className="h-4 w-20 bg-white/[0.05]" />
             </div>
           ))}
         </div>
-      )}
-      <div className="divide-y divide-white/[0.05]">
-        {Array.from({ length: rows }, (_, index) => (
-          <div key={index} className="flex items-center justify-between gap-3 py-3">
-            <Skeleton className="h-4 w-28 bg-white/[0.05]" />
-            <Skeleton className="h-4 w-16 bg-white/[0.05]" />
-          </div>
-        ))}
       </div>
     </div>
   );
 }
 
-// Matches the header + metric strip + chart frame of every drill-down level so
-// the deferred chunk cannot shift the content that is already painted.
-function ViewFallback() {
+// Performance keeps a viewport-tall chart card, so its placeholder has to grow
+// with the section instead of using the fixed drill-down chart height.
+function PerformanceFallback() {
+  return (
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-6" aria-busy="true">
+      <header>
+        <Skeleton className="h-7 w-48 bg-white/[0.09]" />
+        <Skeleton className="mt-2 h-4 w-80 max-w-full bg-white/[0.05]" />
+      </header>
+
+      <MetricStripSkeleton />
+
+      <div className="panel flex flex-1 flex-col p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Skeleton className="h-5 w-40 bg-white/[0.05]" />
+          <div className="flex items-center gap-1">
+            <Skeleton className="h-8 w-28 rounded-lg bg-white/[0.04]" />
+            <Skeleton className="h-8 w-40 rounded-full bg-white/[0.04]" />
+          </div>
+        </div>
+        <Skeleton className="mt-4 h-[340px] w-full bg-white/[0.04] sm:h-[420px] lg:h-[480px]" />
+        <div className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1.5">
+          {[1, 2, 3].map((index) => (
+            <Skeleton key={index} className="h-5 w-20 rounded-full bg-white/[0.04]" />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-baseline justify-between gap-3 pb-2">
+          <Skeleton className="h-5 w-20 bg-white/[0.05]" />
+          <Skeleton className="h-3 w-24 bg-white/[0.04]" />
+        </div>
+        <div className="border-y border-white/[0.06]">
+          {[1, 2, 3].map((index) => (
+            <div key={index} className="flex items-center justify-between gap-3 border-b border-white/[0.05] px-1 py-3 last:border-b-0">
+              <Skeleton className="h-4 w-32 bg-white/[0.05]" />
+              <Skeleton className="h-4 w-16 bg-white/[0.05]" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Individual holding: brand + ticker header, five metrics, chart and trades.
+function StockFallback() {
   return (
     <div className="space-y-6" aria-busy="true">
-      <Skeleton className="h-7 w-48 bg-white/[0.05]" />
-      <SectionFallback rows={3} />
-      <Skeleton className="h-[320px] w-full rounded-2xl bg-white/[0.04]" />
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-8 w-8 rounded-full bg-white/[0.05]" />
+            <Skeleton className="h-7 w-24 bg-white/[0.09]" />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2.5">
+            <Skeleton className="h-3.5 w-40 bg-white/[0.05]" />
+            <Skeleton className="h-5 w-16 rounded-full bg-white/[0.04]" />
+            <Skeleton className="h-5 w-20 rounded-full bg-white/[0.04]" />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Skeleton className="h-7 w-20 rounded-full bg-white/[0.08]" />
+          <Skeleton className="h-7 w-20 rounded-full bg-white/[0.05]" />
+          <Skeleton className="h-7 w-20 rounded-full bg-white/[0.05]" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] lg:gap-0 lg:py-7">
+        <div className="col-span-2 lg:col-span-1 lg:pr-6">
+          <Skeleton className="h-2.5 w-16 bg-white/[0.05]" />
+          <Skeleton className="mt-2 h-[38px] w-28 bg-white/[0.09] sm:h-[42px]" />
+          <Skeleton className="mt-2 h-2.5 w-24 bg-white/[0.04]" />
+        </div>
+        {[1, 2, 3, 4].map((index) => (
+          <div key={index} className="lg:border-l lg:border-white/[0.06] lg:px-6">
+            <Skeleton className="h-2.5 w-16 bg-white/[0.05]" />
+            <Skeleton className="mt-2 h-7 w-20 bg-white/[0.05] sm:h-8" />
+            <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.04]" />
+          </div>
+        ))}
+      </div>
+
+      <Skeleton className="h-[400px] w-full rounded-[1.25rem] bg-white/[0.03]" />
+
+      <div>
+        <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
+          <Skeleton className="h-5 w-16 bg-white/[0.05]" />
+          <Skeleton className="h-3 w-16 bg-white/[0.04]" />
+        </div>
+        <div className="border-b border-white/[0.06] py-6">
+          <Skeleton className="h-4 w-64 bg-white/[0.04]" />
+        </div>
+      </div>
     </div>
   );
 }
 
 function SettingsFallback() {
   return (
-    <section className="space-y-6 pb-16 xl:pb-0">
+    <section className="space-y-6 pb-16 xl:pb-0" aria-busy="true">
       <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Settings</h1>
-      <SectionFallback rows={6} />
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-6 border-y border-white/[0.06] py-6 sm:grid-cols-4 sm:gap-x-0">
+        {[1, 2, 3, 4].map((index) => (
+          <div key={index} className={index === 1 ? "sm:pr-8" : "sm:border-l sm:border-white/[0.06] sm:pl-8"}>
+            <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
+            <Skeleton className="mt-2 h-8 w-16 bg-white/[0.07]" />
+          </div>
+        ))}
+      </div>
+
+      <div className="divide-y divide-white/[0.06] border-b border-white/[0.06]">
+        <section className="py-6">
+          <Skeleton className="h-5 w-28 bg-white/[0.05]" />
+          <div className="mt-4 divide-y divide-white/[0.05]">
+            {[1, 2, 3, 4].map((index) => (
+              <div key={index} className="grid gap-2 py-3.5 first:pt-0 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
+                <div>
+                  <Skeleton className="h-4 w-32 bg-white/[0.05]" />
+                  <Skeleton className="mt-0.5 h-3 w-48 bg-white/[0.04]" />
+                </div>
+                <Skeleton className="h-8 w-full rounded-lg bg-white/[0.04]" />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="py-6">
+          <div className="flex items-center justify-between gap-4">
+            <Skeleton className="h-5 w-32 bg-white/[0.05]" />
+            <Skeleton className="h-4 w-4 bg-white/[0.04]" />
+          </div>
+          <div className="grid gap-6 pt-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-10">
+            <div>
+              <Skeleton className="h-8 w-64 rounded-full bg-white/[0.04]" />
+              <Skeleton className="mt-3 h-3 w-72 bg-white/[0.04]" />
+              <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
+                {[1, 2, 3].map((index) => (
+                  <div key={index} className="py-4">
+                    <Skeleton className="h-4 w-40 bg-white/[0.05]" />
+                    <Skeleton className="mt-2.5 h-7 w-56 bg-white/[0.04]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Skeleton className="hidden h-[300px] rounded-[1.25rem] bg-white/[0.03] xl:block" />
+          </div>
+        </div>
+
+        <div className="py-6">
+          <div className="flex items-center justify-between gap-4">
+            <Skeleton className="h-5 w-28 bg-white/[0.05]" />
+            <Skeleton className="h-4 w-4 bg-white/[0.04]" />
+          </div>
+        </div>
+
+        <section className="py-6">
+          <Skeleton className="h-5 w-32 bg-white/[0.05]" />
+          <div className="mt-4 divide-y divide-white/[0.05]">
+            {[1, 2].map((index) => (
+              <div key={index} className="flex items-center justify-between gap-6 py-3.5 first:pt-0">
+                <div>
+                  <Skeleton className="h-4 w-36 bg-white/[0.05]" />
+                  <Skeleton className="mt-0.5 h-3 w-52 bg-white/[0.04]" />
+                </div>
+                <Skeleton className="h-7 w-28 rounded-full bg-white/[0.04]" />
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
     </section>
   );
 }
 
 function WatchlistFallback() {
-  return <SectionFallback rows={4} />;
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.6fr_1fr_1fr] lg:gap-0 lg:py-7">
+        <div className="col-span-2 lg:col-span-1 lg:pr-8">
+          <Skeleton className="h-2.5 w-24 bg-white/[0.05]" />
+          <Skeleton className="mt-2 h-[38px] w-28 bg-white/[0.09] sm:h-[42px]" />
+          <Skeleton className="mt-2 h-2.5 w-28 bg-white/[0.04]" />
+        </div>
+        {[1, 2].map((index) => (
+          <div key={index} className="lg:border-l lg:border-white/[0.06] lg:px-8">
+            <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
+            <Skeleton className="mt-2 h-6 w-16 bg-white/[0.07]" />
+            <Skeleton className="mt-2 h-2.5 w-20 bg-white/[0.04]" />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] xl:gap-0">
+        <section className="min-w-0 xl:pr-8">
+          <div className="flex items-baseline justify-between gap-3 pb-3">
+            <Skeleton className="h-5 w-16 bg-white/[0.05]" />
+            <Skeleton className="h-3 w-14 bg-white/[0.04]" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-8 min-w-0 flex-1 rounded-lg bg-white/[0.04]" />
+            <Skeleton className="h-8 w-8 shrink-0 rounded-lg bg-white/[0.04]" />
+          </div>
+          <div className="mt-4 border-t border-white/[0.06]">
+            {[1, 2, 3].map((index) => (
+              <div key={index} className="flex items-center gap-3 border-b border-white/[0.05] px-1 py-3">
+                <Skeleton className="h-9 w-9 shrink-0 rounded-full bg-white/[0.04]" />
+                <div className="min-w-0 flex-1">
+                  <Skeleton className="h-3.5 w-32 bg-white/[0.05]" />
+                  <Skeleton className="mt-1 h-2.5 w-20 bg-white/[0.04]" />
+                </div>
+                <Skeleton className="h-3.5 w-16 bg-white/[0.05]" />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="min-w-0 xl:border-l xl:border-white/[0.06] xl:pl-8">
+          <div className="panel p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <Skeleton className="h-5 w-40 bg-white/[0.05]" />
+                <Skeleton className="mt-1 h-3 w-24 bg-white/[0.04]" />
+              </div>
+              <Skeleton className="h-8 w-40 rounded-full bg-white/[0.04]" />
+            </div>
+            <Skeleton className="mt-4 h-[240px] w-full bg-white/[0.04] sm:h-[300px] xl:h-[260px]" />
+          </div>
+        </section>
+      </div>
+    </div>
+  );
 }
 
 function GoalsFallback() {
@@ -125,21 +375,25 @@ function GoalsFallback() {
         {Array.from({ length: hasGoal ? 3 : 2 }, (_, index) => (
           <div key={index} className={index === (hasGoal ? 2 : 1) ? "col-span-2 sm:col-span-1 lg:border-l lg:border-white/[0.06] lg:pl-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
             <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
-            <Skeleton className="mt-2 h-6 w-20 bg-white/[0.05]" />
+            <Skeleton className="mt-2 h-7 w-20 bg-white/[0.05] sm:h-8" />
             <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.05]" />
           </div>
         ))}
       </div>
+
       <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-0">
         <div className="min-w-0 xl:pr-8">
           <div className="panel p-4">
-            <Skeleton className="h-3.5 w-32 bg-white/[0.05]" />
+            <div className="flex items-center justify-between gap-3">
+              <Skeleton className="h-5 w-40 bg-white/[0.05]" />
+              <Skeleton className="h-8 w-44 rounded-full bg-white/[0.05]" />
+            </div>
             <Skeleton className="mt-4 h-[280px] w-full bg-white/[0.05] sm:h-[320px]" />
           </div>
         </div>
         <aside className="xl:border-l xl:border-white/[0.06] xl:pl-8">
           <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
-            <Skeleton className="h-4 w-16 bg-white/[0.05]" />
+            <Skeleton className="h-5 w-16 bg-white/[0.05]" />
             <Skeleton className="h-3 w-10 bg-white/[0.05]" />
           </div>
           {hasGoal ? (
@@ -147,7 +401,7 @@ function GoalsFallback() {
               {[0, 1, 2].map((index) => (
                 <div key={index} className="flex items-baseline justify-between gap-3 py-3">
                   <Skeleton className="h-3 w-12 bg-white/[0.05]" />
-                  <Skeleton className="h-4 w-20 bg-white/[0.05]" />
+                  <Skeleton className="h-5 w-20 bg-white/[0.05]" />
                 </div>
               ))}
             </div>
@@ -156,10 +410,10 @@ function GoalsFallback() {
               {[0, 1, 2].map((index) => (
                 <div key={index} className="space-y-1.5">
                   <Skeleton className="h-3 w-20 bg-white/[0.05]" />
-                  <Skeleton className="h-9 w-full bg-white/[0.05]" />
+                  <Skeleton className="h-8 w-full bg-white/[0.05]" />
                 </div>
               ))}
-              <Skeleton className="h-9 w-full bg-white/[0.05]" />
+              <Skeleton className="h-8 w-full bg-white/[0.05]" />
             </div>
           )}
         </aside>
@@ -169,7 +423,65 @@ function GoalsFallback() {
 }
 
 function WizardFallback() {
-  return <SectionFallback rows={5} />;
+  return (
+    <div className="mx-auto my-3 w-full px-0 sm:my-5" aria-busy="true">
+      <main className="relative mx-auto w-full max-w-3xl py-2 sm:py-6">
+        <header className="mb-5 flex items-end justify-between gap-4 sm:mb-6">
+          <div className="min-w-0 flex-1">
+            <Skeleton className="h-2.5 w-24 bg-white/[0.04]" />
+            <Skeleton className="mt-2 h-7 w-56 bg-white/[0.09]" />
+            <Skeleton className="mt-1.5 h-4 w-80 max-w-full bg-white/[0.05]" />
+          </div>
+          <Skeleton className="mb-0.5 h-7 w-16 rounded-lg bg-white/[0.04]" />
+        </header>
+
+        <section className="rounded-2xl border border-white/[.09] bg-[#0b0b0d]/85">
+          <div className="rounded-t-2xl border-b border-white/[.07] px-5 py-5 sm:px-7">
+            <div className="grid grid-cols-3 gap-3">
+              {[1, 2, 3].map((index) => (
+                <div key={index}>
+                  <Skeleton className="h-1 w-full rounded-full bg-white/[0.08]" />
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <Skeleton className="h-5 w-5 rounded-full bg-white/[0.05]" />
+                    <Skeleton className="h-3 w-16 bg-white/[0.04]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-6 px-5 py-6 sm:px-7 sm:py-7">
+            <div className="flex items-start gap-3.5">
+              <Skeleton className="h-10 w-10 shrink-0 rounded-xl bg-white/[0.04]" />
+              <div className="min-w-0 flex-1 pt-0.5">
+                <Skeleton className="h-5 w-40 bg-white/[0.05]" />
+                <Skeleton className="mt-1 h-4 w-72 max-w-full bg-white/[0.04]" />
+              </div>
+            </div>
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <Skeleton className="h-3.5 w-24 bg-white/[0.04]" />
+                <Skeleton className="h-11 w-full rounded-xl bg-white/[0.04]" />
+              </div>
+              <div className="grid gap-5 sm:grid-cols-2">
+                {[1, 2].map((index) => (
+                  <div key={index} className="space-y-2">
+                    <Skeleton className="h-3.5 w-20 bg-white/[0.04]" />
+                    <Skeleton className="h-9 w-full rounded-lg bg-white/[0.04]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex min-h-[76px] items-center justify-between gap-4 rounded-b-2xl border-t border-white/[.07] bg-white/[.012] px-4 py-3.5 sm:px-7">
+            <Skeleton className="h-3 w-40 bg-white/[0.04]" />
+            <Skeleton className="h-10 w-32 rounded-xl bg-white/[0.08]" />
+          </div>
+        </section>
+      </main>
+    </div>
+  );
 }
 
 type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };

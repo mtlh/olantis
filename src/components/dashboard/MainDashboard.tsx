@@ -84,11 +84,16 @@ export function MainDashboard({
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-2 gap-6 border-y border-white/[0.06] py-7 sm:gap-x-10 lg:grid-cols-[1.3fr_1fr_1fr_0.75fr] lg:gap-0">
-          {[1, 2, 3, 4].map((index) => (
-            <div key={index} className={index === 4 ? "hidden lg:block" : undefined}>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.3fr_1fr_1fr_0.75fr] lg:gap-0 lg:py-7">
+          <div className="col-span-2 lg:col-span-1 lg:pr-8">
+            <Skeleton className="h-2.5 w-20 bg-white/[0.07]" />
+            <Skeleton className="mt-2 h-[38px] w-28 bg-white/[0.09] sm:h-[42px]" />
+            <Skeleton className="mt-2 h-2.5 w-24 bg-white/[0.05]" />
+          </div>
+          {[1, 2, 3].map((index) => (
+            <div key={index} className={index === 3 ? "hidden lg:block lg:border-l lg:border-white/[0.06] lg:pl-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
               <Skeleton className="h-2.5 w-20 bg-white/[0.07]" />
-              <Skeleton className="mt-3 h-8 w-28 bg-white/[0.09]" />
+              <Skeleton className="mt-2 h-7 w-20 bg-white/[0.09] sm:h-8" />
               <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.05]" />
             </div>
           ))}
