@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { isLiveHolding } from "@/lib/format";
 import type { Holding, Portfolio } from "@/lib/store";
 
-const MANUAL_SECTORS = new Set(["cash", "property", "real estate", "manual", "other"]);
 const STALE_AFTER_SECONDS = 36 * 60 * 60;
 
 export function useStaleHoldings(holdings: Holding[], portfolios: Portfolio[]) {
@@ -15,11 +15,11 @@ export function useStaleHoldings(holdings: Holding[], portfolios: Portfolio[]) {
   }, []);
 
   return useMemo(() => {
-    const manualPortfolioIds = new Set(portfolios.filter((portfolio) => portfolio.type === "manual").map((portfolio) => portfolio.id));
+    const typeById = new Map(portfolios.map((portfolio) => [portfolio.id, portfolio.type]));
     return [...holdings]
       .filter((holding) => {
-        if (holding.portfolioId && manualPortfolioIds.has(holding.portfolioId)) return false;
-        if (/^cash$/i.test(holding.symbol.trim()) || MANUAL_SECTORS.has(holding.sector?.trim().toLowerCase() ?? "")) return false;
+        const portfolioType = holding.portfolioId ? typeById.get(holding.portfolioId) : undefined;
+        if (!isLiveHolding(holding, portfolioType)) return false;
         return !holding.lastRefreshedAt || (now > 0 && now - holding.lastRefreshedAt > STALE_AFTER_SECONDS);
       })
       .sort((a, b) => (a.lastRefreshedAt ?? 0) - (b.lastRefreshedAt ?? 0));

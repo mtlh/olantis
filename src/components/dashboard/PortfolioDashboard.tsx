@@ -69,7 +69,6 @@ export function PortfolioDashboard({
               {provider && <BrandIcon provider={provider.name} size={28} />}
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{portfolio.name}</h1>
-                <span className="text-[11px] capitalize text-zinc-500">{portfolio.type}</span>
                 {portfolio.accountId && (
                   <span className="text-[11px] text-zinc-600">
                     {accounts.find((account) => account.id === portfolio.accountId)?.name ?? ""}

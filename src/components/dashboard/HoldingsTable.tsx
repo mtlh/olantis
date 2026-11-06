@@ -7,7 +7,7 @@ import { BrandIcon } from "@/components/BrandIcon";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fmtGBP, fmtPct, fmtPrice, fmtRelative, fmtTimestamp, holdingCostGBP, holdingCurrency, holdingValueGBP, type FxRates } from "@/lib/format";
+import { fmtGBP, fmtPct, fmtPrice, fmtRelative, fmtTimestamp, holdingCostGBP, holdingCurrency, holdingValueGBP, isLiveHolding, type FxRates } from "@/lib/format";
 import type { Holding, Portfolio } from "@/lib/store";
 
 type HoldingSort = "value" | "gain" | "symbol";
@@ -165,7 +165,12 @@ export function HoldingsTable({
                     <div className="flex items-center gap-3">
                       <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={32} />
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-white">{holding.symbol}</div>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-sm font-medium text-white">{holding.symbol}</span>
+                          {isLiveHolding(holding, portfolio.type) && (
+                            <span title="Price updates automatically" className="shrink-0 rounded-full border border-white/[0.06] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500">Live</span>
+                          )}
+                        </div>
                         <div className="max-w-[128px] truncate text-[11px] text-zinc-500 sm:max-w-[160px]">{holding.name}</div>
                         <div className="text-[11px] tabular-nums text-zinc-600 md:hidden">{holding.shares} × {fmtPrice(holding.avgPrice, holdingCurrency(holding))}</div>
                       </div>
