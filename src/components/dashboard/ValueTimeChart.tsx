@@ -264,8 +264,9 @@ export const ValueTimeChart = memo(function ValueTimeChart({
           className="max-w-[95vw] sm:max-w-[95vw]"
           initialFocus={(openType) => openType === "keyboard"}
         >
-          <DialogHeader>
+          <DialogHeader className="flex-row items-center justify-between gap-3 pr-10">
             <DialogTitle>{title}</DialogTitle>
+            {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} label="Reset" />}
           </DialogHeader>
           {renderChart("h-[70vh]")}
         </DialogContent>
