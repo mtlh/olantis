@@ -14,15 +14,18 @@ export function DashboardGoalCard({ currentValue, onViewGoals }: DashboardGoalCa
   // (or flip between "No goal set" and a progress bar) after hydration.
   const boot = useWorkspaceBootstrap();
   const serverGoal = boot ? boot.goals[0] ?? null : undefined;
-  const [goal, setGoal] = useState<Goal | null>(serverGoal ?? null);
+  // Derived, not copied: the bootstrapped goal always wins, so a late bootstrap
+  // cannot leave a stale null behind, and the fetch is only a fallback.
+  const [fetchedGoal, setFetchedGoal] = useState<Goal | null>(null);
+  const goal = serverGoal !== undefined ? serverGoal : fetchedGoal;
 
   useEffect(() => {
     if (serverGoal !== undefined) return;
     let cancelled = false;
     fetch("/api/goals")
       .then(async (response) => response.ok ? await response.json() as Goal[] : [])
-      .then((goals) => { if (!cancelled) setGoal(Array.isArray(goals) ? goals[0] ?? null : null); })
-      .catch(() => { if (!cancelled) setGoal(null); });
+      .then((goals) => { if (!cancelled) setFetchedGoal(Array.isArray(goals) ? goals[0] ?? null : null); })
+      .catch(() => { if (!cancelled) setFetchedGoal(null); });
     return () => { cancelled = true; };
   }, [serverGoal]);
 

@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useState, useCallback, useRef, useMemo } from "react";
 import { DEFAULT_FX_RATES, holdingValueGBP, type FxRates, type ValueChange } from "@/lib/format";
 import { DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "@/lib/settings";
 
@@ -81,10 +81,9 @@ function parseList<T>(data: unknown): T[] {
 }
 
 function useVisibilityRefresh(refresh: () => void) {
-  const ref = useRef(refresh);
-  useEffect(() => {
-    ref.current = refresh;
-  }, [refresh]);
+  // An Effect Event always sees the latest refresh without being a dependency,
+  // so the listener effect can stay mounted for the life of the page.
+  const onRefresh = useEffectEvent(refresh);
   const lastRef = useRef(0);
   useEffect(() => {
     const onVis = () => {
@@ -92,7 +91,7 @@ function useVisibilityRefresh(refresh: () => void) {
         const now = Date.now();
         if (now - lastRef.current >= 60000) {
           lastRef.current = now;
-          ref.current();
+          onRefresh();
         }
       }
     };

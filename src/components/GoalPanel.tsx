@@ -20,7 +20,10 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
   // meant /goals rendered the "no goal" layout first and then jumped to this one.
   const boot = useWorkspaceBootstrap();
   const serverGoal = boot ? boot.goals[0] ?? null : undefined;
-  const [goal, setGoal] = useState<Goal | null>(serverGoal ?? null);
+  const [goalOverride, setGoalOverride] = useState<Goal | null | undefined>(undefined);
+  // Derived, not copied: a save/remove overrides the bootstrapped goal, and
+  // everything else follows it, so there is no state to re-sync.
+  const goal = goalOverride !== undefined ? goalOverride : serverGoal ?? null;
   const [name, setName] = useState(serverGoal?.name ?? "Portfolio goal");
   const [targetValue, setTargetValue] = useState(serverGoal ? String(serverGoal.targetValue) : "");
   const [targetDate, setTargetDate] = useState(serverGoal?.targetDate ?? "");
@@ -39,7 +42,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
       if (!response.ok) throw new Error(data.error ?? "Unable to load goal");
       const first = (Array.isArray(data) ? data[0] : null) as Goal | null;
       if (!cancelled && first) {
-        setGoal(first);
+        setGoalOverride(first);
         setName(first.name);
         setTargetValue(String(first.targetValue));
         setTargetDate(first.targetDate);
@@ -62,7 +65,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not save goal");
-      setGoal({ id: data.id, name: name.trim(), targetValue: Number(targetValue), targetDate });
+      setGoalOverride({ id: data.id, name: name.trim(), targetValue: Number(targetValue), targetDate });
       setEditing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -78,7 +81,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
     try {
       const response = await fetch(`/api/goals?id=${encodeURIComponent(goal.id)}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Could not delete goal");
-      setGoal(null);
+      setGoalOverride(null);
       setTargetValue("");
       setTargetDate("");
       setName("Portfolio goal");
