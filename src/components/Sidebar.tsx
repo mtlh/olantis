@@ -1,5 +1,5 @@
 "use client";
-import { Portfolio, Account, Provider, Holding, useSettings } from "@/lib/store";
+import { type Portfolio, type Account, type Provider, type Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
 import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, Power, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -1139,7 +1139,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                               {editMode && (
                               <>
                                 <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Edit ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
-                                <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(()=>{ onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                                <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); void fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(async()=>{ await onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }).catch((err: unknown)=>{ toast({title:"Remove failed", description: err instanceof Error ? err.message : String(err), variant:"error"}); }); }}><Trash2 className="w-3 h-3"/></Button>
                               </>
                               )}
                             </div>

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Holding } from "@/lib/store";
+import { type Holding } from "@/lib/store";
 import { fmtPrice } from "@/lib/format";
 import { TrendingUp, Plus, Minus, Calculator, Calendar, Hash } from "lucide-react";
 

@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { X, CheckCircle2, AlertCircle, Info } from "lucide-react";
 
 type Toast = { id: string; title: string; description?: string; variant: "success" | "error" | "info" };

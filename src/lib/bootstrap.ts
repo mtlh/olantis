@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 import { ownedHoldingsQuery } from "@/lib/ownership";
 import {
   accounts,
-  holdings as holdingsTable,
+  type holdings as holdingsTable,
   portfolioSnapshots,
   portfolios as portfoliosTable,
   providers as providersTable,

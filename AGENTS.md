@@ -17,6 +17,14 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Routes: `/` → landing (public, redirects to `/dashboard` if signed in), `/dashboard` → app (auth required, demo bypass), `/login` → `GET` WorkOS `getSignInUrl()` redirect, `/signin` → `redirect("/login")`, `/callback` → `handleAuth`, `/logout` → `signOut({returnTo:"/"})`, `/api/demo` → set `olantis_demo=1` + `redirect("/dashboard")`, `/api/demo?clear=1` → clear demo + `redirect("/")`.
 - DB schema: `src/lib/db/schema.ts` — accounts/portfolios/holdings/snapshots, isolated by `userId`. Seeding in `src/app/api/demo/route.ts`.
 
+## Lint Contract (agent guardrails)
+- `npm run lint` = `eslint . --max-warnings=0` — **warnings fail**. `npm run lint:fix` autofixes. `npm run check` = lint + typecheck + test; run it before saying you are done.
+- **Never add `eslint-disable`, `@ts-ignore`, `@ts-nocheck` or `any`** — fix the cause. Stale disables fail too (`reportUnusedDisableDirectives`), and `@ts-expect-error` needs a >=10 character description.
+- **No new `useEffect`/`useLayoutEffect`.** Derive values during render, put side effects in event handlers, use `useSyncExternalStore` for external state, or model two synced values as one. Files in `LEGACY_EFFECT_FILES` (`eslint.config.mjs`) may keep their existing effects — do not add more, and remove the file from the list when you migrate it.
+- **Client boundary**: `src/components/**` and `src/lib/store.ts` / `src/lib/use-chart-animation.ts` must not import `@/lib/db`, `drizzle-orm`, `@neondatabase/serverless` or `yahoo-finance2`. Call `/api/*` or read `useWorkspaceBootstrap()`.
+- **Imports**: use the `@/` alias, never `../`. **Logging**: no `console.log` (only `warn`/`error`). **Storage**: no bare `localStorage` — use `window.localStorage` inside a client-only hook so SSR stays deterministic.
+- **Async**: every promise is awaited or explicitly `void`ed; do not pass an `async` function where a `void` handler is expected unless the rejection is handled.
+
 ## Git Control (this repo only)
 - **Remote**: `origin` = `https://github.com/mtlh/olantis.git` (private). **Branch**: `master` (not `main`) — `origin/HEAD -> origin/master`. Always `master`.
 - **GitHub CLI on Windows**: `gh` is NOT in PATH for PowerShell. Use full path: `& "C:\Program Files\GitHub CLI\gh.exe" ...` (version 2.98.0). Auth: `mtlh` logged in via keyring, scopes `repo workflow gist read:org`.
