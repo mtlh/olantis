@@ -2,7 +2,7 @@
 import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings, useWorkspaceBootstrap } from "@/lib/store";
 import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus, AlertTriangle } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -517,23 +517,15 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const [tradeRequest, setTradeRequest] = useState<{ holding: Holding; type: "buy" | "sell" } | null>(null);
   const [wizardContext, setWizardContext] = useState<{ accountId: string | null; providerId: string | null } | null>(null);
   const [holdingDialog, setHoldingDialog] = useState<Holding | "new" | null>(null);
-  // Default chart range comes from user settings; once the viewer picks a
-  // range manually we stop following the preference for this visit.
-  const [range, setRange] = useState<ChartRange>(section === "performance" ? "MAX" : "1Y");
-  const rangeTouched = useRef(false);
-  const rangeSection = useRef(section);
-  useEffect(() => {
-    if (rangeSection.current !== section) {
-      rangeSection.current = section;
-      rangeTouched.current = false;
-    }
-    if (rangeTouched.current) return;
-    setRange(section === "performance" ? "MAX" : settings.defaultRange);
-  }, [settings.defaultRange, section]);
-const pickRange = useCallback((r: ChartRange) => {
-    rangeTouched.current = true;
-    setRange(r);
-  }, []);
+  // Derived rather than synced: the preference is the fallback and a manual
+  // pick is an override tagged with the section it was made in. No effect writes
+  // state on a settings change, so there is nothing to loop or race.
+  const [rangeOverride, setRangeOverride] = useState<{ section: DashboardSection; value: ChartRange } | null>(null);
+  const defaultRange: ChartRange = section === "performance" ? "MAX" : settings.defaultRange;
+  const range: ChartRange = rangeOverride?.section === section ? rangeOverride.value : defaultRange;
+  const pickRange = useCallback((value: ChartRange) => {
+    setRangeOverride({ section, value });
+  }, [section]);
   // Held here rather than in PerformanceChart so the pick survives navigating
   // between sections, which unmounts the chart.
   const [benchmark, setBenchmark] = useState(isDemo ? "VWRL.L" : "__none__");
@@ -913,8 +905,18 @@ range={range}
               onBenchmarkChange={setBenchmark}
             />
           ) : wizardContext ? (
-            <CreatePortfolioWizard open onOpenChange={(open) => { if (!open) setWizardContext(null); }} accounts={accounts} providers={providers} defaultAccountId={wizardContext.accountId} defaultProviderId={wizardContext.providerId}
-              onCreate={handleWizardCreate} onCreateAccount={handleCreateAccount} inline />
+            <CreatePortfolioWizard
+              // Remounting is the reset: a new wizard context means fresh
+              // defaults, so no effect has to copy props into state.
+              key={`${wizardContext.accountId ?? "none"}:${wizardContext.providerId ?? "none"}`}
+              open
+              onOpenChange={(open) => { if (!open) setWizardContext(null); }}
+              accounts={accounts}
+              providers={providers}
+              defaultAccountId={wizardContext.accountId}
+              defaultProviderId={wizardContext.providerId}
+              onCreate={handleWizardCreate} onCreateAccount={handleCreateAccount} inline
+            />
           ) : viewHolding ? (
             <IndividualDashboard
               holding={viewHolding}

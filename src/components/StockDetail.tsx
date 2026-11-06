@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, FolderPlus, Minus, Plus, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,17 +55,14 @@ function ChartPlaceholder({
 
 export function StockDetail({ holding, portfolioId, portfolioValue, portfolioName, color, onBack, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioValue: number; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
   const { settings } = useSettings();
-  const [range, setRange] = useState<ChartRange>("1Y");
-  const rangeTouched = useRef(false);
-  useEffect(() => {
-    if (rangeTouched.current) return;
-    setRange(settings.defaultRange);
-  }, [settings.defaultRange]);
+  // Derived rather than synced: the preference is the fallback and a manual pick
+  // is an override, so no effect has to write range when settings load.
+  const [rangeOverride, setRangeOverride] = useState<ChartRange | null>(null);
+  const range: ChartRange = rangeOverride ?? settings.defaultRange;
   // Stable so the memoised chart does not re-render on unrelated state changes
   // (price fetch settling, trades loading, …).
   const pickRange = useCallback((r: ChartRange) => {
-    rangeTouched.current = true;
-    setRange(r);
+    setRangeOverride(r);
   }, []);
   const isListed = isListedSymbol(holding.symbol);
   const [prices, setPrices] = useState<PriceRow[] | null>(null);

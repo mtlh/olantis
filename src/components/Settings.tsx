@@ -1,6 +1,6 @@
 "use client";
-import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings } from "@/lib/store";
-import { useEffect, useMemo, useState } from "react";
+import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, type AppSettings } from "@/lib/store";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
@@ -12,10 +12,10 @@ import { AllocationCard } from "@/components/dashboard/shared/AllocationCard";
 import { usePortfolioAllocation } from "@/components/dashboard/usePortfolioAllocation";
 
 interface SettingsState {
-  currency: string | null;
-  dateFormat: string | null;
-  defaultRange: string | null;
-  showTradeMarkers: number | null;
+  currency: string;
+  dateFormat: string;
+  defaultRange: AppSettings["defaultRange"];
+  showTradeMarkers: number;
 }
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
@@ -96,29 +96,37 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   const { providers, setColor: setProviderColor, refresh: refreshProviders } = useProviders();
   const { portfolios, setColor: setPortfolioColor, refresh: refreshPortfolios } = usePortfolios();
   const { holdings: allHoldings } = useHoldings();
-  const { settings: appSettings } = useSettings();
+  const { settings: appSettings, save: saveAppSettings } = useSettings();
   const { toast } = useToast();
-  const [settings, setSettings] = useState<SettingsState>({ currency: "GBP", dateFormat: "en-GB", defaultRange: "1Y", showTradeMarkers: 1 });
+  // The store hook already holds the server settings (bootstrapped or fetched
+  // once by the hook), so this view keeps no second copy. A save overlays its
+  // patch optimistically until the store refresh lands, then clears it: success
+  // shows the fresh store value, failure reverts to it.
+  const [settingsPatch, setSettingsPatch] = useState<Partial<SettingsState> | null>(null);
+  const settings: SettingsState = {
+    currency: settingsPatch?.currency ?? appSettings.currency,
+    dateFormat: settingsPatch?.dateFormat ?? appSettings.dateFormat,
+    defaultRange: settingsPatch?.defaultRange ?? appSettings.defaultRange,
+    showTradeMarkers: settingsPatch?.showTradeMarkers ?? (appSettings.showTradeMarkers ? 1 : 0),
+  };
   const [saving, setSaving] = useState<string | null>(null);
   const [colorTab, setColorTab] = useState<"accounts" | "providers" | "portfolios">("accounts");
   const [importPortfolioId, setImportPortfolioId] = useState("");
   const [importing, setImporting] = useState(false);
 
-  useEffect(() => {
-    let cancel = false;
-    fetch("/api/settings").then(r=>r.json()).then(j=>{ if(!cancel) setSettings((s)=>({ ...s, ...j })); }).catch(()=>{});
-    return () => { cancel = true; };
-  }, []);
-
-  const saveSettings = async (patch: Partial<SettingsState>) => {
-    const prev = settings;
-    const next = { ...settings, ...patch };
-    setSettings(next);
+  const saveSettings = async (patch: Partial<AppSettings>) => {
+    setSettingsPatch((current) => ({
+      ...current,
+      ...(patch.currency !== undefined ? { currency: patch.currency } : {}),
+      ...(patch.dateFormat !== undefined ? { dateFormat: patch.dateFormat } : {}),
+      ...(patch.defaultRange !== undefined ? { defaultRange: patch.defaultRange } : {}),
+      ...(patch.showTradeMarkers !== undefined ? { showTradeMarkers: patch.showTradeMarkers ? 1 : 0 } : {}),
+    }));
     try {
-      const res = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-      if (!res.ok) throw new Error((await res.text()) || `Save failed (${res.status})`);
+      await saveAppSettings(patch);
       toast({ title: "Settings saved", variant: "success" });
-    } catch (e: unknown){ setSettings(prev); toast({title:"Save failed", description: e instanceof Error ? e.message : String(e), variant:"error"}); }
+    } catch (e: unknown){ toast({title:"Save failed", description: e instanceof Error ? e.message : String(e), variant:"error"}); }
+    finally { setSettingsPatch(null); }
   };
 
   const handleAccountColor = async (id: string, color: string | null) => {
@@ -228,7 +236,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 <Label htmlFor="setting-currency">Default currency</Label>
                 <p className={ROW_HINT}>Applied to new holdings and trades.</p>
               </div>
-              <Select value={settings.currency ?? "GBP"} onValueChange={v=> saveSettings({ currency: v })}>
+              <Select value={settings.currency} onValueChange={v=> saveSettings({ currency: v ?? "GBP" })}>
                 <SelectTrigger id="setting-currency" className={FIELD}><span className="flex-1 text-left truncate">{settings.currency ?? "GBP"}</span></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="GBP">GBP (£)</SelectItem>
@@ -242,7 +250,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               <div>
                 <Label htmlFor="setting-date-format">Date format</Label>
               </div>
-              <Select value={settings.dateFormat ?? "en-GB"} onValueChange={v=> saveSettings({ dateFormat: v })}>
+              <Select value={settings.dateFormat} onValueChange={v=> saveSettings({ dateFormat: v ?? "en-GB" })}>
                 <SelectTrigger id="setting-date-format" className={FIELD}><span className="flex-1 text-left truncate">{settings.dateFormat ?? "en-GB"}</span></SelectTrigger>
                 <SelectContent><SelectItem value="en-GB">Day / month / year</SelectItem><SelectItem value="en-US">Month / day / year</SelectItem><SelectItem value="de-DE">Day.month.year</SelectItem><SelectItem value="fr-FR">Day / month / year (French)</SelectItem></SelectContent>
               </Select>
@@ -262,9 +270,9 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 <p className={ROW_HINT}>Buy and sell dots on portfolio charts.</p>
               </div>
               <SegmentedToggle
-                value={Number(settings.showTradeMarkers ?? 1)}
+                value={settings.showTradeMarkers}
                 options={[{ value: 1, label: "On" }, { value: 0, label: "Off" }]}
-                onChange={(value) => saveSettings({ showTradeMarkers: value })}
+                onChange={(value) => saveSettings({ showTradeMarkers: value !== 0 })}
               />
             </div>
           </div>

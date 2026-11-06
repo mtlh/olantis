@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,23 +44,16 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
   const [name, setName] = useState("");
   const [type, setType] = useState<"live" | "manual">("live");
   const [accountId, setAccountId] = useState<string | null>(defaultAccountId ?? null);
-  const [provider, setProvider] = useState<ProviderSelection | null>(null);
+  const [provider, setProvider] = useState<ProviderSelection | null>(() => {
+    const preselected = defaultProviderId ? providers.find((item) => item.id === defaultProviderId) : null;
+    return preselected ? { id: preselected.id, name: preselected.name } : null;
+  });
   const [newAccountName, setNewAccountName] = useState("");
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [symbol, setSymbol] = useState("");
   const [shares, setShares] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-
-  const prevDefaultsRef = useRef<{ accountId: string | null | undefined; providerId: string | null | undefined }>({ accountId: undefined, providerId: undefined });
-  useEffect(() => {
-    if (open && (prevDefaultsRef.current.accountId !== defaultAccountId || prevDefaultsRef.current.providerId !== defaultProviderId)) {
-      setAccountId(defaultAccountId ?? null);
-      const preselected = defaultProviderId ? providers.find((item) => item.id === defaultProviderId) ?? null : null;
-      setProvider(preselected ? { id: preselected.id, name: preselected.name } : null);
-    }
-    prevDefaultsRef.current = { accountId: defaultAccountId, providerId: defaultProviderId };
-  }, [open, defaultAccountId, defaultProviderId, providers]);
 
   const accountProviders = useMemo(() => (accountId ? providers.filter((item) => item.accountId === accountId) : []), [providers, accountId]);
 
