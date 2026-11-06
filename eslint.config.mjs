@@ -6,12 +6,9 @@ import nextTs from "eslint-config-next/typescript";
 // Any file here may keep its existing effects, but new code should not add any.
 const LEGACY_EFFECT_FILES = [
   "src/components/ChartZoom.tsx",
-  "src/components/CreatePortfolioWizard.tsx",
-  "src/components/Dashboard.tsx",
   "src/components/DemoButton.tsx",
   "src/components/GoalPanel.tsx",
   "src/components/ProviderPicker.tsx",
-  "src/components/Settings.tsx",
   "src/components/Sidebar.tsx",
   "src/components/StockDetail.tsx",
   "src/components/WatchlistPanel.tsx",
@@ -24,7 +21,6 @@ const LEGACY_EFFECT_FILES = [
   "src/components/useBrandIconWarmup.ts",
   "src/components/useDesktopUpdate.ts",
   "src/lib/store.ts",
-  "src/lib/use-chart-animation.ts",
 ];
 
 // `ignore`-style pattern: matches `../x` and `../../x`, not `./x` or `@/x`.
