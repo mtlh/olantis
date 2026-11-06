@@ -133,10 +133,18 @@ export function ZoomSelectionArea({ labels }: { labels: [string, string] | null 
 }
 
 /** Shown only when the chart is not at its default period. */
-export function ZoomResetButton({ onReset }: { onReset: () => void }) {
+export function ZoomResetButton({ onReset, label }: { onReset: () => void; label?: string }) {
   return (
-    <Button variant="ghost" size="icon-xs" onClick={onReset} title="Reset zoom" aria-label="Reset zoom" className="text-zinc-400 hover:text-white">
+    <Button
+      variant="ghost"
+      size={label ? "xs" : "icon-xs"}
+      onClick={onReset}
+      title="Reset zoom"
+      aria-label="Reset zoom"
+      className="text-zinc-400 hover:text-white"
+    >
       <RotateCcw className="w-3.5 h-3.5" />
+      {label ? <span>{label}</span> : null}
     </Button>
   );
 }
