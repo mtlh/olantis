@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { ProviderPicker, type ProviderSelection } from "@/components/ProviderPicker";
-import { Account, Provider } from "@/lib/store";
+import { type Account, type Provider } from "@/lib/store";
 import { ArrowLeft, ArrowRight, Briefcase, Check, Layers, TrendingUp, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 

@@ -1,4 +1,4 @@
-import { getDb } from "@/lib/db";
+import { type getDb } from "@/lib/db";
 import { holdings, portfolios, accounts, providers } from "@/lib/db/schema";
 import { and, eq, gt, inArray, or } from "drizzle-orm";
 

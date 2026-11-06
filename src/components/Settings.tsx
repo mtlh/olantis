@@ -150,7 +150,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     const newIdx = index + dir;
     if (newIdx < 0 || newIdx >= ids.length) return;
     [ids[index], ids[newIdx]] = [ids[newIdx], ids[index]];
-    handleReorder(table, ids);
+    void handleReorder(table, ids);
   };
 
   const sortedAccounts = useMemo(() => [...accounts].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [accounts]);
