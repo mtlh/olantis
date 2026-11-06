@@ -19,7 +19,7 @@ import { EditPortfolioDialog } from "@/components/dashboard/EditPortfolioDialog"
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PALETTE, resolvePortfolioColor } from "@/lib/colors";
-import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP } from "@/lib/format";
+import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP, isLiveHolding } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
@@ -44,6 +44,16 @@ function TreeToggle({ open, onToggle, label, className = "" }: {
     >
       <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} strokeWidth={2.25} />
     </button>
+  );
+}
+
+// A live quote belongs to the holding, not the portfolio: cash and
+// manually-valued assets share the list without one.
+function LiveBadge() {
+  return (
+    <span title="Price updates automatically" className="shrink-0 rounded-full border border-white/[0.06] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+      Live
+    </span>
   );
 }
 
@@ -796,7 +806,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{portfolio.accountId ? "Direct portfolio" : "Unassigned"}</span>
             )}
           </div>
-          <span className="shrink-0 rounded-full border border-white/[0.06] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500">{portfolio.type}</span>
           <span className="shrink-0 pl-1 text-xs tabular-nums text-zinc-400">{fmtGBP(total)}</span>
           {editMode && (
             <DropdownMenu>
@@ -818,7 +827,10 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 <button key={holding.id} type="button" onClick={() => selectHolding(holding)} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
                   <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
+                      {isLiveHolding(holding, portfolio.type) && <LiveBadge />}
+                    </span>
                     <span className="block truncate text-[9px] text-zinc-600">{holding.name}</span>
                   </span>
                   <span className="shrink-0 text-right">
@@ -1117,7 +1129,10 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                             <div key={h.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors ${onSelectHolding ? "cursor-pointer hover:bg-white/[0.035]" : ""}`} onClick={() => onSelectHolding?.(h)}>
                               <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={22} />
                               <span className="min-w-0 flex-1">
-                                <span className="block truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  <span className="truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
+                                  {isLiveHolding(h) && <LiveBadge />}
+                                </span>
                                 <span className="block truncate text-[9px] text-zinc-600">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
                               </span>
                               <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{fmtGBP(holdingValueGBP(h, settings.fxRates))}</span>

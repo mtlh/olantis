@@ -17,6 +17,24 @@ export function isCashSymbol(symbol: string | null | undefined): boolean {
   return !!symbol && /^cash$/i.test(symbol.trim());
 }
 
+const MANUAL_HOLDING_SECTORS = new Set(["cash", "property", "real estate", "manual", "other"]);
+
+/**
+ * True when the refresh job can fetch a market quote for this holding: a listed
+ * ticker that is not cash or a manually-valued asset, and not inside a manual
+ * portfolio (those keep the price the user typed). Liveness belongs to the
+ * holding, not the portfolio, because one portfolio can mix both.
+ */
+export function isLiveHolding(
+  holding: { symbol: string; sector?: string | null },
+  portfolioType?: "live" | "manual" | null,
+): boolean {
+  if (portfolioType === "manual") return false;
+  if (isCashSymbol(holding.symbol)) return false;
+  if (MANUAL_HOLDING_SECTORS.has(holding.sector?.trim().toLowerCase() ?? "")) return false;
+  return isListedSymbol(holding.symbol);
+}
+
 /** Currency a holding's amount is actually denominated in. */
 export function holdingCurrency(holding: { symbol?: string | null; currency?: string | null }): string {
   if (isCashSymbol(holding.symbol)) return "GBP";
