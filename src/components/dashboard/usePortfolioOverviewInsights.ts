@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useDeferredValue, useMemo } from "react";
 import { holdingCostGBP, holdingValueGBP, type FxRates, type ValueChange } from "@/lib/format";
 import type { Account, Holding, HoldingMoverChanges, Portfolio, Provider } from "@/lib/store";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
@@ -50,6 +50,26 @@ type UsePortfolioOverviewInsightsProps = {
   moverChanges?: Record<string, HoldingMoverChanges>;
   fxRates: FxRates;
   range: ChartRange;
+  /**
+   * True before first paint (see useAfterFirstPaint): skip the O(holdings)
+   * passes and return empty results so below-fold work lands after TTI.
+   */
+  defer?: boolean;
+};
+
+const EMPTY_INSIGHTS: OverviewPositionInsights = {
+  positions: [],
+  profitableCount: 0,
+  losingCount: 0,
+  unchangedCount: 0,
+  largest: null,
+  latestRefresh: null,
+  refreshedCount: 0,
+};
+
+const EMPTY_MOVERS: { strongest: PositionMover | null; weakest: PositionMover | null } = {
+  strongest: null,
+  weakest: null,
 };
 
 const MOVE_KEY: Record<ChartRange, keyof HoldingMoverChanges> = {
@@ -68,8 +88,14 @@ export function usePortfolioOverviewInsights({
   moverChanges,
   fxRates,
   range,
+  defer = false,
 }: UsePortfolioOverviewInsightsProps) {
+  // Range toggles recompute movers in a low-priority render so the chart and
+  // metric strip stay responsive while the toggle is dragged.
+  const deferredRange = useDeferredValue(range);
+
   const breakdown = useMemo<AccountBreakdownRow[]>(() => {
+    if (defer) return [];
     const portfolioById = new Map(portfolios.map((portfolio) => [portfolio.id, portfolio]));
     const providerById = new Map(providers.map((provider) => [provider.id, provider]));
     const resolveProviderId = (holding: Holding) => holding.providerId
@@ -165,9 +191,10 @@ export function usePortfolioOverviewInsights({
         children,
       };
     }).sort((a, b) => b.value - a.value);
-  }, [accounts, allHoldings, fxRates, portfolios, providers]);
+  }, [accounts, allHoldings, defer, fxRates, portfolios, providers]);
 
   const insights = useMemo<OverviewPositionInsights>(() => {
+    if (defer) return EMPTY_INSIGHTS;
     const byId = new Map<string, { holding: Holding; portfolioName: string }>();
     for (const portfolio of portfolios) {
       for (const holding of portfolio.holdings) byId.set(holding.id, { holding, portfolioName: portfolio.name });
@@ -218,10 +245,11 @@ export function usePortfolioOverviewInsights({
       latestRefresh,
       refreshedCount,
     };
-  }, [directHoldings, fxRates, portfolios]);
+  }, [defer, directHoldings, fxRates, portfolios]);
 
   const periodMovers = useMemo(() => {
-    const key = MOVE_KEY[range];
+    if (defer) return EMPTY_MOVERS;
+    const key = MOVE_KEY[deferredRange];
     const movers = insights.positions.flatMap((position) => {
       const change = moverChanges?.[position.holding.id]?.[key];
       return change ? [{ ...position, change }] : [];
@@ -230,7 +258,7 @@ export function usePortfolioOverviewInsights({
       strongest: movers.reduce<PositionMover | null>((best, item) => !best || item.change.amount > best.change.amount ? item : best, null),
       weakest: movers.reduce<PositionMover | null>((worst, item) => !worst || item.change.amount < worst.change.amount ? item : worst, null),
     };
-  }, [insights.positions, moverChanges, range]);
+  }, [defer, deferredRange, insights.positions, moverChanges]);
 
   return { breakdown, insights, periodMovers };
 }

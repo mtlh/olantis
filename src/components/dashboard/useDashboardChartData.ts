@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useDeferredValue, useMemo } from "react";
 import { resolvePortfolioColor } from "@/lib/colors";
 import { chartDateLabel, filterByRange, holdingValueGBP, todayISODate, valueByDate, type FxRates } from "@/lib/format";
 import type { Account, Portfolio, Provider, Snapshot, Transaction } from "@/lib/store";
@@ -24,6 +24,12 @@ type UseDashboardChartDataProps = {
   totalValue: number;
   fxRates: FxRates;
   range: ChartRange;
+  /**
+   * True before first paint (see useAfterFirstPaint): the series toggle
+   * metadata stays empty until a low-priority render, while the chart itself
+   * (chartData/chartDots) still computes immediately.
+   */
+  deferSeries?: boolean;
 };
 
 const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
@@ -42,6 +48,7 @@ export function useDashboardChartData({
   totalValue,
   fxRates,
   range,
+  deferSeries = false,
 }: UseDashboardChartDataProps) {
   const filteredSnapshots = useMemo(() => filterByRange(snapshots, range), [snapshots, range]);
 
@@ -96,15 +103,25 @@ export function useDashboardChartData({
     });
   }, [chartData, transactions]);
 
-  const overviewSeries = useMemo<ValueTimeChartSeries[]>(() => Object.entries(byPortfolio).map(([portfolioId, info], index) => {
-    const portfolio = portfolios.find((item) => item.id === portfolioId);
-    return {
-      key: portfolioId,
-      dataKey: info.name,
-      name: info.name,
-      color: portfolio ? resolvePortfolioColor(portfolio, portfolios, providers, accounts) : CHART_COLORS[index % CHART_COLORS.length],
-    };
-  }), [accounts, byPortfolio, portfolios, providers]);
+  // Toggle metadata lags the chart in a low-priority render so range switches
+  // never block the visible series.
+  const deferredByPortfolio = useDeferredValue(byPortfolio);
+  const deferredPortfolios = useDeferredValue(portfolios);
+  const deferredProviders = useDeferredValue(providers);
+  const deferredAccounts = useDeferredValue(accounts);
+
+  const overviewSeries = useMemo<ValueTimeChartSeries[]>(() => {
+    if (deferSeries) return [];
+    return Object.entries(deferredByPortfolio).map(([portfolioId, info], index) => {
+      const portfolio = deferredPortfolios.find((item) => item.id === portfolioId);
+      return {
+        key: portfolioId,
+        dataKey: info.name,
+        name: info.name,
+        color: portfolio ? resolvePortfolioColor(portfolio, deferredPortfolios, deferredProviders, deferredAccounts) : CHART_COLORS[index % CHART_COLORS.length],
+      };
+    });
+  }, [deferSeries, deferredAccounts, deferredByPortfolio, deferredPortfolios, deferredProviders]);
 
   const performanceSeries = useMemo<PerformanceSeries[]>(() => overviewSeries.map(({ key, name, color }) => ({ key, name, color })), [overviewSeries]);
 
