@@ -362,7 +362,7 @@ function GoalsFallback() {
   // the saved goal adds a fourth metric column, a progress bar under the hero
   // and a summary sidebar instead of the "set a goal" form.
   const boot = useWorkspaceBootstrap();
-  const hasGoal = !!boot?.goals.length;
+  const hasGoal = !!boot?.goals?.length;
   return (
     <div className="space-y-8" aria-busy="true">
       <div className={`grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:gap-0 lg:py-7 ${hasGoal ? "sm:grid-cols-3 lg:grid-cols-[1.3fr_1fr_1fr_1fr]" : "sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr]"}`}>

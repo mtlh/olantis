@@ -47,8 +47,10 @@ export type WorkspaceBootstrap = {
   portfolios: Portfolio[];
   holdings: Holding[];
   snapshots: SnapResponse;
-  transactions: Transaction[];
-  goals: Goal[];
+  /** Deferred after paint; useTransactions fetches via /api/transactions when undefined. */
+  transactions?: Transaction[];
+  /** Deferred after paint; GoalPanel / DashboardGoalCard fetch via /api/goals when undefined. */
+  goals?: Goal[];
   settings: Record<string, unknown>;
   fx: { date: string | null; rates: FxRates };
   /**
@@ -57,6 +59,11 @@ export type WorkspaceBootstrap = {
    * write them again — only a real value change should.
    */
   snapshotsFresh: boolean;
+  /**
+   * True when byPortfolio/byHolding were omitted for FCP. useSnapshots then
+   * refreshes via /api/snapshots after paint instead of trusting the partial.
+   */
+  snapshotsDeferred?: boolean;
 };
 
 const WorkspaceBootstrapContext = createContext<WorkspaceBootstrap | null>(null);
@@ -268,7 +275,9 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
       /* keep previous data */
     }
   }, []);
-  useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
+  // A trimmed first payload (snapshotsDeferred) carries total + moverChanges
+  // only; fill in the full byPortfolio/byHolding history after paint.
+  useAsyncInit(() => (boot && !boot.snapshotsDeferred ? Promise.resolve() : refresh()));
   useVisibilityRefresh(refresh);
 
   const pfVals = useMemo(
@@ -388,9 +397,9 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
   const boot = useWorkspaceBootstrap();
   const hasFilter = !!(portfolioId || symbol || holdingId);
   const [transactions, setTransactions] = useState<Transaction[]>(
-    boot && !hasFilter ? boot.transactions : [],
+    boot?.transactions && !hasFilter ? boot.transactions : [],
   );
-  const [ready, setReady] = useState(!!boot && !hasFilter);
+  const [ready, setReady] = useState(!!boot?.transactions && !hasFilter);
   const key = `${portfolioId ?? ""}:${symbol ?? ""}:${holdingId ?? ""}`;
   const refresh = useCallback(async () => {
     try {
@@ -407,7 +416,7 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   useEffect(() => {
-    if (boot && !hasFilter) return;
+    if (boot?.transactions && !hasFilter) return;
     let cancelled = false;
     const p = Promise.resolve().then(async () => {
       if (cancelled) return;

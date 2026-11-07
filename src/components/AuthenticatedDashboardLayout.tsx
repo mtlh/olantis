@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DEMO_COOKIE, demoUserId } from "@/lib/auth";
-import { loadWorkspaceBootstrap, type WorkspaceBootstrap } from "@/lib/bootstrap";
+import { loadWorkspaceBootstrap } from "@/lib/bootstrap";
 import { WorkspaceDataProvider } from "@/lib/store";
 import { Dashboard } from "@/components/Dashboard";
+import WorkspaceLoading from "@/app/(workspace)/loading";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -45,17 +47,27 @@ export async function AuthenticatedDashboardLayout() {
 
   if (!user) redirect("/login");
 
-  // Resolve the workspace data on the server so the first HTML already shows
-  // real numbers instead of a client-fetch skeleton. If the database is
-  // unreachable we fall back to the client-side loaders (null bootstrap).
+  // Stream the workspace: auth resolves here (fast, no DB) so the shell can
+  // paint immediately. The bootstrap (Neon db.batch + FX) resolves in the
+  // Suspense child below, so first HTML is the WorkspaceLoading skeleton and
+  // the dashboard streams in when the data lands. Previously this await
+  // blocked the whole response and loading.tsx never painted.
   //
-  // Awaited here rather than behind a Suspense fallback on purpose: a demo
-  // click seeds the tenant, redirects to /dashboard and only then reads it back.
-  // Streaming a fallback meant the landing page's "Setting up demo…" button was
-  // immediately replaced by a second, near-identical loading screen. Holding the
-  // response instead keeps the button the visitor just pressed on screen until
-  // the dashboard is actually ready, then paints it in one go.
-  const bootstrap: WorkspaceBootstrap | null = await loadWorkspaceBootstrap(user.id).catch(() => null);
+  // Demo + auth behaviour is unchanged: demo still bypasses WorkOS via the
+  // olantis_demo cookie, unauthenticated users still redirect to /login.
+  return (
+    <WorkspaceDataProvider value={null}>
+      <Suspense fallback={<WorkspaceLoading />}>
+        <WorkspaceBootstrapView userId={user.id} isDemo={isDemo} />
+      </Suspense>
+    </WorkspaceDataProvider>
+  );
+}
+
+async function WorkspaceBootstrapView({ userId, isDemo }: { userId: string; isDemo: boolean }) {
+  // Null falls back to the client-side loaders (each hook fetches its own
+  // /api/* route when the bootstrap is missing), so a DB outage still paints.
+  const bootstrap = await loadWorkspaceBootstrap(userId).catch(() => null);
 
   return (
     <WorkspaceDataProvider value={bootstrap}>

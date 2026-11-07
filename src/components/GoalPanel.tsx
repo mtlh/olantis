@@ -19,7 +19,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
   // its real shape (4 metrics, progress bar, goal sidebar). Fetching it on mount
   // meant /goals rendered the "no goal" layout first and then jumped to this one.
   const boot = useWorkspaceBootstrap();
-  const serverGoal = boot ? boot.goals[0] ?? null : undefined;
+  const serverGoal = boot?.goals ? boot.goals[0] ?? null : undefined;
   const [goalOverride, setGoalOverride] = useState<Goal | null | undefined>(undefined);
   // Derived, not copied: a save/remove overrides the bootstrapped goal, and
   // everything else follows it, so there is no state to re-sync.
