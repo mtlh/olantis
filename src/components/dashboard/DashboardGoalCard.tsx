@@ -13,7 +13,7 @@ export function DashboardGoalCard({ currentValue, onViewGoals }: DashboardGoalCa
   // Same as GoalPanel: read the bootstrapped goal so the card does not pop in
   // (or flip between "No goal set" and a progress bar) after hydration.
   const boot = useWorkspaceBootstrap();
-  const serverGoal = boot ? boot.goals[0] ?? null : undefined;
+  const serverGoal = boot?.goals ? boot.goals[0] ?? null : undefined;
   // Derived, not copied: the bootstrapped goal always wins, so a late bootstrap
   // cannot leave a stale null behind, and the fetch is only a fallback.
   const [fetchedGoal, setFetchedGoal] = useState<Goal | null>(null);
