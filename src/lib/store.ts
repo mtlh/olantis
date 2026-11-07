@@ -92,14 +92,19 @@ function useVisibilityRefresh(refresh: () => void) {
   // so the listener effect can stay mounted for the life of the page.
   const onRefresh = useEffectEvent(refresh);
   const lastRef = useRef(0);
+  const mountedAtRef = useRef(0);
   useEffect(() => {
+    // Anchor the TTI quiet window so a visibility event racing first paint
+    // never triggers a fetch in the first 2s after mount.
+    mountedAtRef.current = Date.now();
     const onVis = () => {
-      if (document.visibilityState === "visible") {
-        const now = Date.now();
-        if (now - lastRef.current >= 60000) {
-          lastRef.current = now;
-          onRefresh();
-        }
+      if (document.visibilityState !== "visible") return;
+      if (readSaveDataMode()) return;
+      if (Date.now() - mountedAtRef.current < TTI_QUIET_MS) return;
+      const now = Date.now();
+      if (now - lastRef.current >= 60000) {
+        lastRef.current = now;
+        onRefresh();
       }
     };
     document.addEventListener("visibilitychange", onVis);
@@ -261,6 +266,27 @@ export function usePortfolios() {
 
 const SNAPSHOT_DEBOUNCE_MS = 2000;
 
+/**
+ * Quiet window after mount: snapshot writes, history backfills and visibility
+ * refetches must never fire inside it, so they cannot contend with first
+ * paint or input.
+ */
+const TTI_QUIET_MS = 2000;
+
+/** Backfill starts just after the snapshot write window, so the two never contend. */
+const BACKFILL_DELAY_MS = 2500;
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+/** True when the OS/browser reports data-saver: bulk/prefetch work stays off. */
+function readSaveDataMode(): boolean {
+  const connection = (window.navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  return connection?.saveData === true;
+}
+
 export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] = [], fxRates: FxRates = DEFAULT_FX_RATES) {
   const boot = useWorkspaceBootstrap();
   const [data, setData] = useState<SnapResponse>(boot?.snapshots ?? { total: [], byPortfolio: {} });
@@ -306,15 +332,32 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
       lastPosted.current = { day, value: totalValue };
       return;
     }
-    const t = setTimeout(() => {
+    // Idle write: nothing posts from a hidden tab, and the POST itself waits
+    // out the debounce and then yields to idle so it never blocks input. The
+    // guard stays unset on a skip, so the next value change retries.
+    if (document.visibilityState === "hidden") return;
+    const win = window as IdleWindow;
+    let idleHandle: number | undefined;
+    const post = () => {
+      if (document.visibilityState === "hidden") return;
       lastPosted.current = { day, value: totalValue };
       fetch("/api/snapshots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: totalValue, portfolios: pfVals, holdings: hVals }),
       }).catch(() => {});
+    };
+    const timer = window.setTimeout(() => {
+      if (win.requestIdleCallback) {
+        idleHandle = win.requestIdleCallback(post, { timeout: 2000 });
+      } else {
+        post();
+      }
     }, SNAPSHOT_DEBOUNCE_MS);
-    return () => clearTimeout(t);
+    return () => {
+      window.clearTimeout(timer);
+      if (idleHandle !== undefined) win.cancelIdleCallback?.(idleHandle);
+    };
   }, [totalValue, portfolios.length, directHoldings.length, pfVals, hVals, refresh, boot]);
 
   // Fill in history from before the account existed: if the saved series starts
@@ -338,6 +381,11 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
     const firstSnapshot = data.total[0]?.date;
     if (firstSnapshot && firstSnapshot <= earliestPurchase) return;
     if (backfillRequestedFor.current === earliestPurchase) return;
+    // Idle-only prefetch: never contend with first paint, a hidden tab, or a
+    // data-saver connection. Guards run before the request is marked, so a
+    // skip retries naturally when snapshot data refreshes.
+    if (document.visibilityState === "hidden") return;
+    if (readSaveDataMode()) return;
     const storageKey = "olantis:history-backfill";
     try {
       if (sessionStorage.getItem(storageKey) === earliestPurchase) return;
@@ -347,6 +395,8 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
     }
     backfillRequestedFor.current = earliestPurchase;
     let cancelled = false;
+    let idleHandle: number | undefined;
+    const win = window as IdleWindow;
     const run = async () => {
       let filled = 0;
       // Follow the pending count for a few rounds so a large import completes in
@@ -365,9 +415,21 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
       }
       if (!cancelled && filled > 0) void refresh();
     };
-    void run().catch(() => {});
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      if (document.visibilityState === "hidden" || readSaveDataMode()) return;
+      if (win.requestIdleCallback) {
+        idleHandle = win.requestIdleCallback(() => {
+          void run().catch(() => {});
+        }, { timeout: 3000 });
+      } else {
+        void run().catch(() => {});
+      }
+    }, BACKFILL_DELAY_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      if (idleHandle !== undefined) win.cancelIdleCallback?.(idleHandle);
     };
   }, [earliestPurchase, data.total, refresh]);
 

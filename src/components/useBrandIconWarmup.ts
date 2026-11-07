@@ -105,7 +105,9 @@ export function useBrandIconWarmup({ providers, portfolios, holdings }: WarmupIn
     };
 
     const handle = win.requestIdleCallback?.(run, { timeout: 1500 });
-    const timer = handle === undefined ? window.setTimeout(run, 400) : null;
+    // Without an idle scheduler the fallback still stays out of the TTI quiet
+    // window; the icons load on demand regardless, this only prefetches.
+    const timer = handle === undefined ? window.setTimeout(run, 2000) : null;
 
     return () => {
       cancelled = true;

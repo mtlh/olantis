@@ -2,7 +2,7 @@
 import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings, useWorkspaceBootstrap } from "@/lib/store";
 import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useDeferredValue } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus, AlertTriangle } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -15,6 +15,7 @@ import { usePortfolioOverviewInsights } from "@/components/dashboard/usePortfoli
 import { ValueTimeChart } from "@/components/dashboard/ValueTimeChart";
 import { useStaleHoldings } from "@/components/dashboard/useStaleHoldings";
 import { useDashboardChartData } from "@/components/dashboard/useDashboardChartData";
+import { useAfterFirstPaint } from "@/components/dashboard/useAfterFirstPaint";
 import { AccountBreakdownCard } from "@/components/dashboard/AccountBreakdownCard";
 import { DashboardGoalCard } from "@/components/dashboard/DashboardGoalCard";
 import { PortfolioInsightsSection } from "@/components/dashboard/PortfolioInsightsSection";
@@ -484,6 +485,51 @@ function WizardFallback() {
   );
 }
 
+// Below-fold placeholders for the deferred overview sections. They copy the
+// stable frame (heading row + hairlines) of AccountBreakdownCard and
+// PortfolioInsightsSection so the deferred mount cannot move the chart above.
+function BelowFoldAccountsFallback() {
+  return (
+    <section className="min-w-0 xl:col-span-2 xl:pr-8" aria-busy="true" aria-label="Loading accounts">
+      <div className="flex items-baseline justify-between gap-3 pb-3">
+        <Skeleton className="h-4 w-40 bg-white/[0.05]" />
+        <Skeleton className="h-3 w-16 bg-white/[0.04]" />
+      </div>
+      <div className="border-y border-white/[0.06]">
+        {[1, 2, 3].map((index) => (
+          <div key={index} className="flex items-center justify-between gap-3 border-b border-white/[0.05] px-1 py-3.5 last:border-b-0">
+            <div>
+              <Skeleton className="h-4 w-32 bg-white/[0.05]" />
+              <Skeleton className="mt-1 h-3 w-20 bg-white/[0.04]" />
+            </div>
+            <Skeleton className="h-4 w-16 bg-white/[0.05]" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BelowFoldInsightsFallback() {
+  return (
+    <section aria-busy="true" aria-label="Loading positions">
+      <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
+        <Skeleton className="h-4 w-20 bg-white/[0.05]" />
+        <Skeleton className="h-3 w-16 bg-white/[0.04]" />
+      </div>
+      <div className="grid grid-cols-1 gap-6 pt-5 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-white/[0.06]">
+        {[1, 2, 3].map((index) => (
+          <div key={index} className={index === 1 ? "sm:pr-7" : index === 2 ? "sm:px-7" : "sm:pl-7"}>
+            <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
+            <Skeleton className="mt-2 h-7 w-24 bg-white/[0.05]" />
+            <Skeleton className="mt-2 h-3 w-32 bg-white/[0.04]" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 type PortfolioUpdateBody = { id: string; name?: string; type?: string; accountId?: string | null; providerId?: string | null };
 type DeleteRequest =
   | { kind: "account"; item: Account }
@@ -653,6 +699,13 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     [directHoldings.length, portfolios],
   );
 
+  // Below-fold work stays out of the first paint: the mount flag is false
+  // during SSR and hydration, then flips, and the deferred value schedules the
+  // breakdown/insights/series-toggle tree in a low-priority render. The metric
+  // strip, chart and holdings table never wait on it.
+  const mounted = useAfterFirstPaint();
+  const showBelowFold = useDeferredValue(mounted);
+
   const { breakdown: overviewBreakdown, insights: accountInsights, periodMovers } = usePortfolioOverviewInsights({
     accounts,
     providers,
@@ -662,6 +715,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     moverChanges,
     fxRates: settings.fxRates,
     range,
+    defer: !showBelowFold,
   });
 
   const { chartData, chartDots, overviewSeries, performanceSeries } = useDashboardChartData({
@@ -678,6 +732,9 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     totalValue,
     fxRates: settings.fxRates,
     range,
+    // The performance page leads with its series toggle, so only the overview
+    // defers it past first paint.
+    deferSeries: section === "performance" ? false : !showBelowFold,
   });
   const allocation = usePortfolioAllocation({
     activePortfolio: active,
@@ -1111,13 +1168,17 @@ range={range}
               </div>
 
               <div className="grid grid-cols-1 gap-8 xl:grid-cols-3 xl:gap-0">
-                <AccountBreakdownCard
-                  accounts={overviewBreakdown}
-                  totalValue={totalValue}
-                  onOpenAccount={selectAccount}
-                  onOpenProvider={selectProvider}
-                  onOpenPortfolio={selectPortfolio}
-                />
+                {showBelowFold ? (
+                  <AccountBreakdownCard
+                    accounts={overviewBreakdown}
+                    totalValue={totalValue}
+                    onOpenAccount={selectAccount}
+                    onOpenProvider={selectProvider}
+                    onOpenPortfolio={selectPortfolio}
+                  />
+                ) : (
+                  <BelowFoldAccountsFallback />
+                )}
 
                 <div className="flex flex-col divide-y divide-white/[0.06] xl:col-span-1 xl:border-l xl:border-white/[0.06] xl:pl-8">
                   <DashboardGoalCard currentValue={totalValue} onViewGoals={() => router.push("/goals")} />
@@ -1131,12 +1192,16 @@ range={range}
                 </div>
               </div>
 
-              <PortfolioInsightsSection
-                insights={accountInsights}
-                periodMovers={periodMovers}
-                totalValue={totalValue}
-                range={range}
-              />
+              {showBelowFold ? (
+                <PortfolioInsightsSection
+                  insights={accountInsights}
+                  periodMovers={periodMovers}
+                  totalValue={totalValue}
+                  range={range}
+                />
+              ) : (
+                <BelowFoldInsightsFallback />
+              )}
 
               {overviewTx.transactions.length > 0 && (
                 <section>
