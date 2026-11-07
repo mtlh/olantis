@@ -12,11 +12,9 @@ import { HoldingsTable } from "@/components/dashboard/HoldingsTable";
 import { useAccountProviderDashboardData } from "@/components/dashboard/useAccountProviderDashboardData";
 import { useBrandIconWarmup } from "@/components/useBrandIconWarmup";
 import { usePortfolioOverviewInsights } from "@/components/dashboard/usePortfolioOverviewInsights";
-import { ValueTimeChart } from "@/components/dashboard/ValueTimeChart";
 import { useStaleHoldings } from "@/components/dashboard/useStaleHoldings";
 import { useDashboardChartData } from "@/components/dashboard/useDashboardChartData";
 import { useAfterFirstPaint } from "@/components/dashboard/useAfterFirstPaint";
-import { AccountBreakdownCard } from "@/components/dashboard/AccountBreakdownCard";
 import { DashboardGoalCard } from "@/components/dashboard/DashboardGoalCard";
 import { PortfolioInsightsSection } from "@/components/dashboard/PortfolioInsightsSection";
 import { PriceFreshnessCard } from "@/components/dashboard/PriceFreshnessCard";
@@ -29,7 +27,6 @@ import { useToast } from "@/components/ui/toast";
 
 import { resolvePortfolioColor } from "@/lib/colors";
 import { fmtPrice, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, valueChangeOverRange } from "@/lib/format";
-import { AllocationCard } from "@/components/dashboard/shared/AllocationCard";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import type { HoldingFormData } from "@/components/dashboard/HoldingDialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,6 +51,12 @@ const TradeDialog = dynamic(() => import("@/components/TradeDialog").then((modul
 const AssignHoldingDialog = dynamic(() => import("@/components/dashboard/AssignHoldingDialog").then((module) => module.AssignHoldingDialog), { ssr: false });
 const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPortfolioDialog").then((module) => module.EditPortfolioDialog), { ssr: false });
 const DeleteConfirmationDialog = dynamic(() => import("@/components/dashboard/shared/DeleteConfirmationDialog").then((module) => module.DeleteConfirmationDialog), { ssr: false });
+// Recharts pulls ~100KB+ into the critical bundle. The overview and
+// portfolio charts load after first paint; the fallbacks below keep their
+// panel frames stable so nothing shifts when the chunk lands.
+const ValueTimeChart = dynamic(() => import("@/components/dashboard/ValueTimeChart").then((module) => ({ default: module.ValueTimeChart })), { ssr: false, loading: () => <ChartFallback /> });
+const AllocationCard = dynamic(() => import("@/components/dashboard/shared/AllocationCard").then((module) => ({ default: module.AllocationCard })), { ssr: false, loading: () => <AllocationFallback /> });
+const AccountBreakdownCard = dynamic(() => import("@/components/dashboard/AccountBreakdownCard").then((module) => ({ default: module.AccountBreakdownCard })), { ssr: false, loading: () => <BreakdownFallback /> });
 
 // Shared metric-band frame: every dashboard level leads with a label/value/sub
 // strip between hairlines, so one placeholder covers the overview, account,
@@ -74,6 +77,60 @@ function MetricStripSkeleton() {
         </div>
       ))}
     </div>
+  );
+}
+
+// Overview chart/allocation/breakdown chunks load after first paint. Each
+// fallback mirrors its card's stable frame (hairlines, panel edges, header
+// row) so a late chunk cannot shift what is already on screen.
+function ChartFallback() {
+  return (
+    <div className="panel p-4" aria-busy="true">
+      <div className="flex items-center justify-between gap-3">
+        <Skeleton className="h-5 w-40 bg-white/[0.05]" />
+        <Skeleton className="h-8 w-40 rounded-full bg-white/[0.04]" />
+      </div>
+      <Skeleton className="mt-4 h-[320px] w-full bg-white/[0.04]" />
+    </div>
+  );
+}
+
+function AllocationFallback() {
+  return (
+    <div className="panel flex flex-col p-4" aria-busy="true">
+      <div className="flex items-center justify-between gap-2">
+        <Skeleton className="h-5 w-24 bg-white/[0.05]" />
+        <Skeleton className="h-7 w-44 rounded-full bg-white/[0.04]" />
+      </div>
+      <Skeleton className="mx-auto mt-4 h-[180px] w-[180px] rounded-full bg-white/[0.04]" />
+      <div className="mt-4 space-y-2">
+        {[1, 2, 3].map((index) => (
+          <div key={index} className="flex items-center justify-between gap-3">
+            <Skeleton className="h-3.5 w-28 bg-white/[0.04]" />
+            <Skeleton className="h-3.5 w-12 bg-white/[0.04]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BreakdownFallback() {
+  return (
+    <section className="min-w-0 xl:col-span-2 xl:pr-8" aria-busy="true">
+      <div className="flex items-baseline justify-between gap-3 pb-3">
+        <Skeleton className="h-5 w-40 bg-white/[0.05]" />
+        <Skeleton className="h-3 w-16 bg-white/[0.04]" />
+      </div>
+      <div className="border-y border-white/[0.06]">
+        {[1, 2, 3].map((index) => (
+          <div key={index} className="flex items-center justify-between gap-3 border-b border-white/[0.05] px-1 py-3.5 last:border-b-0">
+            <Skeleton className="h-4 w-32 bg-white/[0.05]" />
+            <Skeleton className="h-4 w-16 bg-white/[0.05]" />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
