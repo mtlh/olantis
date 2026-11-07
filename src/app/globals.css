@@ -1,6 +1,38 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+
+/* shadcn/tailwind.css trimmed to the custom variants this app uses
+   (dialog, dropdown-menu, select, separator). The full import also ships
+   accordion keyframes plus no-scrollbar, scroll-fade and shimmer
+   utilities — none referenced in src — all of which sat in the critical
+   path. Definitions verbatim from shadcn@4.21.0 dist/tailwind.css. */
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-closed {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-disabled {
+  &:where([data-disabled="true"]),
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
 
 @custom-variant dark (&:is(.dark *));
 @theme inline {
@@ -107,6 +139,27 @@ body {
   -webkit-backdrop-filter: blur(18px);
   border: 1px solid rgba(255,255,255,0.08);
   box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+/* Landing entrance motion, inlined so the hero does not need the full
+   tw-animate-css bundle (~14.8KB source) in the critical path. These two
+   classes previously had no keyframes anywhere — tw-animate-css never
+   defined them — so they were no-ops; the definitions below keep the
+   intended rise/draw-in without the library. Transform/opacity only, so
+   no layout shift; final state equals natural layout. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes chart-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.rise { animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.chart-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: chart-draw 1.6s ease-out 0.2s forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
