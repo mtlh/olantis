@@ -1,6 +1,7 @@
 "use client";
 import { type Portfolio, type Account, type Provider, type Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, Power, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
@@ -8,14 +9,28 @@ import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+// Dialog/Select/Dropdown (+ Base UI) and the portfolio move dialog stay out
+// of the critical bundle. The account tree renders synchronously; these
+// chunks load on the client and render null until opened, so first paint
+// never waits for them.
+const Dialog = dynamic(() => import("@/components/ui/dialog").then((module) => ({ default: module.Dialog })), { ssr: false });
+const DialogContent = dynamic(() => import("@/components/ui/dialog").then((module) => ({ default: module.DialogContent })), { ssr: false });
+const DialogHeader = dynamic(() => import("@/components/ui/dialog").then((module) => ({ default: module.DialogHeader })), { ssr: false });
+const DialogTitle = dynamic(() => import("@/components/ui/dialog").then((module) => ({ default: module.DialogTitle })), { ssr: false });
+const Select = dynamic(() => import("@/components/ui/select").then((module) => ({ default: module.Select })), { ssr: false });
+const SelectContent = dynamic(() => import("@/components/ui/select").then((module) => ({ default: module.SelectContent })), { ssr: false });
+const SelectItem = dynamic(() => import("@/components/ui/select").then((module) => ({ default: module.SelectItem })), { ssr: false });
+const SelectTrigger = dynamic(() => import("@/components/ui/select").then((module) => ({ default: module.SelectTrigger })), { ssr: false });
+const DropdownMenu = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenu })), { ssr: false });
+const DropdownMenuTrigger = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuTrigger })), { ssr: false });
+const DropdownMenuContent = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuContent })), { ssr: false });
+const DropdownMenuItem = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuItem })), { ssr: false });
+const DropdownMenuSeparator = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuSeparator })), { ssr: false });
+const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPortfolioDialog").then((module) => ({ default: module.EditPortfolioDialog })), { ssr: false });
 import { Logo } from "@/components/Logo";
 import { BrandIcon } from "@/components/BrandIcon";
 import { useDesktopUpdate } from "@/components/useDesktopUpdate";
-import { EditPortfolioDialog } from "@/components/dashboard/EditPortfolioDialog";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PALETTE, resolvePortfolioColor } from "@/lib/colors";

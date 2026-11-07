@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    optimizePackageImports: ["lucide-react", "recharts", "@base-ui/react"],
+  },
   async headers() {
     // Only endpoints whose data is safe to serve 30s stale are listed here.
     // /api/settings, /api/goals and /api/watchlist are deliberately excluded:
