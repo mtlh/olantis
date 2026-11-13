@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const path = require("node:path");
-const { app, BrowserWindow, Menu, WebContentsView, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, WebContentsView, ipcMain, session, shell } = require("electron");
 const { isAllowedNavigation, isExternalWebUrl } = require("./url-policy.cjs");
+const { resolveEntryUrl } = require("./entry-url.cjs");
 
 const DEFAULT_APP_URL = "https://olantis.vercel.app";
 const APP_URL = process.env.OLANTIS_ELECTRON_URL || DEFAULT_APP_URL;
@@ -18,11 +19,11 @@ const iconPath = app.isPackaged
 // one JSON line prefixed with OLANTIS-TRACE so scripts/electron-startup-bench.mjs
 // (and anyone with a terminal) can see exactly where launch time goes. The
 // helper is a no-op otherwise, so the shipped app pays nothing for it.
-const STARTUP_TRACE_LEVEL = Number(process.env.OLANTIS_STARTUP_TRACE || 0);
-// 1 = main-process + page milestones, 2 = also Chromium's paint lifecycle.
-const STARTUP_TRACE = STARTUP_TRACE_LEVEL > 0;
-const STARTUP_TRACE_PAINT = STARTUP_TRACE_LEVEL > 1;
+const STARTUP_TRACE = Boolean(Number(process.env.OLANTIS_STARTUP_TRACE || 0));
 const STARTUP_TRACE_FILE = process.env.OLANTIS_STARTUP_TRACE_FILE || "";
+// Wait this long after DOM ready before reading the page's paint timings: the
+// first frame of a freshly revealed view is composited after the load event.
+const PAINT_METRICS_DELAY_MS = 500;
 function trace(event, detail) {
   if (!STARTUP_TRACE) return;
   const ms = performance.now();
@@ -84,6 +85,21 @@ if (!app.requestSingleInstanceLock()) {
 
   function oncePromise(emitter, event) {
     return new Promise((resolve) => emitter.once(event, resolve));
+  }
+
+  // The URL the first frame should come from (see entry-url.cjs): signed-in
+  // sessions go straight to the dashboard instead of paying for the landing
+  // page render and its redirect first.
+  async function firstUrl() {
+    try {
+      const cookies = await session.defaultSession.cookies.get({ url: APP_URL });
+      const url = resolveEntryUrl(APP_URL, cookies);
+      trace("entry:resolved", { url, cookies: cookies.length });
+      return url;
+    } catch (error) {
+      trace("entry:resolve-failed", { message: error instanceof Error ? error.message : String(error) });
+      return APP_URL;
+    }
   }
 
   async function runSmokeTest(shellReady, appReady) {
@@ -209,7 +225,10 @@ if (!app.requestSingleInstanceLock()) {
     // The embedded app is the slow half of a launch, so its view is created and
     // pointed at the app before the shell window exists. The request, the
     // renderer process and the network stack all get going while the window
-    // itself is still being constructed.
+    // itself is still being constructed. The session cookies are read up front
+    // for the same reason: that read finishes inside the time it takes to bring
+    // a renderer process up, so it never sits on the launch path.
+    const entryUrl = firstUrl();
     trace("view:create");
     appView = new WebContentsView({
       webPreferences: {
@@ -237,6 +256,7 @@ if (!app.requestSingleInstanceLock()) {
     // reveals, so the user sees the error page instead of a mark that never
     // goes away.
     const revealApp = () => {
+      if (appRevealed) return;
       if (!appView || appView.webContents.isDestroyed()) return;
       appView.setVisible(true);
       appRevealed = true;
@@ -248,6 +268,12 @@ if (!app.requestSingleInstanceLock()) {
       }
       trace("view:revealed");
     };
+    // Reveal as soon as the document is parsed and its stylesheets are in.
+    // "did-finish-load" also waits for every image, font and lazily-inserted
+    // asset, so a slow subresource used to keep the startup mark on screen long
+    // after the page was ready to look at. It stays as the fallback for a page
+    // that never reaches dom-ready.
+    appView.webContents.once("dom-ready", revealApp);
     appView.webContents.once("did-finish-load", revealApp);
     appView.webContents.on("did-fail-load", (_event, _code, _description, _url, isMainFrame) => {
       if (isMainFrame) revealApp();
@@ -288,33 +314,28 @@ if (!app.requestSingleInstanceLock()) {
         trace("view:did-finish-load");
         void tracePageMetrics("loaded");
       });
-    }
-
-    let paintReady = Promise.resolve();
-    if (STARTUP_TRACE_PAINT) {
-      // Chromium's own paint milestones. Attaching the debugger costs a little,
-      // so the default trace level leaves it off and the paint pass runs it
-      // against both builds being compared. The navigation waits for the
-      // lifecycle events to be enabled, otherwise the very first paint can slip
-      // through before Chromium starts reporting it.
-      try {
-        appView.webContents.debugger.attach("1.3");
-        appView.webContents.debugger.on("message", (_event, method, params) => {
-          if (method === "Page.lifecycleEvent") trace(`paint:${params.name}`);
-        });
-        paintReady = appView.webContents.debugger
-          .sendCommand("Page.enable")
-          .then(() => appView.webContents.debugger.sendCommand("Page.setLifecycleEventsEnabled", { enabled: true }))
-          .catch((error) => trace("paint:enable-failed", { message: error instanceof Error ? error.message : String(error) }));
-      } catch (error) {
-        trace("paint:attach-failed", { message: error instanceof Error ? error.message : String(error) });
-      }
+      // The first frame of a revealed page is composited a little after the
+      // load event, so the paint timings only exist on a later read. This is
+      // what tells the benchmark whether the reveal was in time or showed a
+      // blank view for a few frames.
+      appView.webContents.once("dom-ready", () => {
+        const handle = setTimeout(() => void tracePageMetrics("painted"), PAINT_METRICS_DELAY_MS);
+        handle.unref?.();
+      });
     }
 
     const smokeTest = process.argv.includes("--smoke-test");
     trace("view:load-url");
     const appReady = smokeTest ? oncePromise(appView.webContents, "did-finish-load") : null;
-    void paintReady.then(() => appView.webContents.loadURL(APP_URL));
+    void entryUrl
+      .then((url) => {
+        trace("view:navigate", { url });
+        return appView.webContents.loadURL(url);
+      })
+      .catch((error) => {
+        // A load failure also fires did-fail-load, which reveals the error page.
+        trace("view:navigate-failed", { message: error instanceof Error ? error.message : String(error) });
+      });
 
     trace("shell:window-create");
     mainWindow = new BrowserWindow({

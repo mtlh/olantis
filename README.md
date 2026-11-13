@@ -37,6 +37,23 @@ Sign-in runs inside the desktop window. WorkOS, AuthKit, and the identity provid
 
 For a no-interaction local launch check, run `npm run electron:smoke`. It starts the same local Next.js server, opens the Electron window, checks that the Olantis landing page rendered, and exits with a pass/fail code.
 
+### Measure startup
+
+```bash
+npm run bench:startup -- --url https://olantis.vercel.app --runs 8 --json .bench/startup.json
+```
+
+Each run launches the real app and reads the `OLANTIS-TRACE` marks `electron/main.cjs` emits, so the table covers process bootstrap, app ready, the title-bar window, and the embedded page (TTFB, DOM ready, first paint, the moment the splash is replaced, load) — all in milliseconds from the `electron.exe` spawn. `--fresh-profile` measures a first launch on a new machine, `--exe release/win-unpacked/Olantis.exe` measures the packaged app.
+
+To prove a change helps, measure the old and new main process in one session so machine drift lands on both:
+
+```bash
+git show HEAD:electron/main.cjs > electron/main.baseline.cjs
+npm run bench:startup -- --runs 12 --app electron/main.baseline.cjs --compare electron/main.cjs
+```
+
+The run interleaves the two entries and prints a per-milestone delta. Delete the copied baseline afterwards.
+
 ## Build desktop installers
 
 ```bash

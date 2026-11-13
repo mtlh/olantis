@@ -72,9 +72,16 @@ try {
 
   if (!serverReady) throw new Error("Next.js did not become ready within 60 seconds.");
 
-  electronApp = spawn(electronBinary, ["electron", ...(smokeTest ? ["--smoke-test"] : [])], {
+  // cwd is the electron workspace, which is the app directory: "." tells
+  // Electron to load that package.json's main (main.cjs). Passing "electron"
+  // here resolved to electron/electron and never started at all.
+  const childEnv = { ...process.env, OLANTIS_ELECTRON_URL: appUrl };
+  // Some terminals and coding agents export this; it turns Electron into plain
+  // Node and the app never starts.
+  delete childEnv.ELECTRON_RUN_AS_NODE;
+  electronApp = spawn(electronBinary, [".", ...(smokeTest ? ["--smoke-test"] : [])], {
     stdio: "inherit",
-    env: { ...process.env, OLANTIS_ELECTRON_URL: appUrl },
+    env: childEnv,
     cwd: path.join(process.cwd(), "electron"),
   });
 
