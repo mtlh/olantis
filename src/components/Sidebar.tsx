@@ -206,11 +206,13 @@ type PortfolioValuation = { total: number; holdings: Holding[]; values: Map<stri
 const EMPTY_VALUATION: PortfolioValuation = { total: 0, holdings: [], values: new Map() };
 
 // Icon-only rows need their detail somewhere. A portal keeps the card clear of
-// the sidebar's scroll container, which would otherwise clip it.
-function RailTip({ title, subtitle, rows, children }: {
+// the sidebar's scroll container, which would otherwise clip it. The same card
+// also serves full-width rows in the expanded tree, anchoring to the row.
+function RailTip({ title, subtitle, rows, anchorClassName = "mx-auto block w-fit", children }: {
   title: string;
   subtitle?: string;
   rows?: RailTipRow[];
+  anchorClassName?: string;
   children: ReactNode;
 }) {
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -251,7 +253,7 @@ function RailTip({ title, subtitle, rows, children }: {
   return (
     <span
       ref={anchorRef}
-      className="mx-auto block w-fit"
+      className={anchorClassName}
       onMouseEnter={show}
       onMouseLeave={hide}
       onFocusCapture={show}
@@ -838,13 +840,26 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const holdingValue = values.get(holding.id) ?? 0;
               const allocation = total > 0 ? holdingValue / total * 100 : 0;
               const isHoldingActive = holding.id === activeHoldingId;
-              return (
+              const live = isLiveHolding(holding, portfolio.type);
+              // The expanded tree shows the numbers inline; the hover card
+              // repeats the rail tooltip so a row still has a detail view
+              // without leaving the sidebar.
+              const tipRows: RailTipRow[] = [
+                { label: "Value", value: fmtGBP(holdingValue) },
+                { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
+                { label: "Avg price", value: fmtPrice(holding.avgPrice, holding.currency) },
+                ...(live && holding.currentPrice != null
+                  ? [{ label: "Price", value: fmtPrice(holding.currentPrice, holding.currency) }]
+                  : []),
+                { label: "Allocation", value: `${allocation.toFixed(1)}%` },
+              ];
+              const row = (
                 <button key={holding.id} type="button" onClick={() => selectHolding(holding)} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
                   <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
-                      {isLiveHolding(holding, portfolio.type) && <LiveBadge />}
+                      {live && <LiveBadge />}
                     </span>
                     <span className="block truncate text-[9px] text-zinc-600">{holding.name}</span>
                   </span>
@@ -854,6 +869,13 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                   </span>
                 </button>
               );
+              // Touch layouts have no hover, and a card floating over the row
+              // would just cover the list it belongs to.
+              return desktopLayout ? (
+                <RailTip key={holding.id} title={holding.symbol} subtitle={holding.name} rows={tipRows} anchorClassName="block w-full">
+                  {row}
+                </RailTip>
+              ) : row;
             }) : <p className="px-1.5 py-1.5 text-[10px] text-zinc-600">No holdings yet.</p>}
           </div>
         )}
@@ -1140,25 +1162,43 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                       {accountDirectHoldings.length > 0 && (
                         <div className="mt-1 border-t border-white/[0.05] pt-1.5">
                           <div className="px-1.5 pb-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-600">Direct</div>
-                          {accountDirectHoldings.map((h: Holding) => (
-                            <div key={h.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors ${onSelectHolding ? "cursor-pointer hover:bg-white/[0.035]" : ""}`} onClick={() => onSelectHolding?.(h)}>
-                              <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={22} />
-                              <span className="min-w-0 flex-1">
-                                <span className="flex min-w-0 items-center gap-1.5">
-                                  <span className="truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
-                                  {isLiveHolding(h) && <LiveBadge />}
+                          {accountDirectHoldings.map((h: Holding) => {
+                            const directValue = holdingValueGBP(h, settings.fxRates);
+                            const row = (
+                              <div key={h.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors ${onSelectHolding ? "cursor-pointer hover:bg-white/[0.035]" : ""}`} onClick={() => onSelectHolding?.(h)}>
+                                <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={22} />
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex min-w-0 items-center gap-1.5">
+                                    <span className="truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
+                                    {isLiveHolding(h) && <LiveBadge />}
+                                  </span>
+                                  <span className="block truncate text-[9px] text-zinc-600">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
                                 </span>
-                                <span className="block truncate text-[9px] text-zinc-600">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
-                              </span>
-                              <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{fmtGBP(holdingValueGBP(h, settings.fxRates))}</span>
-                              {editMode && (
-                              <>
-                                <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Edit ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
-                                <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); void fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(async()=>{ await onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }).catch((err: unknown)=>{ toast({title:"Remove failed", description: err instanceof Error ? err.message : String(err), variant:"error"}); }); }}><Trash2 className="w-3 h-3"/></Button>
-                              </>
-                              )}
-                            </div>
-                          ))}
+                                <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{fmtGBP(directValue)}</span>
+                                {editMode && (
+                                <>
+                                  <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Edit ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
+                                  <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); void fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(async()=>{ await onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }).catch((err: unknown)=>{ toast({title:"Remove failed", description: err instanceof Error ? err.message : String(err), variant:"error"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                                </>
+                                )}
+                              </div>
+                            );
+                            return desktopLayout ? (
+                              <RailTip
+                                key={h.id}
+                                title={h.symbol}
+                                subtitle={h.name}
+                                rows={[
+                                  { label: "Value", value: fmtGBP(directValue) },
+                                  { label: "Shares", value: h.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
+                                  { label: "Avg price", value: fmtPrice(h.avgPrice, h.currency) },
+                                ]}
+                                anchorClassName="block w-full"
+                              >
+                                {row}
+                              </RailTip>
+                            ) : row;
+                          })}
                         </div>
                       )}
                     </div>
