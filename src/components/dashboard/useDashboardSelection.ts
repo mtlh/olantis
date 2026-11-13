@@ -4,8 +4,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 // The dashboard is rendered by the (workspace) layout, so the page below it
 // never re-renders. Selection therefore lives in client state and the URL is
-// only a shareable mirror: rewriting it with the History API keeps deep links
-// and back/forward intact without ever waiting on an RSC response.
+// only a shareable mirror: writing it with the History API keeps deep links,
+// the browser's arrows and the desktop window's arrows intact without ever
+// waiting on an RSC response.
 export type DashboardSelection = {
   portfolioId: string | null;
   providerId: string | null;
@@ -47,24 +48,36 @@ export function useDashboardSelection() {
   const router = useRouter();
   const [selection, setSelection] = useState<DashboardSelection>(() => selectionFromSearchParams(searchParams));
 
-  const select = useCallback((next: DashboardSelection) => {
+  const apply = useCallback((next: DashboardSelection, mode: "push" | "replace") => {
     setSelection(next);
     const url = selectionUrl(next);
     // Selection normally only mirrors the URL. From another workspace section
     // (settings, watchlist, …) it has to open the dashboard as well, otherwise
     // the URL changes while the old section stays on screen until the user
     // navigates manually.
-    if (window.location.pathname === "/dashboard") {
-      // Next.js patches history.replaceState and feeds usePathname/useSearchParams
-      // from the new URL, so the section and every shareable link follow along
-      // without a server round trip.
-      window.history.replaceState(window.history.state, "", url);
-    } else {
+    if (window.location.pathname !== "/dashboard") {
       router.push(url);
+      return;
     }
+    // Next.js patches pushState/replaceState and feeds usePathname/useSearchParams
+    // from the new URL, so the section and every shareable link follow along
+    // without a server round trip.
+    if (window.location.pathname + window.location.search === url) return;
+    // Each drill-down (portfolio → provider → account → holding) is its own
+    // history entry, so the browser and desktop window arrows walk back through
+    // the views the user actually opened. Replacing the URL instead left the
+    // title-bar arrows permanently dead: nothing was ever pushed to go back to.
+    if (mode === "push") window.history.pushState(window.history.state, "", url);
+    else window.history.replaceState(window.history.state, "", url);
   }, [router]);
 
+  const select = useCallback((next: DashboardSelection) => apply(next, "push"), [apply]);
+
   const clear = useCallback(() => select(EMPTY_SELECTION), [select]);
+
+  // Deleting the item the URL points at is not a navigation the user made, so
+  // it rewrites the current entry instead of leaving a dead one behind.
+  const reset = useCallback(() => apply(EMPTY_SELECTION, "replace"), [apply]);
 
   useEffect(() => {
     const syncFromLocation = () => {
@@ -74,5 +87,5 @@ export function useDashboardSelection() {
     return () => window.removeEventListener("popstate", syncFromLocation);
   }, []);
 
-  return { selection, select, clear };
+  return { selection, select, clear, reset };
 }
