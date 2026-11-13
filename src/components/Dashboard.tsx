@@ -601,8 +601,9 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const section = requestedSection ?? (pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : pathname === "/settings" ? "settings" : "dashboard");
   const router = useRouter();
   // Seeded once from the URL so deep links open the right view, then owned by
-  // React state: selecting never navigates.
-  const { selection, select, clear: clearSelection } = useDashboardSelection();
+  // React state: selecting mirrors the URL with a history entry instead of
+  // waiting on an RSC round trip.
+  const { selection, select, clear: clearSelection, reset: resetSelection } = useDashboardSelection();
   const { portfolioId: activeId, providerId: providerFromUrl, accountId: accountFromUrl, holdingId: holdingFromUrl } = selection;
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
@@ -966,19 +967,19 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     if (deleteRequest.kind === "portfolio") {
       await remove(deleteRequest.item.id);
       await refreshAllHoldings();
-      if (activeId === deleteRequest.item.id) clearSelection();
+      if (activeId === deleteRequest.item.id) resetSelection();
       toast({ title: "Portfolio deleted", variant: "success" });
     } else if (deleteRequest.kind === "account") {
       await handleRemoveAccount(deleteRequest.item.id);
-      if (accountFromUrl === deleteRequest.item.id) clearSelection();
+      if (accountFromUrl === deleteRequest.item.id) resetSelection();
     } else if (deleteRequest.kind === "provider") {
       await handleRemoveProvider(deleteRequest.item.id);
-      if (providerFromUrl === deleteRequest.item.id) clearSelection();
+      if (providerFromUrl === deleteRequest.item.id) resetSelection();
     } else {
       const holdingId = deleteRequest.item.id;
       await deleteHolding(holdingId);
       await refreshAllHoldings();
-      if (holdingFromUrl === holdingId) clearSelection();
+      if (holdingFromUrl === holdingId) resetSelection();
       toast({ title: "Holding deleted", variant: "success" });
     }
   };
