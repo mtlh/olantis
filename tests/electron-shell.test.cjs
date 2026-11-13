@@ -20,6 +20,9 @@ test("desktop startup shows the centred brand mark", () => {
 test("the app view stays hidden until the splash has a page to replace it", () => {
   assert.match(main, /appView\.setVisible\(false\);/, "the view must start hidden behind the startup mark");
   assert.match(main, /"did-finish-load", revealApp/, "a finished load must reveal the app");
+  // DOM ready is the earlier trigger: the load event also waits for every image
+  // and font, which used to keep the startup mark up after the page was ready.
+  assert.match(main, /"dom-ready", revealApp/, "a parsed document must reveal the app");
   // Without this, a first load that never finishes would leave the mark up
   // forever instead of showing the error page.
   assert.match(main, /"did-fail-load"/);
