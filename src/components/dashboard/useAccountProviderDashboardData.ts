@@ -120,6 +120,7 @@ export function useAccountProviderDashboardData({
       return {
         id: provider.id,
         name: provider.name,
+        icon: provider.icon,
         color: provider.color || portfolioTint(color, providerIndex, palette),
         portfoliosCount: providerPortfolios.length,
         holdingsCount: providerHoldings.length,

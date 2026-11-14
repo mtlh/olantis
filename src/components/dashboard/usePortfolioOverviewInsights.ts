@@ -9,6 +9,7 @@ export type AccountBreakdownChild = {
   id: string;
   name: string;
   kind: "provider" | "portfolio" | "direct";
+  icon?: string | null;
   value: number;
   gain: number;
 };
@@ -157,6 +158,7 @@ export function usePortfolioOverviewInsights({
           return {
             id: provider.id,
             name: provider.name,
+            icon: provider.icon,
             kind: "provider" as const,
             value: totals?.value ?? 0,
             gain: (totals?.value ?? 0) - (totals?.cost ?? 0),

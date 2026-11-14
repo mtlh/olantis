@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db";
 import { accounts } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
+import { normalizeEntityIcon } from "@/lib/entity-icons";
 
 export async function GET() {
   const userId = await getUserId();
@@ -21,8 +22,10 @@ function validName(name: unknown): string | null {
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const body = (await req.json()) as { name?: string; id?: string; color?: string | null };
-  const { name, id, color } = body;
+  const body = (await req.json()) as { name?: string; id?: string; color?: string | null; icon?: string | null };
+  const { name, id, color, icon } = body;
+  const iconId = normalizeEntityIcon(icon);
+  if (icon && !iconId) return Response.json({ error: "unknown icon" }, { status: 400 });
   const db = getDb();
   if (id) {
     const existing = await db.select().from(accounts).where(eq(accounts.id, id));
@@ -34,13 +37,14 @@ export async function POST(req: Request) {
       set.name = n;
     }
     if (color !== undefined) set.color = color || null;
+    if (icon !== undefined) set.icon = iconId;
     if (Object.keys(set).length) await db.update(accounts).set(set).where(eq(accounts.id, id));
     return Response.json({ id });
   }
   const n = validName(name);
   if (!n) return Response.json({ error: "name must be 2-64 characters" }, { status: 400 });
   const nid = crypto.randomUUID();
-  await db.insert(accounts).values({ id: nid, userId, name: n, color: color || null, createdAt: Math.floor(Date.now() / 1000) });
+  await db.insert(accounts).values({ id: nid, userId, name: n, color: color || null, icon: iconId, createdAt: Math.floor(Date.now() / 1000) });
   return Response.json({ id: nid });
 }
 

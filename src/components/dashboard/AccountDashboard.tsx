@@ -5,7 +5,7 @@ import { Layers, Plus, Trash2 } from "lucide-react";
 import { AllocationCard, type AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import { ValueTimeChart, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
-import { BrandIcon } from "@/components/BrandIcon";
+import { BrandIcon, ProviderIcon } from "@/components/BrandIcon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ export type AccountProviderSummary = {
   id: string;
   name: string;
   color: string;
+  icon: string | null;
   portfoliosCount: number;
   holdingsCount: number;
   value: number;
@@ -242,7 +243,7 @@ export function AccountDashboard({
               {providers.map((provider) => (
                 <button key={provider.id} type="button" onClick={() => onOpenProvider(provider.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <BrandIcon provider={provider.name} size={28} />
+                    <ProviderIcon provider={provider} size={28} />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-white">{provider.name}</span>
                       <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">

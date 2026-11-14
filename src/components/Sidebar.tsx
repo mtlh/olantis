@@ -29,7 +29,8 @@ const DropdownMenuItem = dynamic(() => import("@/components/ui/dropdown-menu").t
 const DropdownMenuSeparator = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuSeparator })), { ssr: false });
 const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPortfolioDialog").then((module) => ({ default: module.EditPortfolioDialog })), { ssr: false });
 import { Logo } from "@/components/Logo";
-import { BrandIcon } from "@/components/BrandIcon";
+import { BrandIcon, ProviderIcon } from "@/components/BrandIcon";
+import { EntityIcon } from "@/components/EntityIcon";
 import { useDesktopUpdate } from "@/components/useDesktopUpdate";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -795,7 +796,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             className="relative z-10"
           />
           {providerName
-            ? <BrandIcon provider={providerName} size={22} />
+            ? <ProviderIcon provider={providerById.get(portfolio.providerId!) ?? { name: providerName }} size={22} />
             : <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: portfolioColor }} />}
           <div className="min-w-0 flex-1">
             <span aria-hidden className={`block truncate text-xs font-medium ${isActive ? "text-white" : "text-zinc-200"}`}>
@@ -984,7 +985,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           <RailButton
             key={portfolio.id}
             icon={portfolio.providerId && providerById.get(portfolio.providerId)?.name
-              ? <BrandIcon provider={providerById.get(portfolio.providerId)!.name} size={22} />
+              ? <ProviderIcon provider={providerById.get(portfolio.providerId)!} size={22} />
               : <Layers className="h-[17px] w-[17px]" />}
             label={portfolio.name}
             subtitle={portfolioContext(portfolio)}
@@ -1115,9 +1116,10 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 <div key={acc.id} className={`group overflow-hidden rounded-2xl border transition-colors ${accountActive ? "ring-1 ring-white/10" : ""}`} style={{ borderColor: accountActive ? `${accColor}90` : `${accColor}38`, background: accountActive ? `${accColor}18` : `${accColor}0d` }}>
                   <div className="flex items-center gap-2 px-3 py-2.5">
                     <button type="button" aria-pressed={accountActive} onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }} className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
-                      <FolderOpen className="h-4 w-4 shrink-0" style={{ color: accColor }} />
-                      <span className={`truncate text-sm font-semibold ${accountActive ? "text-white" : "text-zinc-100"}`}>{acc.name}</span>
-                    </button>
+                      {acc.icon
+                        ? <EntityIcon icon={acc.icon} size={16} color={accColor} className="shrink-0" />
+                        : <FolderOpen className="h-4 w-4 shrink-0" style={{ color: accColor }} />}
+                      <span className={`truncate text-sm font-semibold ${accountActive ? "text-white" : "text-zinc-100"}`}>{acc.name}</span>                    </button>
                     <span className="shrink-0 text-sm font-medium tabular-nums text-zinc-300">{fmtGBP(total)}</span>
                     {editMode && (
                     <DropdownMenu>
