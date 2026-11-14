@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("olantisDesktop", {
   isMaximized: () => ipcRenderer.invoke("olantis:window:is-maximized"),
   goBack: () => ipcRenderer.send("olantis:nav:back"),
   goForward: () => ipcRenderer.send("olantis:nav:forward"),
+  goHome: () => ipcRenderer.send("olantis:nav:home"),
   navState: () => ipcRenderer.invoke("olantis:nav:state"),
   isAppReady: () => ipcRenderer.invoke("olantis:app:is-ready"),
   onAppReady: (callback) => {

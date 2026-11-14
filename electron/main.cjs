@@ -87,10 +87,11 @@ if (!app.requestSingleInstanceLock()) {
     return new Promise((resolve) => emitter.once(event, resolve));
   }
 
-  // The URL the first frame should come from (see entry-url.cjs): signed-in
-  // sessions go straight to the dashboard instead of paying for the landing
-  // page render and its redirect first.
-  async function firstUrl() {
+  // The URL "home" should land on (see entry-url.cjs): signed-in sessions go to
+  // the dashboard instead of paying for the landing page render and its
+  // redirect first. The title bar's brand uses the same answer per click, so
+  // home stays right after signing in or out.
+  async function homeUrl() {
     try {
       const cookies = await session.defaultSession.cookies.get({ url: APP_URL });
       const url = resolveEntryUrl(APP_URL, cookies);
@@ -102,11 +103,19 @@ if (!app.requestSingleInstanceLock()) {
     }
   }
 
+  function sameUrl(a, b) {
+    try {
+      return new URL(a).href === new URL(b).href;
+    } catch {
+      return a === b;
+    }
+  }
+
   async function runSmokeTest(shellReady, appReady) {
     try {
       await Promise.all([shellReady, appReady]);
       const integratedToolbar = await mainWindow.webContents.executeJavaScript(
-        '["back-button", "forward-button", "minimize-button", "maximize-button", "close-button"].every((id) => document.getElementById(id))',
+        '["home-button", "back-button", "forward-button", "minimize-button", "maximize-button", "close-button"].every((id) => document.getElementById(id))',
       );
       const renderedApp = await appView.webContents.executeJavaScript(
         'document.readyState === "complete" && document.body.innerText.trim().length > 0',
@@ -208,6 +217,19 @@ if (!app.requestSingleInstanceLock()) {
     const history = navigationHistory();
     if (history?.canGoForward()) history.goForward();
   });
+  // The title bar brand. Reading the cookies per click (rather than reusing the
+  // launch URL) keeps home correct after signing in or out inside the window.
+  ipcMain.on("olantis:nav:home", (event) => {
+    if (!shellWindowFor(event) || !appView || appView.webContents.isDestroyed()) return;
+    void homeUrl().then((url) => {
+      if (!appView || appView.webContents.isDestroyed()) return;
+      // A query string means a drill-down (/dashboard?holding=…), so only an
+      // exact match counts as already home. That makes a repeated click a no-op
+      // without reloading the page, while still clearing a selection.
+      if (sameUrl(appView.webContents.getURL(), url)) return;
+      void appView.webContents.loadURL(url);
+    });
+  });
   ipcMain.handle("olantis:nav:state", (event) => {
     if (!shellWindowFor(event)) return { canGoBack: false, canGoForward: false };
     const history = navigationHistory();
@@ -235,7 +257,7 @@ if (!app.requestSingleInstanceLock()) {
     // itself is still being constructed. The session cookies are read up front
     // for the same reason: that read finishes inside the time it takes to bring
     // a renderer process up, so it never sits on the launch path.
-    const entryUrl = firstUrl();
+    const entryUrl = homeUrl();
     trace("view:create");
     appView = new WebContentsView({
       webPreferences: {
