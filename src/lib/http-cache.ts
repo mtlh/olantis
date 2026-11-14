@@ -96,7 +96,7 @@ function isRateLimit(err: unknown): boolean {
 }
 
 function retryAfterFrom(err: unknown): number {
-  const e = err as { retryAfter?: number; retryAfterMs?: number };
+  const e = err as { retryAfter?: number; retryAfterMs?: number } | null | undefined;
   if (typeof e?.retryAfterMs === "number") return e.retryAfterMs;
   if (typeof e?.retryAfter === "number") return e.retryAfter * 1000;
   return 0;
@@ -155,7 +155,7 @@ export async function cached<T>(
       prune();
       return value;
     } catch (err) {
-      if (allowStale && staleOk) return hit!.value;
+      if (allowStale && staleOk) return hit.value;
       throw err;
     } finally {
       inflight.delete(ck);
@@ -199,7 +199,7 @@ export function setCachedEntry<T>(kind: CacheKind, key: string, value: T) {
 }
 
 export function isFresh(kind: CacheKind, key: string): boolean {
-  const hit = cache.get(`${kind}:${key}`) as CacheEntry<unknown> | undefined;
+  const hit = cache.get(`${kind}:${key}`);
   if (!hit) return false;
   return Date.now() - hit.at < SOFT_TTL[kind];
 }

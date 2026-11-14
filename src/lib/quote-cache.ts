@@ -23,11 +23,12 @@ export async function readQuoteDaily(symbol: string): Promise<QuoteDaily | null>
     const rows = (await db.execute(
       sql`SELECT price, currency, updated_at FROM quote_daily WHERE symbol = ${symbol.toUpperCase()} AND date = ${today()} AND updated_at >= ${cutoff} LIMIT 1`
     )) as unknown as { rows?: Array<{ price: number | string; currency: string | null; updated_at: number | string }> };
-    const r = rows?.rows?.[0];
+    const r = rows.rows?.[0];
     if (!r) return null;
     const price = typeof r.price === "string" ? Number(r.price) : r.price;
     if (!Number.isFinite(price)) return null;
-    return { price, currency: r.currency || "USD" };
+    const currency = r.currency?.trim() ?? "";
+  return { price, currency: currency || "USD" };
   } catch {
     return null;
   }
@@ -50,10 +51,11 @@ export async function readQuoteDailyBatch(symbols: string[]): Promise<Map<string
     const rows = (await db.execute(
       sql`SELECT symbol, price, currency, updated_at FROM quote_daily WHERE symbol = ANY(${syms}) AND date = ${today()} AND updated_at >= ${cutoff}`
     )) as unknown as { rows?: Array<{ symbol: string; price: number | string; currency: string | null }> };
-    for (const r of rows?.rows ?? []) {
+    for (const r of rows.rows ?? []) {
       const price = typeof r.price === "string" ? Number(r.price) : r.price;
       if (!Number.isFinite(price)) continue;
-      out.set(String(r.symbol).toUpperCase(), { price, currency: r.currency || "USD" });
+      const currency = r.currency?.trim() ?? "";
+  out.set(String(r.symbol).toUpperCase(), { price, currency: currency || "USD" });
     }
   } catch {
     /* table may not exist yet; fall back silently */

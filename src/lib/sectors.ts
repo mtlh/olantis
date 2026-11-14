@@ -104,5 +104,6 @@ export function sectorForSymbol(symbol: string): string | null {
  * explicit sector first, then the static map, then "Unclassified".
  */
 export function holdingSector(holding: { symbol: string; sector?: string | null }): string {
-  return holding.sector?.trim() || sectorForSymbol(holding.symbol) || UNCLASSIFIED_SECTOR;
+  const sector = holding.sector?.trim() ?? "";
+  return sector || (sectorForSymbol(holding.symbol) ?? UNCLASSIFIED_SECTOR);
 }

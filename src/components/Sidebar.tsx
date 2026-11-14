@@ -36,7 +36,7 @@ import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { resolvePortfolioColor } from "@/lib/colors";
 import { usePalette } from "@/lib/palette";
-import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP, isLiveHolding } from "@/lib/format";
+import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP, isLiveHolding, holdingCurrency } from "@/lib/format";
 import { LiveBadge } from "@/components/shared/LiveBadge";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
@@ -272,7 +272,7 @@ function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto b
           <span aria-hidden className="absolute left-[-5px] top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-white/10 bg-zinc-900" />
           <p className="truncate text-xs font-semibold text-zinc-100">{title}</p>
           {subtitle && <p className="mt-0.5 truncate text-[10px] uppercase tracking-[0.12em] text-zinc-500">{subtitle}</p>}
-          {!!rows?.length && (
+          {rows && rows.length > 0 && (
             <div className="mt-2 space-y-1 border-t border-white/[0.06] pt-2">
               {rows.map((row) => (
                 <div key={row.label} className="flex items-center justify-between gap-3 text-[11px]">
@@ -282,7 +282,7 @@ function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto b
               ))}
             </div>
           )}
-          {!!holdings?.length && (
+          {holdings && holdings.length > 0 && (
             <div className="mt-2 border-t border-white/[0.06] pt-2">
               <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Holdings</p>
               <div className="space-y-1">
@@ -501,7 +501,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [directSearchResults, setDirectSearchResults] = useState<SearchResult[]>([]);
   const [directShowMenu, setDirectShowMenu] = useState(false);
   const [directQuery, setDirectQuery] = useState("");
-  const [expandedPortfolio, setExpandedPortfolio] = useState<Record<string, boolean>>({});
+  const [expandedPortfolio, setExpandedPortfolio] = useState<Partial<Record<string, boolean>>>({});
   const [q, setQ] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -630,7 +630,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
       if (event.key !== "Tab") return;
       const focusableItems = getFocusableItems();
-      const first = focusableItems[0];
+      const first = focusableItems.at(0);
       const last = focusableItems.at(-1);
       const activeElement = document.activeElement;
 
@@ -676,7 +676,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     const valuations = new Map<string, PortfolioValuation>();
     for (const portfolio of portfolios) {
       const values = new Map<string, number>();
-      const ordered: { holding: Holding; value: number }[] = [];
+      const ordered: Array<{ holding: Holding; value: number }> = [];
       let total = 0;
       for (const holding of portfolio.holdings) {
         const value = holdingValueGBP(holding, fxRates);
@@ -730,7 +730,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     }
     return totals;
   }, [accounts, accountIdForHolding, accountIdForPortfolio, directHoldings, fxRates, portfolioValuations, portfolios]);
-  const accColorFor = (acc: Account) => acc.color || palette[(accountIndex.get(acc.id) ?? 0) % palette.length]?.value || "#60a5fa";
+  const accColorFor = (acc: Account) => acc.color ?? palette.at((accountIndex.get(acc.id) ?? 0) % palette.length)?.value ?? "#60a5fa";
 
   const togglePortfolio = (id: string) => setExpandedPortfolio((e) => ({ ...e, [id]: !e[id] }));
   // A portfolio only looks expanded by default while it is the active one, so
@@ -782,7 +782,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     }
   };
 
-  const moveRow = (table: "accounts" | "portfolios", list: { id: string }[], from: number, to: number) => {
+  const moveRow = (table: "accounts" | "portfolios", list: Array<{ id: string }>, from: number, to: number) => {
     if (from === to || to < 0 || to >= list.length) return;
     const previousIds = list.map((row) => row.id);
     const ids = [...previousIds];
@@ -793,7 +793,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   // Search narrows the visible rows without changing their stored order, so
   // reordering is paused while a filter is active.
-  const rowDragProps = (table: "accounts" | "portfolios", group: string, list: { id: string }[], index: number) => ({
+  const rowDragProps = (table: "accounts" | "portfolios", group: string, list: Array<{ id: string }>, index: number) => ({
     draggable: !searchTerm,
     onDragStart: (event: ReactDragEvent<HTMLDivElement>) => {
       if (searchTerm) return;
@@ -824,13 +824,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const renderPortfolioItem = (portfolio: Portfolio, drag?: { group: string; list: Portfolio[]; index: number }) => {
     const { total, holdings: holdingsInValueOrder, values } = valuationFor(portfolio);
     const portfolioColor = resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette);
-    const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name ?? null : null;
+    const provider = portfolio.providerId ? providerById.get(portfolio.providerId) : undefined;
+    const providerName = provider?.name ?? null;
     const isActive = activeId === portfolio.id;
     const selectedHolding = holdingsInValueOrder.some((holding) => holding.id === activeHoldingId);
-    const searchMatchesHolding = !!searchTerm && holdingsInValueOrder.some(matchesHolding);
+    const searchMatchesHolding = Boolean(searchTerm) && holdingsInValueOrder.some(matchesHolding);
     const isOpen = expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding || searchMatchesHolding);
-    const isDragging = !!drag && draggingRow?.group === drag.group && draggingRow.index === drag.index;
-    const isDropTarget = !!drag
+    const isDragging = drag != null && draggingRow?.group === drag.group && draggingRow.index === drag.index;
+    const isDropTarget = drag != null
       && draggingRow?.group === drag.group
       && dropRow?.group === drag.group
       && dropRow.index === drag.index
@@ -857,14 +858,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             className="relative z-10"
           />
           {providerName
-            ? <ProviderIcon provider={providerById.get(portfolio.providerId!) ?? { name: providerName }} size={22} />
+            ? <ProviderIcon provider={provider ?? { name: providerName }} size={22} />
             : <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: portfolioColor }} />}
           <div className="min-w-0 flex-1">
             <span aria-hidden className={`block truncate text-xs font-medium ${isActive ? "text-white" : "text-zinc-200"}`}>
               {portfolio.name}
             </span>
             {providerName ? (
-              <button type="button" onClick={() => { onSelectProvider?.(portfolio.providerId!); setMobileOpen(false); }} className="relative z-10 mt-0.5 block max-w-full truncate rounded text-left text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+              <button type="button" onClick={() => { if (!provider) return; onSelectProvider?.(provider.id); setMobileOpen(false); }} className="relative z-10 mt-0.5 block max-w-full truncate rounded text-left text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
                 {providerName}
               </button>
             ) : (
@@ -896,7 +897,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 { label: "Value", value: fmtGBP(holdingValue) },
                 { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
                 { label: "Avg price", value: fmtPrice(holding.avgPrice, holding.currency) },
-                ...(live && holding.currentPrice != null
+                ...(live
                   ? [{ label: "Price", value: fmtPrice(holding.currentPrice, holding.currency) }]
                   : []),
                 { label: "Allocation", value: `${allocation.toFixed(1)}%` },
@@ -954,7 +955,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const handleCreateDirectHolding = async () => {
     if(!directTarget && !editingDirectId) return;
     if(!directForm.symbol.trim() || !directForm.shares || !directForm.avgPrice) return toast({title:"Fill symbol, shares & price", variant:"error"});
-    const isEdit = !!editingDirectId;
+    const isEdit = Boolean(editingDirectId);
     const target = directTarget ?? { accountId: null, providerId: null };
     const payload: {
       symbol: string; name: string; shares: number; avgPrice: number;
@@ -987,13 +988,13 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   };
   const openDirectEdit = (h:Holding) => {
     setDirectTarget({ accountId: h.accountId ?? null, providerId: h.providerId ?? null });
-    setDirectForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), exchange: h.exchange ?? "", currentPrice: String(h.currentPrice ?? h.avgPrice), currency: h.currency ?? "GBP" });
+    setDirectForm({ symbol: h.symbol, name: h.name, shares: String(h.shares), avgPrice: String(h.avgPrice), exchange: h.exchange ?? "", currentPrice: String(h.currentPrice), currency: holdingCurrency(h) });
     setEditingDirectId(h.id);
     setShowDirectHolding(true);
   };
 
   const allHoldings = useMemo(() => portfolios.flatMap((p) => p.holdings), [portfolios]);
-  const lastRefresh = useMemo(() => { const ts = allHoldings.map((h) => h.lastRefreshedAt ?? 0).filter(Boolean) as number[]; return ts.length ? Math.max(...ts) : null; }, [allHoldings]);
+  const lastRefresh = useMemo(() => { const ts = allHoldings.map((h) => h.lastRefreshedAt ?? 0).filter(Boolean); return ts.length ? Math.max(...ts) : null; }, [allHoldings]);
   const loading = accountsReady===false || portfoliosReady===false;
 
   useEffect(() => {
@@ -1044,11 +1045,12 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
       <div className="space-y-1 pt-1">
         {railPortfolios.map((portfolio) => {
           const valuation = valuationFor(portfolio);
+          const provider = portfolio.providerId ? providerById.get(portfolio.providerId) : undefined;
           return (
             <RailButton
               key={portfolio.id}
-              icon={portfolio.providerId && providerById.get(portfolio.providerId)?.name
-                ? <ProviderIcon provider={providerById.get(portfolio.providerId)!} size={22} />
+              icon={provider
+                ? <ProviderIcon provider={provider} size={22} />
                 : <Layers className="h-[17px] w-[17px]" />}
               label={portfolio.name}
               subtitle={portfolioContext(portfolio)}
@@ -1306,7 +1308,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         <DialogContent className="bg-zinc-900 border-white/10 text-white">
           <DialogHeader><DialogTitle>New account</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2"><Label>Account name</Label><Input value={accountName} onChange={(e) => { setAccountName(e.target.value); setAccountError(""); }} placeholder="e.g. Household, Personal" autoFocus onKeyDown={e=>e.key==="Enter"&&handleCreateAccount()} aria-invalid={!!accountError}/>{accountError && <p className="text-xs text-red-400">{accountError}</p>}</div>
+            <div className="space-y-2"><Label>Account name</Label><Input value={accountName} onChange={(e) => { setAccountName(e.target.value); setAccountError(""); }} placeholder="e.g. Household, Personal" autoFocus onKeyDown={e=>e.key==="Enter"&&handleCreateAccount()} aria-invalid={Boolean(accountError)}/>{accountError && <p className="text-xs text-red-400">{accountError}</p>}</div>
             <p className="text-xs text-zinc-500">Top level — holds providers. e.g. Household, Joint.</p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowAccountDialog(false)}>Cancel</Button>
@@ -1316,7 +1318,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingAccount} onOpenChange={o=>!o&&setEditingAccount(null)}>
+      <Dialog open={Boolean(editingAccount)} onOpenChange={o=>!o&&setEditingAccount(null)}>
         <DialogContent className="bg-zinc-900 border-white/10 text-white">
           <DialogHeader><DialogTitle>Rename account</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -1329,7 +1331,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingProvider} onOpenChange={o=>!o&&setEditingProvider(null)}>
+      <Dialog open={Boolean(editingProvider)} onOpenChange={o=>!o&&setEditingProvider(null)}>
         <DialogContent className="bg-zinc-900 border-white/10 text-white">
           <DialogHeader><DialogTitle>Rename provider</DialogTitle></DialogHeader>
           <div className="space-y-4">

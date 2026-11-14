@@ -46,7 +46,8 @@ export async function getUserId(): Promise<string | null> {
     const { withAuth } = await import("@workos-inc/authkit-nextjs");
     const auth = await withAuth({ ensureSignedIn: false } as Record<string, unknown>);
     const user = (auth as { user?: { id?: unknown } | null }).user;
-    if (user && typeof user === "object" && user.id != null) return String(user.id);
+    if (typeof user?.id === "string") return user.id;
+    if (typeof user?.id === "number") return String(user.id);
   } catch {
     /* not signed in / proxy not covering route */
   }

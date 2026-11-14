@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   }
 
   const schema = TABLES[table as keyof typeof TABLES];
-  if (!schema) return Response.json({ error: "invalid table" }, { status: 400 });
+  if (!Object.hasOwn(TABLES, table)) return Response.json({ error: "invalid table" }, { status: 400 });
 
   const db = getDb();
   // One statement for the whole list. The previous `Promise.all` of one UPDATE

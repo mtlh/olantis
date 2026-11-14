@@ -38,9 +38,9 @@ export function PortfolioInsightsSection({ insights, periodMovers, totalValue, r
                 className="mt-3"
                 label="Positions gaining, falling and unchanged"
                 segments={[
-                  { value: insights.profitableCount, color: "#34d399" },
-                  { value: insights.losingCount, color: "#f87171" },
-                  { value: insights.unchangedCount, color: "#52525b" },
+                  { key: "gaining", value: insights.profitableCount, color: "#34d399" },
+                  { key: "falling", value: insights.losingCount, color: "#f87171" },
+                  { key: "unchanged", value: insights.unchangedCount, color: "#52525b" },
                 ]}
               />
               <p className="mt-2 text-[11px] tabular-nums text-zinc-600">{insights.losingCount} falling · {insights.unchangedCount} unchanged</p>

@@ -151,7 +151,8 @@ function removeSpecks(data: Buffer, width: number, height: number, minimumShare:
     const stack = [start];
     visited[start] = 1;
     while (stack.length) {
-      const index = stack.pop()!;
+      const index = stack.pop();
+      if (index === undefined) continue;
       island.push(index);
       const x = index % width;
       const y = (index - x) / width;

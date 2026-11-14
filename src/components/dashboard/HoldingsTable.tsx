@@ -112,7 +112,7 @@ export function HoldingsTable({
               className="w-full sm:w-44"
               inputClassName="bg-white/[0.04]"
             />
-            <Select value={sort} onValueChange={(value) => setSort((value ?? "value") as HoldingSort)}>
+            <Select value={sort} onValueChange={(value) => setSort(value ?? "value")}>
               <SelectTrigger className="h-8 w-28 bg-white/[0.04] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="value">Value</SelectItem>

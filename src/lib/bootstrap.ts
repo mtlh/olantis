@@ -95,14 +95,14 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
       db.select().from(userSettings).where(eq(userSettings.userId, userId)),
       ownedHoldingsQuery(db, userId),
     ]),
-    getLatestFxRates().catch(() => ({ date: null, rates: {} as FxRates })),
+    getLatestFxRates().catch(() => ({ date: null, rates: {} })),
   ]);
   const typed = batchRes as unknown as [
     AccountRow[],
     ProviderRow[],
     PortfolioRow[],
-    { date: string; value: number }[],
-    { holdingId: string; date: string; value: number }[],
+    Array<{ date: string; value: number }>,
+    Array<{ holdingId: string; date: string; value: number }>,
     SettingsRow[],
     HoldingRow[],
   ];
@@ -158,7 +158,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   // the series themselves. Full byPortfolio/byHolding history arrives via
   // /api/snapshots after paint (see snapshotsDeferred below).
   const holdingById = new Map(holdingRows.map((h) => [h.id, h]));
-  const fxRates = { ...DEFAULT_FX_RATES, ...fx.rates } as FxRates;
+  const fxRates = { ...DEFAULT_FX_RATES, ...fx.rates };
   const allByHolding: NonNullable<SnapResponse["byHolding"]> = {};
   for (const row of perHoldingSnapshots) {
     const entry = (allByHolding[row.holdingId] ??= { symbol: "", name: "", data: [] });
@@ -167,7 +167,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   const moverChanges: NonNullable<SnapResponse["moverChanges"]> = {};
   for (const [id, entry] of Object.entries(allByHolding)) {
     const h = holdingById.get(id);
-    entry.data = windowSeries(entry.data) as typeof entry.data;
+    entry.data = windowSeries(entry.data);
     if (!h || !(h.shares > 0)) continue;
     entry.symbol = h.symbol;
     entry.name = h.name;
@@ -181,8 +181,8 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   }
 
   const total: Snapshot[] = windowSeries(
-    totalSnapshots.map((row) => ({ date: row.date, value: row.value }) as Snapshot),
-  ) as Snapshot[];
+    totalSnapshots.map((row) => ({ date: row.date, value: row.value })),
+  );
 
   const today = todayISODate();
   const snapshotsFresh = totalSnapshots.some((row) => row.date === today);
@@ -196,8 +196,8 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
     })) as unknown as Portfolio[],
     holdings: liveHoldings,
     snapshots: { total, byPortfolio: {}, moverChanges },
-    settings: (settingsRows[0] ?? {}) as Record<string, unknown>,
-    fx: { date: fx.date, rates: fx.rates as FxRates },
+    settings: (settingsRows[0] ?? {}),
+    fx: { date: fx.date, rates: fx.rates },
     snapshotsFresh,
     snapshotsDeferred: true,
   };

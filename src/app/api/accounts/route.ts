@@ -29,14 +29,14 @@ export async function POST(req: Request) {
   const db = getDb();
   if (id) {
     const existing = await db.select().from(accounts).where(eq(accounts.id, id));
-    if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+    if (existing[0]?.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
     const set: Partial<typeof accounts.$inferInsert> = {};
     if (name !== undefined) {
       const n = validName(name);
       if (!n) return Response.json({ error: "name must be 2-64 characters" }, { status: 400 });
       set.name = n;
     }
-    if (color !== undefined) set.color = color || null;
+    if (color !== undefined) set.color = color ?? null;
     if (icon !== undefined) set.icon = iconId;
     if (Object.keys(set).length) await db.update(accounts).set(set).where(eq(accounts.id, id));
     return Response.json({ id });
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   const n = validName(name);
   if (!n) return Response.json({ error: "name must be 2-64 characters" }, { status: 400 });
   const nid = crypto.randomUUID();
-  await db.insert(accounts).values({ id: nid, userId, name: n, color: color || null, icon: iconId, createdAt: Math.floor(Date.now() / 1000) });
+  await db.insert(accounts).values({ id: nid, userId, name: n, color: color ?? null, icon: iconId, createdAt: Math.floor(Date.now() / 1000) });
   return Response.json({ id: nid });
 }
 
@@ -56,7 +56,7 @@ export async function DELETE(req: Request) {
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const db = getDb();
   const existing = await db.select().from(accounts).where(eq(accounts.id, id));
-  if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+  if (existing[0]?.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
   await db.delete(accounts).where(eq(accounts.id, id));
   return Response.json({ ok: true });
 }

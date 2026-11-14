@@ -133,7 +133,7 @@ export function addPaletteColor(value: string, label?: string): boolean {
   const id = typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `custom-${hex.slice(1)}-${current.length}`;
-  persist([...current, { id, label: label?.trim() || colorLabel(hex), value: hex }]);
+  persist([...current, { id, label: (label?.trim() ?? "") || colorLabel(hex), value: hex }]);
   return true;
 }
 

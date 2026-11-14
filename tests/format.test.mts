@@ -162,8 +162,10 @@ test("combineHistories matches the reverse+find merge it replaces", () => {
   assert.deepEqual(merged, referenceCombine(histories, currentValue));
   assert.ok(merged.length > FIXTURE_DAYS * 0.9, `axis too short: ${merged.length}`);
   assert.equal(merged[0].date, isoDay(0));
-  assert.equal(merged.at(-1)!.date, todayISODate());
-  assert.equal(merged.at(-1)!.value, currentValue);
+  const last = merged.at(-1);
+  assert.ok(last);
+  assert.equal(last.date, todayISODate());
+  assert.equal(last.value, currentValue);
 });
 
 test("combineHistories falls back to today when no history has points", () => {

@@ -11,7 +11,7 @@ export type SegmentedOption<T extends string | number> = {
 
 type SegmentedControlProps<T extends string | number> = {
   value: T;
-  options: readonly SegmentedOption<T>[];
+  options: ReadonlyArray<SegmentedOption<T>>;
   onChange: (value: T) => void;
   /** Accessible name for the group. */
   ariaLabel?: string;

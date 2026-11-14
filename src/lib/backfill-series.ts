@@ -68,8 +68,11 @@ export function buildSharesTimeline(params: {
 
   const purchase = isoDay(params.purchaseDate);
   const ledger = params.transactions
-    .filter((t) => (t.type === "buy" || t.type === "sell") && Number.isFinite(t.shares) && t.shares > 0 && isoDay(t.date))
-    .map((t) => ({ ...t, date: isoDay(t.date)! }))
+    .flatMap((t) => {
+      const date = isoDay(t.date);
+      if ((t.type !== "buy" && t.type !== "sell") || !Number.isFinite(t.shares) || t.shares <= 0 || !date) return [];
+      return [{ ...t, date }];
+    })
     .sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
   const firstTrade = ledger[0]?.date ?? null;
@@ -178,9 +181,11 @@ export function buildMarketValueSeries(params: {
   const fallbackRate = params.fallbackRate ?? 1;
   const out: DatedValue[] = [];
   for (const date of [...byDate.keys()].sort()) {
+    const dailyValue = byDate.get(date);
+    if (dailyValue === undefined) continue;
     const shares = sharesOn(sharesTimeline, date);
     const rate = rateForCurrency(params.currency, date, params.rates, fallbackRate);
-    out.push({ date, value: shares * byDate.get(date)! * rate });
+    out.push({ date, value: shares * dailyValue * rate });
   }
   return out;
 }

@@ -364,5 +364,7 @@ export function monogramFor({
   // Showing the issuer's monogram reads far better than a random ticker stub.
   const issuer = issuerBrandForHolding(name);
   if (issuer) return issuer.monogram.slice(0, 3);
-  return (symbol?.trim() || name?.trim() || "?").slice(0, 3).toUpperCase();
+  const trimmedSymbol = symbol?.trim() ?? "";
+  const trimmedName = name?.trim() ?? "";
+  return (trimmedSymbol || trimmedName || "?").slice(0, 3).toUpperCase();
 }

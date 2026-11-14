@@ -32,7 +32,7 @@ export function toYahooSymbol(symbol: string, exchange?: string) {
   return symbol;
 }
 
-export type QuoteMap = Record<string, { price: number; currency: string }>;
+export type QuoteMap = Record<string, { price: number; currency: string } | undefined>;
 
 const quoteKey = (symbol: string, exchange?: string | null) =>
   `${symbol.toUpperCase()}:${(exchange ?? "").toUpperCase()}`;
@@ -62,7 +62,7 @@ export async function fetchQuotes(
     const ys = toYahooSymbol(symbol, exchange);
     if (isFresh("quote", ys)) {
       const mem = getCachedEntry<{ price: number | null; currency: string }>("quote", ys);
-      if (mem?.value?.price) {
+      if (mem?.value.price) {
         applyEntry(symbol, exchange, { price: mem.value.price, currency: mem.value.currency });
         continue;
       }
@@ -90,20 +90,19 @@ export async function fetchQuotes(
     const batch = toFetch.slice(offset, offset + BATCH_SIZE);
     const ysList = batch.map(({ symbol, exchange }) => toYahooSymbol(symbol, exchange));
     const writes: Array<{ symbol: string; price: number; currency: string }> = [];
-    let rawBySymbol: Record<string, YahooQuoteResult> = {};
+    let rawBySymbol: Partial<Record<string, YahooQuoteResult>> = {};
     try {
       const res = await withRetry(async () => yf.quote(ysList));
-      const arr = Array.isArray(res) ? res : Object.values(res ?? {});
+      const arr = Array.isArray(res) ? res : Object.values(res);
       for (const r of arr as unknown as YahooQuoteResult[]) {
         const s = (r as unknown as { symbol?: string }).symbol;
-        if (s) rawBySymbol[String(s).toUpperCase()] = r as YahooQuoteResult;
+        if (s) rawBySymbol[String(s).toUpperCase()] = r;
       }
     } catch {
       rawBySymbol = {};
     }
 
-    await Promise.allSettled(
-      batch.map(async ({ symbol, exchange }) => {
+    batch.forEach(({ symbol, exchange }) => {
         const ys = toYahooSymbol(symbol, exchange);
         const raw = rawBySymbol[ys.toUpperCase()];
         try {
@@ -111,11 +110,11 @@ export async function fetchQuotes(
           let currency = "USD";
           if (raw) {
             price = raw.regularMarketPrice ?? null;
-            currency = raw.currency || "USD";
+            currency = raw.currency?.trim() ? raw.currency : "USD";
           } else {
             // Fallback: try a single cached/L2 value already present.
             const mem = getCachedEntry<{ price: number | null; currency: string }>("quote", ys);
-            if (mem?.value?.price) {
+            if (mem?.value.price) {
               price = mem.value.price;
               currency = mem.value.currency;
             }
@@ -128,8 +127,7 @@ export async function fetchQuotes(
         } catch {
           /* symbol not found */
         }
-      })
-    );
+      });
     if (writes.length) await writeQuoteDailyBatch(writes);
   }
   return out;
@@ -163,7 +161,7 @@ export async function fetchSectors(
   const out: SectorMap = {};
   const unique = new Map<string, { symbol: string; exchange?: string }>();
   for (const item of symbols) {
-    if (!item.symbol?.trim()) continue;
+    if (!item.symbol.trim()) continue;
     const key = toYahooSymbol(item.symbol, item.exchange).toUpperCase();
     if (!unique.has(key)) unique.set(key, item);
   }
@@ -176,7 +174,9 @@ export async function fetchSectors(
           const res = (await yf.quoteSummary(ys, {
             modules: ["assetProfile", "fundProfile"],
           })) as unknown as YahooProfileResult;
-          return res.assetProfile?.sector?.trim() || res.fundProfile?.categoryName?.trim() || null;
+          const assetSector = res.assetProfile?.sector?.trim() ?? "";
+          const fundCategory = res.fundProfile?.categoryName?.trim() ?? "";
+          return assetSector || fundCategory || null;
         } catch {
           return null;
         }
@@ -202,7 +202,8 @@ function chartPointDate(value: unknown): string | null {
     const d = new Date(ms);
     return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
   }
-  const d = new Date(String(value));
+  if (typeof value !== "string") return null;
+  const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 

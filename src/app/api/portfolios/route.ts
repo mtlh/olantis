@@ -17,14 +17,16 @@ export async function GET() {
       holdings.portfolioId,
       db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.userId, userId)),
     )),
-  ])) as unknown as [typeof portfolios.$inferSelect[], typeof holdings.$inferSelect[]];
+  ])) as unknown as [Array<typeof portfolios.$inferSelect>, Array<typeof holdings.$inferSelect>];
   if (ps.length === 0) return Response.json([]);
   const byPid = new Map<string, typeof hs>();
   for (const h of hs) {
     if (!(h.shares > 0)) continue;
-    const arr = byPid.get(h.portfolioId!) ?? [];
+    const portfolioId = h.portfolioId;
+    if (!portfolioId) continue;
+    const arr = byPid.get(portfolioId) ?? [];
     arr.push(h);
-    byPid.set(h.portfolioId!, arr);
+    byPid.set(portfolioId, arr);
   }
   return Response.json(ps.map((p) => ({ ...p, holdings: byPid.get(p.id) ?? [] })));
 }
@@ -43,7 +45,7 @@ export async function POST(req: Request) {
   const db = getDb();
   if (id) {
     const existing = await db.select().from(portfolios).where(eq(portfolios.id, id));
-    if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+    if (existing[0]?.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
     const set: Partial<typeof portfolios.$inferInsert> = {};
     if (name !== undefined) {
       const n = validName(name);
@@ -54,18 +56,18 @@ export async function POST(req: Request) {
       if (type !== "live" && type !== "manual") return Response.json({ error: "type must be live or manual" }, { status: 400 });
       set.type = type;
     }
-    if (color !== undefined) set.color = color || null;
+    if (color !== undefined) set.color = color ?? null;
     if (accountId !== undefined) {
       if (accountId) {
         const acc = await db.select().from(accounts).where(eq(accounts.id, accountId));
-        if (!acc[0] || acc[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 400 });
+        if (acc[0]?.userId !== userId) return Response.json({ error: "account not found" }, { status: 400 });
       }
-      set.accountId = accountId || null;
+      set.accountId = accountId ?? null;
     }
     if (providerId !== undefined) {
       if (providerId) {
         const prov = await db.select().from(providers).where(eq(providers.id, providerId));
-        if (!prov[0] || prov[0].userId !== userId) return Response.json({ error: "provider not found" }, { status: 400 });
+        if (prov[0]?.userId !== userId) return Response.json({ error: "provider not found" }, { status: 400 });
         set.providerId = providerId;
         if (prov[0].accountId) set.accountId = prov[0].accountId;
       } else {
@@ -78,15 +80,15 @@ export async function POST(req: Request) {
   const n = validName(name);
   if (!n) return Response.json({ error: "name must be 2-64 characters" }, { status: 400 });
   if (type !== "live" && type !== "manual") return Response.json({ error: "type must be live or manual" }, { status: 400 });
-  let finalAccountId: string | null = accountId || null;
-  const finalProviderId: string | null = providerId || null;
+  let finalAccountId: string | null = accountId ?? null;
+  const finalProviderId: string | null = providerId ?? null;
   if (finalProviderId) {
     const prov = await db.select().from(providers).where(eq(providers.id, finalProviderId));
-    if (!prov[0] || prov[0].userId !== userId) return Response.json({ error: "provider not found" }, { status: 400 });
+    if (prov[0]?.userId !== userId) return Response.json({ error: "provider not found" }, { status: 400 });
     finalAccountId = prov[0].accountId;
   }
   const nid = crypto.randomUUID();
-  await db.insert(portfolios).values({ id: nid, userId, accountId: finalAccountId, providerId: finalProviderId, name: n, type, color: color || null, createdAt: Math.floor(Date.now() / 1000) });
+  await db.insert(portfolios).values({ id: nid, userId, accountId: finalAccountId, providerId: finalProviderId, name: n, type, color: color ?? null, createdAt: Math.floor(Date.now() / 1000) });
   return Response.json({ id: nid });
 }
 
@@ -98,7 +100,7 @@ export async function DELETE(req: Request) {
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const db = getDb();
   const existing = await db.select().from(portfolios).where(eq(portfolios.id, id));
-  if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+  if (existing[0]?.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
   await db.delete(holdings).where(eq(holdings.portfolioId, id));
   await db.delete(portfolios).where(eq(portfolios.id, id));
   return Response.json({ ok: true });

@@ -38,7 +38,7 @@ export function ProgressBar({
 }
 
 type DistributionBarProps = {
-  segments: Array<{ value: number; color: string }>;
+  segments: Array<{ key: string; value: number; color: string }>;
   label: string;
   className?: string;
 };
@@ -48,9 +48,9 @@ export function DistributionBar({ segments, label, className }: DistributionBarP
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
   return (
     <div role="img" aria-label={label} className={cn("flex h-1 overflow-hidden rounded-full bg-white/[0.06]", className)}>
-      {total > 0 && segments.filter((segment) => segment.value > 0).map((segment, index) => (
+      {total > 0 && segments.filter((segment) => segment.value > 0).map((segment) => (
         <span
-          key={index}
+          key={segment.key}
           style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: segment.color }}
         />
       ))}

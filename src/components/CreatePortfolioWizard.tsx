@@ -6,9 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { ProviderPicker, type ProviderSelection } from "@/components/ProviderPicker";
-import { type Account, type Provider } from "@/lib/store";
-import { ArrowLeft, ArrowRight, Briefcase, Check, Layers, TrendingUp, Wallet } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import type { Account, Provider } from "@/lib/store";
+import { ArrowLeft, ArrowRight, Briefcase, Check, Layers, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
 
 type Props = {
   open: boolean;
@@ -82,7 +81,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
   };
 
   if (!open) return null;
-  const hasLocation = !!accountId;
+  const hasLocation = Boolean(accountId);
   const canNext = step !== 1 || (name.trim().length >= 2 && hasLocation);
 
   const handleCreate = async () => {

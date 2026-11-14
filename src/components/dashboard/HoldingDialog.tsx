@@ -64,7 +64,7 @@ function createInitialForm(holding: Holding | null, currency: string): HoldingFo
     shares: holding ? String(holding.shares) : "",
     avgPrice: holding ? String(holding.avgPrice) : "",
     currentPrice: holding ? String(holding.currentPrice) : "",
-    purchaseDate: holding?.purchaseDate?.split("T")[0] ?? todayISODate(),
+    purchaseDate: holding?.purchaseDate.split("T")[0] ?? todayISODate(),
     exchange: holding?.exchange ?? "",
     currency: holding?.currency ?? currency,
     sector: holding?.sector ?? "",
@@ -82,7 +82,7 @@ export function HoldingDialog({
   const { toast } = useToast();
   const [form, setForm] = useState(() => createInitialForm(holding, defaultCurrency));
   const [isManual, setIsManual] = useState(
-    () => portfolio?.type === "manual" || (!!holding && !isListedSymbol(holding.symbol)),
+    () => portfolio?.type === "manual" || (holding != null && !isListedSymbol(holding.symbol)),
   );
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -183,10 +183,10 @@ export function HoldingDialog({
   };
 
   const selectSearchResult = (result: SymbolResult) => {
-    const nextSymbol = result.symbol?.toUpperCase() ?? form.symbol;
+    const nextSymbol = result.symbol.toUpperCase();
     updateForm("symbol", nextSymbol);
-    updateForm("name", result.name ?? result.longname ?? form.name);
-    updateForm("exchange", result.exchange ?? form.exchange);
+    updateForm("name", result.name);
+    updateForm("exchange", result.exchange || form.exchange);
     if (result.price != null) updateForm("currentPrice", String(result.price));
     if (result.currency) updateForm("currency", result.currency);
     setShowSymbolMenu(false);
@@ -195,7 +195,7 @@ export function HoldingDialog({
     if (result.price != null) {
       setQuoteInfo(`Yahoo: ${fmtPrice(result.price, result.currency)} • ${result.exchDisp ?? result.exchange}`);
     } else if (result.symbol) {
-      void fetchQuote(result.symbol, result.exchange ?? form.exchange);
+      void fetchQuote(result.symbol, result.exchange || form.exchange);
     }
   };
 
@@ -305,7 +305,7 @@ export function HoldingDialog({
                               <span className="min-w-0">
                                 <span className="text-sm font-medium text-white flex items-center gap-2">
                                   {result.symbol}
-                                  <Badge variant="outline" className="border-white/10 text-[10px] text-zinc-500">{result.exchange || result.exchDisp || "—"}</Badge>
+                                  <Badge variant="outline" className="border-white/10 text-[10px] text-zinc-500">{result.exchange || (result.exchDisp ?? "—")}</Badge>
                                   {result.price != null && <span className="text-xs text-emerald-400">{fmtPrice(result.price, result.currency)}</span>}
                                 </span>
                                 <span className="block text-xs text-zinc-500 truncate">{result.name}</span>

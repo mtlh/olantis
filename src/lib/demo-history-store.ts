@@ -43,7 +43,7 @@ export async function topUpDemoHistory(
 }
 
 /** Count existing history rows per holding from an already-loaded series. */
-export function pointsByHolding(rows: readonly { holdingId: string }[]): Map<string, number> {
+export function pointsByHolding(rows: ReadonlyArray<{ holdingId: string }>): Map<string, number> {
   const counts = new Map<string, number>();
   for (const row of rows) counts.set(row.holdingId, (counts.get(row.holdingId) ?? 0) + 1);
   return counts;

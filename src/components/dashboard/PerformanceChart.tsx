@@ -172,10 +172,10 @@ export const PerformanceChart = memo(function PerformanceChart({
       ...(benchmarkName ? [{ key: "benchmark", name: benchmarkName }] : []),
     ];
     return candidates.map(({ key, name }) => {
-      const points = rangedData.flatMap((row) => typeof row[key] === "number" && Number.isFinite(row[key]) ? [{ value: row[key] as number }] : []);
+      const points = rangedData.flatMap((row) => typeof row[key] === "number" && Number.isFinite(row[key]) ? [{ value: row[key] }] : []);
       if (points.length < 2) return { key, name, periodChange: null as number | null, maxDrawdown: null as number | null };
       const baseline = 100 + points[0].value;
-      const periodChange = baseline > 0 ? ((100 + points.at(-1)!.value) / baseline - 1) * 100 : null;
+      const periodChange = baseline > 0 ? ((100 + points[points.length - 1].value) / baseline - 1) * 100 : null;
       let peak = baseline;
       let maxDrawdown = 0;
       for (const point of points) {

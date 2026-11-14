@@ -29,7 +29,7 @@ type AllocationCardProps = {
   surface?: "glass" | "panel";
 };
 
-const MODES: { value: AllocationMode; label: string }[] = [
+const MODES: Array<{ value: AllocationMode; label: string }> = [
   { value: "holding", label: "Holdings" },
   { value: "account", label: "Accounts" },
   { value: "sector", label: "Sectors" },
@@ -72,7 +72,7 @@ export const AllocationCard = memo(function AllocationCard({
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart key={mode}>
                   <Pie data={allocation} dataKey="value" nameKey="name" innerRadius="54%" outerRadius="82%" stroke="none">
-                    {allocation.map((item, index) => <Cell key={`${mode}-${item.name}-${index}`} fill={item.color} />)}
+                    {allocation.map((item) => <Cell key={`${mode}-${item.name}`} fill={item.color} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(value) => fmtGBP(Number(value))} />
                 </PieChart>
@@ -96,7 +96,7 @@ export const AllocationCard = memo(function AllocationCard({
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart key={mode}>
                   <Pie data={allocation} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} stroke="none">
-                    {allocation.map((item, index) => <Cell key={`${mode}-${item.name}-${index}`} fill={item.color} />)}
+                    {allocation.map((item) => <Cell key={`${mode}-${item.name}`} fill={item.color} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} formatter={(value) => fmtGBP(Number(value))} />
                 </PieChart>

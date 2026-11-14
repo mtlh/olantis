@@ -26,7 +26,10 @@ export async function POST(req: Request) {
   const prior = await db.select({ id: watchlistItems.id }).from(watchlistItems).where(and(eq(watchlistItems.userId, userId), eq(watchlistItems.symbol, symbol)));
   if (prior.length) return Response.json({ error: `${symbol} is already on your watchlist` }, { status: 409 });
   const id = crypto.randomUUID();
-  await db.insert(watchlistItems).values({ id, userId, symbol, name: body.name?.trim().slice(0, 80) || symbol, exchange: body.exchange?.trim().slice(0, 16) || null, currency: body.currency?.trim().slice(0, 8) || null, createdAt: Math.floor(Date.now() / 1000) });
+  const name = body.name?.trim().slice(0, 80) ?? "";
+  const exchange = body.exchange?.trim().slice(0, 16) ?? "";
+  const currency = body.currency?.trim().slice(0, 8) ?? "";
+  await db.insert(watchlistItems).values({ id, userId, symbol, name: name || symbol, exchange: exchange || null, currency: currency || null, createdAt: Math.floor(Date.now() / 1000) });
   return Response.json({ id });
 }
 

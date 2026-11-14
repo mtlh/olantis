@@ -24,7 +24,7 @@ function isoWeekKey(date: string): string {
 export function windowSeries<T extends { date: string; value: number }>(
   rows: readonly T[],
 ): T[] {
-  if (!rows || rows.length === 0) return [];
+  if (rows.length === 0) return [];
 
   // Work on a sorted copy so the input is untouched.
   const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));

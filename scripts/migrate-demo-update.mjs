@@ -11,7 +11,7 @@ console.log("existing portfolios", existingPorts);
 let accISA, accFun;
 
 // Create ISA account if missing
-let isaAcc = existingAccs.find(a=>a.name==='ISA');
+const isaAcc = existingAccs.find(a=>a.name==='ISA');
 if (!isaAcc) {
   const id = crypto.randomUUID();
   await sql`INSERT INTO accounts (id, user_id, name, created_at) VALUES (${id}, 'demo', 'ISA', ${Math.floor(Date.now()/1000)})`;
@@ -19,7 +19,7 @@ if (!isaAcc) {
   console.log("created ISA account", id);
 } else accISA = isaAcc.id;
 
-let funAcc = existingAccs.find(a=>a.name==='For Fun');
+const funAcc = existingAccs.find(a=>a.name==='For Fun');
 if (!funAcc) {
   const id = crypto.randomUUID();
   await sql`INSERT INTO accounts (id, user_id, name, created_at) VALUES (${id}, 'demo', 'For Fun', ${Math.floor(Date.now()/1000)})`;
@@ -28,13 +28,13 @@ if (!funAcc) {
 } else accFun = funAcc.id;
 
 // Handle portfolios
-let isaPort = existingPorts.find(p=>p.name==='ISA');
+const isaPort = existingPorts.find(p=>p.name==='ISA');
 if (isaPort) {
   await sql`UPDATE portfolios SET name='Global Tracker', account_id=${accISA} WHERE id=${isaPort.id}`;
   console.log("renamed ISA -> Global Tracker, moved to ISA account");
 } else {
   // check if Global Tracker already exists
-  let gt = existingPorts.find(p=>p.name==='Global Tracker');
+  const gt = existingPorts.find(p=>p.name==='Global Tracker');
   if (!gt) {
     const id = crypto.randomUUID();
     await sql`INSERT INTO portfolios (id, user_id, account_id, name, type, created_at) VALUES (${id}, 'demo', ${accISA}, 'Global Tracker', 'live', ${Math.floor(Date.now()/1000)})`;
@@ -49,13 +49,13 @@ if (isaPort) {
   }
 }
 
-let sippPort = existingPorts.find(p=>p.name==='SIPP');
+const sippPort = existingPorts.find(p=>p.name==='SIPP');
 if (sippPort) {
   await sql`UPDATE portfolios SET account_id=${accFun} WHERE id=${sippPort.id}`;
   console.log("moved SIPP to For Fun account");
 } else {
   // check if SIPP exists already under For Fun
-  let sipp2 = existingPorts.find(p=>p.name==='SIPP');
+  const sipp2 = existingPorts.find(p=>p.name==='SIPP');
   if (!sipp2) {
     const id = crypto.randomUUID();
     await sql`INSERT INTO portfolios (id, user_id, account_id, name, type, created_at) VALUES (${id}, 'demo', ${accFun}, 'SIPP', 'live', ${Math.floor(Date.now()/1000)})`;
@@ -65,7 +65,7 @@ if (sippPort) {
 }
 
 // Create Retirement portfolio under For Fun if missing
-let retPort = existingPorts.find(p=>p.name==='Retirement');
+const retPort = existingPorts.find(p=>p.name==='Retirement');
 if (!retPort) {
   const id = crypto.randomUUID();
   await sql`INSERT INTO portfolios (id, user_id, account_id, name, type, created_at) VALUES (${id}, 'demo', ${accFun}, 'Retirement', 'live', ${Math.floor(Date.now()/1000)})`;

@@ -1,6 +1,5 @@
 "use client";
-import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings, useWorkspaceBootstrap } from "@/lib/store";
-import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
+import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings, useWorkspaceBootstrap, type Account, type Holding, type Portfolio, type Provider } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useCallback, useDeferredValue } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -407,7 +406,7 @@ function GoalsFallback() {
   // the saved goal adds a fourth metric column, a progress bar under the hero
   // and a summary sidebar instead of the "set a goal" form.
   const boot = useWorkspaceBootstrap();
-  const hasGoal = !!boot?.goals?.length;
+  const hasGoal = Boolean(boot?.goals?.length);
   return (
     <div className="space-y-8" aria-busy="true">
       <div className={`grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:gap-0 lg:py-7 ${hasGoal ? "sm:grid-cols-3 lg:grid-cols-[1.3fr_1fr_1fr_1fr]" : "sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr]"}`}>
@@ -861,7 +860,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     const gain = value - cost;
     return { value, cost, gain, gainPct: cost ? (gain / cost) * 100 : 0 };
   }, [active, settings.fxRates, totalCost, totalGain, totalGainPct, totalValue]);
-  const portfolioChartColor = activeBaseColor ?? palette[0]?.value ?? "#60a5fa";
+  const portfolioChartColor = activeBaseColor ?? palette.at(0)?.value ?? "#60a5fa";
 
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
   const [editPortfolio, setEditPortfolio] = useState<Portfolio | null>(null);
@@ -885,7 +884,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
 
   const handleWizardCreate = async (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => {
     const created = await handleCreate(name, type, accountId, providerId);
-    if (extra?.symbol && created?.id) {
+    if (extra?.symbol && created.id) {
       try {
         let price = 100;
         try{ const q = await fetch(`/api/quote?symbol=${encodeURIComponent(extra.symbol)}`).then(r=>r.json()); const hit=q[extra.symbol.toUpperCase()] ?? q[`${extra.symbol.toUpperCase()}:`]; if(hit?.price) price=hit.price; } catch{}
@@ -896,7 +895,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
             portfolioId: created.id,
             symbol: extra.symbol.toUpperCase().trim(),
             name: extra.symbol.toUpperCase().trim(),
-            shares: Number(extra.shares || 1),
+            shares: Number(extra.shares ?? 1),
             avgPrice: price,
             currentPrice: price,
             currency: settings.currency || "GBP",
@@ -957,9 +956,9 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
         onDeletePortfolio={requestDeletePortfolio} />
       <main id="main-content" className="flex-1 min-w-0 pt-12 xl:pt-0">
         <div className="w-full max-w-[1600px] mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 space-y-6">
-          {(portfoliosError || holdingsError || accountsError) && (
+          {(portfoliosError ?? holdingsError ?? accountsError) && (
             <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              <span><AlertTriangle className="inline w-4 h-4 mr-2" />Some portfolio data could not be loaded. Your saved data has not been deleted. {portfoliosError || holdingsError || accountsError}</span>
+              <span><AlertTriangle className="inline w-4 h-4 mr-2" />Some portfolio data could not be loaded. Your saved data has not been deleted. {portfoliosError ?? holdingsError ?? accountsError}</span>
               <Button variant="outline" size="sm" className="border-amber-500/30 bg-black/20" onClick={() => void Promise.all([refreshPortfolios(), refreshAllHoldings(), refreshAccounts(), refreshProviders()])}>Retry</Button>
             </div>
           )}
@@ -1031,7 +1030,7 @@ range={range}
           ) : activeAccount ? (
             <AccountDashboard
               name={activeAccount.name}
-              color={accountData.color ?? palette[0]?.value ?? "#60a5fa"}
+              color={accountData.color ?? palette.at(0)?.value ?? "#60a5fa"}
               dateFormat={settings.dateFormat}
               providers={accountData.providers}
               portfolios={accountData.portfolios}
@@ -1062,7 +1061,7 @@ range={range}
               name={activeProvider.name}
               icon={activeProvider.icon}
               accountName={accounts.find((account) => account.id === activeProvider.accountId)?.name ?? "Account"}
-              color={providerData.color ?? palette[0]?.value ?? "#60a5fa"}
+              color={providerData.color ?? palette.at(0)?.value ?? "#60a5fa"}
               dateFormat={settings.dateFormat}
               portfolios={providerData.portfolioSummaries}
               directHoldings={providerData.directHoldingSummaries}

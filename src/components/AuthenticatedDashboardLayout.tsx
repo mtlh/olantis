@@ -12,7 +12,7 @@ import { buttonVariants } from "@/components/ui/button";
 export async function AuthenticatedDashboardLayout() {
   const jar = await cookies();
   const demoSession = jar.get(DEMO_COOKIE)?.value;
-  const isDemo = !!demoSession;
+  const isDemo = demoSession != null;
   let user: { id: string; email?: string; firstName?: string | null } | null = null;
 
   if (isDemo) user = { id: demoUserId(demoSession), email: "demo@olantis.local", firstName: "Demo" };
@@ -35,7 +35,7 @@ export async function AuthenticatedDashboardLayout() {
               <CardHeader><CardTitle className="text-white">Restart dev server</CardTitle></CardHeader>
               <CardContent>
                 <p className="text-sm text-zinc-400">Proxy not covering {path}. Restart <code className="text-white">npm run dev</code>.</p>
-                <pre className="text-xs mt-3 p-3 rounded-xl bg-black/50 text-zinc-300">hasMiddleware: {String(!!requestHeaders.get("x-workos-middleware"))}</pre>
+                <pre className="text-xs mt-3 p-3 rounded-xl bg-black/50 text-zinc-300">hasMiddleware: {String(Boolean(requestHeaders.get("x-workos-middleware")))}</pre>
                 <a href={path} className={buttonVariants({ className: "mt-4" })}>Retry</a>
               </CardContent>
             </Card>
