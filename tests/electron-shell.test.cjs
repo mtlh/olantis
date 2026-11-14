@@ -29,6 +29,19 @@ test("the app view stays hidden until the splash has a page to replace it", () =
   assert.match(main, /appView\.setVisible\(true\)/);
 });
 
+test("the window opens on the startup state, never on an unpainted client area", () => {
+  // A window shown at construction is presented before the shell has any pixels,
+  // and Windows 11 fills that frame with its own backdrop (#202020): the grey
+  // flash at launch. backgroundColor cannot cover it, so the window is created
+  // hidden and revealed on the shell's first paint instead.
+  assert.doesNotMatch(main, /show: true/, "the window must not be shown before the shell paints");
+  assert.match(main, /show: false/);
+  assert.match(main, /mainWindow\.once\("ready-to-show", revealWindow\)/);
+  assert.match(main, /mainWindow\.show\(\)/);
+  // A shell that never paints must still produce a visible window.
+  assert.match(main, /"did-fail-load", revealWindow/);
+});
+
 test("the startup mark can never swallow clicks meant for the app", () => {
   const splashRule = shellCss.match(/\.splash\s*\{([^}]*)\}/s);
   const cssRules = shellCss.replace(/\/\*[\s\S]*?\*\//g, "");

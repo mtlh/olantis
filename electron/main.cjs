@@ -380,11 +380,13 @@ if (!app.requestSingleInstanceLock()) {
       height: 920,
       minWidth: 900,
       minHeight: 620,
-      // Shown from the first frame. Waiting for "ready-to-show" held the window
-      // back by 100-250ms after the shell had already loaded, and the shell,
-      // the window and the view all paint #050507, so there is no white flash
-      // to hide from.
-      show: true,
+      // Created hidden and revealed on the shell's first composited frame (see
+      // revealWindow). Showing it at construction opened the app on a blank
+      // client area, which Windows 11 fills with its own backdrop (#202020):
+      // that grey rectangle was the flash at launch. Matching backgroundColor
+      // alone cannot cover it, because the window is presented before any of
+      // our pixels exist.
+      show: false,
       frame: false,
       backgroundColor: APP_BACKGROUND,
       title: "Olantis — Portfolio Dashboard",
@@ -398,7 +400,15 @@ if (!app.requestSingleInstanceLock()) {
       },
     });
     trace("shell:window-created");
-    trace("window:shown");
+    // First painted frame of the shell page — title bar plus the centred startup
+    // mark, both already #050507 — so the window's very first frame is the
+    // startup state instead of an empty grey client area. A shell that fails to
+    // load still reveals, so the window can never stay invisible.
+    const revealWindow = () => {
+      if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+      mainWindow.show();
+      trace("window:shown");
+    };
     const shellReady = smokeTest ? oncePromise(mainWindow.webContents, "did-finish-load") : null;
 
     mainWindow.contentView.addChildView(appView);
@@ -410,6 +420,12 @@ if (!app.requestSingleInstanceLock()) {
       mainWindow.webContents.once("did-finish-load", () => trace("shell:did-finish-load"));
       mainWindow.once("ready-to-show", () => trace("shell:ready-to-show"));
     }
+    // Registered before loadURL so the first paint cannot be missed. The load and
+    // failure events are backstops in case a paint never reports: a broken shell
+    // must still produce a visible window, even if it cannot look right.
+    mainWindow.once("ready-to-show", revealWindow);
+    mainWindow.webContents.once("did-finish-load", revealWindow);
+    mainWindow.webContents.once("did-fail-load", revealWindow);
     mainWindow.on("closed", () => {
       mainWindow = undefined;
       appView = undefined;
