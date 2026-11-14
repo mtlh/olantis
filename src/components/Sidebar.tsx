@@ -464,8 +464,8 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           title={lastRefreshLabel ? `Tickers updated ${lastRefreshLabel}` : "Tickers not updated yet"}
         >
           {lastRefreshLabel
-            ? <>Tickers updated <span className="tabular-nums text-zinc-400">{lastRefreshLabel}</span></>
-            : "Tickers not updated yet"}
+            ? <>Updated <span className="tabular-nums text-zinc-400">{lastRefreshLabel}</span></>
+            : "Not updated yet"}
         </span>
         <div className="flex shrink-0 items-center gap-1">
           {updateButton}
