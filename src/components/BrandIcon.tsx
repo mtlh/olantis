@@ -5,6 +5,7 @@ import { Banknote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { brandIconSrc, isCashSymbol, monogramFor } from "@/lib/brands";
 import { holdingCurrency } from "@/lib/format";
+import { EntityIcon } from "@/components/EntityIcon";
 
 type BrandIconProps = {
   /** Provider/broker/issuer name. Takes priority over `symbol`. */
@@ -220,4 +221,27 @@ export const BrandIcon = memo(function BrandIcon({
       className={className}
     />
   );
+});
+
+/**
+ * The mark for a saved provider: the user's chosen icon when they overrode the
+ * fetched brand artwork (Settings → Colour & icons), otherwise the brand mark.
+ */
+export const ProviderIcon = memo(function ProviderIcon({
+  provider,
+  size = 24,
+  shape = "rounded",
+  color,
+  className,
+}: {
+  provider: { name: string; icon?: string | null };
+  size?: number;
+  shape?: "rounded" | "circle";
+  color?: string;
+  className?: string;
+}) {
+  if (provider.icon) {
+    return <EntityIcon icon={provider.icon} size={size} color={color} className={className} />;
+  }
+  return <BrandIcon provider={provider.name} size={size} shape={shape} className={className} />;
 });

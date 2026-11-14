@@ -7,8 +7,8 @@ export { DEFAULT_SETTINGS, normalizeSettings, type AppSettings };
 
 export type Holding = { id: string; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; sector?: string | null; purchaseDate: string; exchange?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; userId?: string | null; lastRefreshedAt?: number | null };
 export type Portfolio = { id: string; name: string; type: "live" | "manual"; accountId: string | null; providerId: string | null; color: string | null; sortOrder?: number | null; holdings: Holding[]; userId?: string; createdAt?: number };
-export type Account = { id: string; name: string; color: string | null; sortOrder?: number | null; userId?: string; createdAt?: number };
-export type Provider = { id: string; name: string; color: string | null; accountId: string; sortOrder?: number | null; userId?: string; createdAt?: number };
+export type Account = { id: string; name: string; color: string | null; icon: string | null; sortOrder?: number | null; userId?: string; createdAt?: number };
+export type Provider = { id: string; name: string; color: string | null; icon: string | null; accountId: string; sortOrder?: number | null; userId?: string; createdAt?: number };
 export type UserSettings = { userId: string; currency: string; dateFormat: string; defaultRange: string; showTradeMarkers: number };
 export type Snapshot = { date: string; value: number };
 /** Per-range move of one holding, precomputed on the server (see lib/bootstrap.ts). */
@@ -73,8 +73,8 @@ export function useWorkspaceBootstrap(): WorkspaceBootstrap | null {
   return useContext(WorkspaceBootstrapContext);
 }
 
-type AccountPayload = { id: string; name?: string; color?: string | null };
-type ProviderPayload = { id: string; name?: string; color?: string | null; accountId?: string };
+type AccountPayload = { id: string; name?: string; color?: string | null; icon?: string | null };
+type ProviderPayload = { id: string; name?: string; color?: string | null; icon?: string | null; accountId?: string };
 type HoldingsBody = { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; sector?: string | null; purchaseDate?: string; exchange?: string };
 
 async function api(path: string, opts?: RequestInit) {
@@ -144,7 +144,7 @@ export function useAccounts() {
   useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   const create = useCallback(async (name: string) => {
     const r = await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) }) as { id: string };
-    setAccounts((prev) => [...prev, { id: r.id, name, color: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) }]);
+    setAccounts((prev) => [...prev, { id: r.id, name, color: null, icon: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) }]);
     return r;
   }, []);
   const remove = useCallback(async (id: string) => {
@@ -161,7 +161,11 @@ export function useAccounts() {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ id, color }) });
     setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, color } : a)));
   }, []);
-  return { accounts, ready, error, create, remove, rename, setColor, refresh, setAccounts };
+  const setIcon = useCallback(async (id: string, icon: string | null) => {
+    await api("/api/accounts", { method: "POST", body: JSON.stringify({ id, icon }) });
+    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, icon } : a)));
+  }, []);
+  return { accounts, ready, error, create, remove, rename, setColor, setIcon, refresh, setAccounts };
 }
 
 export function useProviders() {
@@ -191,7 +195,11 @@ export function useProviders() {
     await api("/api/providers", { method: "POST", body: JSON.stringify({ id, color }) });
     setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
   }, []);
-  return { providers, ready, remove, rename, setColor, refresh, setProviders };
+  const setIcon = useCallback(async (id: string, icon: string | null) => {
+    await api("/api/providers", { method: "POST", body: JSON.stringify({ id, icon }) });
+    setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, icon } : p)));
+  }, []);
+  return { providers, ready, remove, rename, setColor, setIcon, refresh, setProviders };
 }
 
 export function usePortfolios() {
