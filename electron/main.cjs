@@ -11,6 +11,9 @@ const TITLEBAR_HEIGHT = 46;
 // through while the remote page loads.
 const APP_BACKGROUND = "#050507";
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// A downloaded update is installed without a prompt, so the sidebar gets this
+// long to show the new version before the app relaunches into it.
+const UPDATE_RESTART_DELAY_MS = 1500;
 const iconPath = app.isPackaged
   ? path.join(process.resourcesPath, "brand-mark.png")
   : path.join(__dirname, "..", "public", "brand", "mark-512.png");
@@ -76,6 +79,7 @@ if (!app.requestSingleInstanceLock()) {
   // Surfaced in the app's update control through app-preload.cjs.
   let updateStatus = { state: "idle", version: null };
   let updaterInstance;
+  let updateRestartTimer;
 
   app.on("second-instance", () => {
     if (!mainWindow) return;
@@ -182,16 +186,20 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.handle("olantis:update:status", (event) => (appViewWindowFor(event) ? updateStatus : { state: "idle", version: null }));
   // Manual "check for updates" from the sidebar. The periodic check keeps
-  // running on its own; this just lets someone ask early.
-  ipcMain.handle("olantis:update:check", (event) => {
+  // running on its own; this just lets someone ask early. It resolves once the
+  // check finishes, which is exactly how long the control spins.
+  ipcMain.handle("olantis:update:check", async (event) => {
     if (!appViewWindowFor(event) || !updaterInstance) return { state: "idle", version: null };
-    updaterInstance.checkForUpdates().catch((error) => console.error("[updater] check failed:", error?.message ?? error));
+    try {
+      await updaterInstance.checkForUpdates();
+    } catch (error) {
+      console.error("[updater] check failed:", error?.message ?? error);
+    }
     return updateStatus;
   });
   ipcMain.on("olantis:update:restart", (event) => {
-    if (!appViewWindowFor(event) || updateStatus.state !== "ready" || !updaterInstance) return;
-    // Same handoff the native "Restart now" prompt used: quit, install, relaunch.
-    updaterInstance.quitAndInstall(true, true);
+    if (!appViewWindowFor(event)) return;
+    installUpdate();
   });
 
   function navigationHistory() {
@@ -430,6 +438,16 @@ if (!app.requestSingleInstanceLock()) {
     sendUpdateStatus();
   }
 
+  /** Quit, apply the downloaded build and relaunch: the normal install handoff. */
+  function installUpdate() {
+    if (updateStatus.state !== "ready" || !updaterInstance) return;
+    if (updateRestartTimer) {
+      clearTimeout(updateRestartTimer);
+      updateRestartTimer = undefined;
+    }
+    updaterInstance.quitAndInstall(true, true);
+  }
+
   function startAutoUpdates() {
     // Auto-updates are resolved by electron-updater from the published GitHub
     // release (see build.publish in package.json); skip them in dev runs.
@@ -449,11 +467,22 @@ if (!app.requestSingleInstanceLock()) {
     updater.logger = console;
     updater.autoDownload = true;
     updater.autoInstallOnAppQuit = true;
-    updater.on("error", (error) => console.error("[updater]", error?.message ?? error));
-    // No native dialog: the app's update control shows the update and offers
-    // the restart, so a background download never interrupts anyone.
+    updater.on("error", (error) => {
+      console.error("[updater]", error?.message ?? error);
+      // Stop the spinner: a failed check or download is not progress.
+      setUpdateStatus("error", null);
+    });
+    updater.on("checking-for-update", () => setUpdateStatus("checking", null));
+    updater.on("update-not-available", () => setUpdateStatus("idle", null));
     updater.on("update-available", (info) => setUpdateStatus("downloading", info?.version));
-    updater.on("update-downloaded", (info) => setUpdateStatus("ready", info?.version));
+    // No native dialog and no menu: the sidebar shows the new version, then the
+    // app relaunches into it on its own. The pause is only long enough for that
+    // state to paint; the control's restart click still works if it is missed.
+    updater.on("update-downloaded", (info) => {
+      setUpdateStatus("ready", info?.version);
+      if (updateRestartTimer) clearTimeout(updateRestartTimer);
+      updateRestartTimer = setTimeout(installUpdate, UPDATE_RESTART_DELAY_MS);
+    });
 
     const check = () => {
       updater.checkForUpdates().catch((error) => console.error("[updater] check failed:", error?.message ?? error));
