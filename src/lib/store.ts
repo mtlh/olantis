@@ -123,6 +123,56 @@ function applyOrder<T extends { id: string; sortOrder?: number | null }>(rows: T
   });
 }
 
+/**
+ * A colour, icon or name edit is accepted by the server but only the view that
+ * issued it holds fresh rows — every hook call keeps its own state, so the
+ * sidebar used to wait for its next refetch before it showed a new tint or
+ * glyph (Settings and the sidebar each own a copy of the rows). Broadcast the
+ * accepted fields here instead, and each hook layers them over its own rows.
+ */
+type PatchTable = "accounts" | "providers" | "portfolios";
+type RowPatch = { name?: string; color?: string | null; icon?: string | null };
+type WorkspacePatches = Record<PatchTable, Record<string, RowPatch>>;
+
+const EMPTY_PATCHES: Record<string, RowPatch> = {};
+const EMPTY_WORKSPACE_PATCHES: WorkspacePatches = { accounts: EMPTY_PATCHES, providers: EMPTY_PATCHES, portfolios: EMPTY_PATCHES };
+
+let workspacePatches: WorkspacePatches = EMPTY_WORKSPACE_PATCHES;
+const patchListeners = new Set<() => void>();
+
+function subscribeWorkspacePatches(listener: () => void) {
+  patchListeners.add(listener);
+  return () => {
+    patchListeners.delete(listener);
+  };
+}
+
+function readWorkspacePatches() {
+  return workspacePatches;
+}
+
+/** Publishes the fields the server accepted (or is about to accept) for one row. */
+export function applyWorkspacePatch(table: PatchTable, id: string, patch: RowPatch) {
+  workspacePatches = {
+    ...workspacePatches,
+    [table]: { ...workspacePatches[table], [id]: { ...workspacePatches[table][id], ...patch } },
+  };
+  for (const listener of patchListeners) listener();
+}
+
+function useWorkspacePatches(): WorkspacePatches {
+  return useSyncExternalStore(subscribeWorkspacePatches, readWorkspacePatches, () => EMPTY_WORKSPACE_PATCHES);
+}
+
+/** Overlays broadcast fields on rows, reusing every row nothing patched. */
+function applyPatches<T extends { id: string }>(rows: T[], patches: Record<string, RowPatch>): T[] {
+  if (patches === EMPTY_PATCHES) return rows;
+  return rows.map((row) => {
+    const patch = patches[row.id];
+    return patch ? { ...row, ...patch } : row;
+  });
+}
+
 type AccountPayload = { id: string; name?: string; color?: string | null; icon?: string | null };
 type ProviderPayload = { id: string; name?: string; color?: string | null; icon?: string | null; accountId?: string };
 type HoldingsBody = { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; sector?: string | null; purchaseDate?: string; exchange?: string };
@@ -181,7 +231,9 @@ export function useAccounts() {
   const boot = useWorkspaceBootstrap();
   const [rows, setRows] = useState<Account[]>(boot?.accounts ?? []);
   const order = useWorkspaceOrder();
-  const accounts = useMemo(() => applyOrder(rows, order.accounts), [rows, order.accounts]);
+  const patches = useWorkspacePatches();
+  const ordered = useMemo(() => applyOrder(rows, order.accounts), [rows, order.accounts]);
+  const accounts = useMemo(() => applyPatches(ordered, patches.accounts), [ordered, patches.accounts]);
   const [ready, setReady] = useState(!!boot);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
@@ -208,14 +260,17 @@ export function useAccounts() {
     if (color !== undefined) payload.color = color;
     await api("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
     setRows((prev) => prev.map((a) => (a.id === id ? { ...a, name, ...(color !== undefined ? { color: color ?? null } : {}) } : a)));
+    applyWorkspacePatch("accounts", id, { name, ...(color !== undefined ? { color: color ?? null } : {}) });
   }, []);
   const setColor = useCallback(async (id: string, color: string | null) => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ id, color }) });
     setRows((prev) => prev.map((a) => (a.id === id ? { ...a, color } : a)));
+    applyWorkspacePatch("accounts", id, { color });
   }, []);
   const setIcon = useCallback(async (id: string, icon: string | null) => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ id, icon }) });
     setRows((prev) => prev.map((a) => (a.id === id ? { ...a, icon } : a)));
+    applyWorkspacePatch("accounts", id, { icon });
   }, []);
   return { accounts, ready, error, create, remove, rename, setColor, setIcon, refresh, setAccounts: setRows };
 }
@@ -224,7 +279,9 @@ export function useProviders() {
   const boot = useWorkspaceBootstrap();
   const [rows, setRows] = useState<Provider[]>(boot?.providers ?? []);
   const order = useWorkspaceOrder();
-  const providers = useMemo(() => applyOrder(rows, order.providers), [rows, order.providers]);
+  const patches = useWorkspacePatches();
+  const ordered = useMemo(() => applyOrder(rows, order.providers), [rows, order.providers]);
+  const providers = useMemo(() => applyPatches(ordered, patches.providers), [ordered, patches.providers]);
   const [ready, setReady] = useState(!!boot);
   const refresh = useCallback(async () => {
     try {
@@ -244,14 +301,17 @@ export function useProviders() {
     if (color !== undefined) payload.color = color;
     await api("/api/providers", { method: "POST", body: JSON.stringify(payload) });
     setRows((prev) => prev.map((p) => (p.id === id ? { ...p, name, ...(color !== undefined ? { color: color ?? null } : {}) } : p)));
+    applyWorkspacePatch("providers", id, { name, ...(color !== undefined ? { color: color ?? null } : {}) });
   }, []);
   const setColor = useCallback(async (id: string, color: string | null) => {
     await api("/api/providers", { method: "POST", body: JSON.stringify({ id, color }) });
     setRows((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
+    applyWorkspacePatch("providers", id, { color });
   }, []);
   const setIcon = useCallback(async (id: string, icon: string | null) => {
     await api("/api/providers", { method: "POST", body: JSON.stringify({ id, icon }) });
     setRows((prev) => prev.map((p) => (p.id === id ? { ...p, icon } : p)));
+    applyWorkspacePatch("providers", id, { icon });
   }, []);
   return { providers, ready, remove, rename, setColor, setIcon, refresh, setProviders: setRows };
 }
@@ -260,7 +320,9 @@ export function usePortfolios() {
   const boot = useWorkspaceBootstrap();
   const [rows, setRows] = useState<Portfolio[]>(boot?.portfolios ?? []);
   const order = useWorkspaceOrder();
-  const portfolios = useMemo(() => applyOrder(rows, order.portfolios), [rows, order.portfolios]);
+  const patches = useWorkspacePatches();
+  const ordered = useMemo(() => applyOrder(rows, order.portfolios), [rows, order.portfolios]);
+  const portfolios = useMemo(() => applyPatches(ordered, patches.portfolios), [ordered, patches.portfolios]);
   const [ready, setReady] = useState(!!boot);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
@@ -295,6 +357,7 @@ export function usePortfolios() {
   const setColor = async (id: string, color: string | null) => {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ id, color }) });
     setRows((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
+    applyWorkspacePatch("portfolios", id, { color });
   };
   const upsertHolding = async (targetId: string, h: Omit<Holding, "id"> & { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null }, kind: "portfolio" | "provider" | "account" = "portfolio") => {
     const body: HoldingsBody = { ...h, id: h.id };
