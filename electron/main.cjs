@@ -11,6 +11,10 @@ const TITLEBAR_HEIGHT = 46;
 // through while the remote page loads.
 const APP_BACKGROUND = "#050507";
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// A window that was shown but never produced compositor frames is lifted out of
+// its launch transparency after this long, so a broken renderer cannot leave the
+// app invisible.
+const WINDOW_OPACITY_FALLBACK_MS = 1000;
 // A downloaded update is installed without a prompt, so the sidebar gets this
 // long to show the new version before the app relaunches into it.
 const UPDATE_RESTART_DELAY_MS = 1500;
@@ -380,13 +384,15 @@ if (!app.requestSingleInstanceLock()) {
       height: 920,
       minWidth: 900,
       minHeight: 620,
-      // Created hidden and revealed on the shell's first composited frame (see
-      // revealWindow). Showing it at construction opened the app on a blank
-      // client area, which Windows 11 fills with its own backdrop (#202020):
-      // that grey rectangle was the flash at launch. Matching backgroundColor
-      // alone cannot cover it, because the window is presented before any of
-      // our pixels exist.
+      // Created hidden and transparent, and only made opaque once the shell has
+      // produced frames (see revealWindow). Windows 11 fills the client area of
+      // a presented window with its own backdrop (#202020) until our first
+      // composited frame lands, and `ready-to-show` alone is not enough: it
+      // reports the renderer's first paint, which can arrive before the window
+      // presents it. Showing at opacity 0 keeps that backdrop invisible, so the
+      // first pixel the user sees is the shell's own #050507 title bar.
       show: false,
+      opacity: 0,
       frame: false,
       backgroundColor: APP_BACKGROUND,
       title: "Olantis — Portfolio Dashboard",
@@ -401,13 +407,33 @@ if (!app.requestSingleInstanceLock()) {
     });
     trace("shell:window-created");
     // First painted frame of the shell page — title bar plus the centred startup
-    // mark, both already #050507 — so the window's very first frame is the
+    // mark, both already #050507 — so the window's first visible frame is the
     // startup state instead of an empty grey client area. A shell that fails to
     // load still reveals, so the window can never stay invisible.
     const revealWindow = () => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+      // Shown while still fully transparent: Windows composites its window
+      // backdrop into an invisible window, not onto the screen.
       mainWindow.show();
       trace("window:shown");
+      let opaque = false;
+      const showOpaque = () => {
+        if (opaque) return;
+        opaque = true;
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.setOpacity(1);
+        trace("window:opaque");
+      };
+      // Three animation frames from the shell means the compositor has already
+      // produced frames of the real page, so raising the opacity cannot reveal
+      // anything but the shell. A renderer that never gets there still cannot
+      // leave the window stuck invisible: the timeout lifts it regardless.
+      const settled = mainWindow.webContents.executeJavaScript(
+        "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))))",
+      );
+      void settled.then(showOpaque, showOpaque);
+      const fallback = setTimeout(showOpaque, WINDOW_OPACITY_FALLBACK_MS);
+      fallback.unref?.();
     };
     const shellReady = smokeTest ? oncePromise(mainWindow.webContents, "did-finish-load") : null;
 
