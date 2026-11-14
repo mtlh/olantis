@@ -6,7 +6,7 @@ import { AllocationCard, type AllocationItem } from "@/components/dashboard/shar
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { ValueTimeChart, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
-import { BrandIcon } from "@/components/BrandIcon";
+import { BrandIcon, ProviderIcon } from "@/components/BrandIcon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ type ProviderHoldingSummary = {
 
 type ProviderDashboardProps = {
   name: string;
+  icon?: string | null;
   accountName: string;
   color: string;
   dateFormat: string;
@@ -76,6 +77,7 @@ function SignedGain({ value, className = "" }: { value: number; className?: stri
 
 export function ProviderDashboard({
   name,
+  icon,
   accountName,
   color,
   dateFormat,
@@ -133,7 +135,7 @@ export function ProviderDashboard({
         <button type="button" onClick={onBack} className="text-[11px] text-zinc-500 transition-colors hover:text-white">← {accountName}</button>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex min-w-0 items-center gap-3">
-            <BrandIcon provider={name} size={28} />
+            <ProviderIcon provider={{ name, icon }} size={28} />
             <h1 className="min-w-0 truncate text-[28px] font-semibold leading-none tracking-tight text-white">{name}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">

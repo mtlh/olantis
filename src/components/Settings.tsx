@@ -1,15 +1,18 @@
 "use client";
 import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, applyWorkspaceOrder, type AppSettings, type Portfolio } from "@/lib/store";
-import { useMemo, useState, type DragEvent } from "react";
+import { useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ColorWheel } from "@/components/ui/color-wheel";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { Building2, Briefcase, Folder, Trash2, Download, Upload, ChevronUp, ChevronDown, GripVertical, Info, Plus, RotateCcw, X } from "lucide-react";
+import { Building2, Briefcase, Folder, FolderOpen, Trash2, Download, Upload, ChevronUp, ChevronDown, GripVertical, Info, Plus, RotateCcw, X } from "lucide-react";
 import { tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
 import { MAX_PALETTE_COLORS, addPaletteColor, colorLabel, isDefaultPalette, removePaletteColor, resetPalette, updatePaletteColor, usePalette } from "@/lib/palette";
+import { ENTITY_ICON_OPTIONS } from "@/lib/entity-icons";
+import { EntityIcon } from "@/components/EntityIcon";
+import { BrandIcon } from "@/components/BrandIcon";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { AllocationCard } from "@/components/dashboard/shared/AllocationCard";
 import { usePortfolioAllocation } from "@/components/dashboard/usePortfolioAllocation";
@@ -62,6 +65,56 @@ function Swatch({ color, active, onClick }: { color: string; active?: boolean; o
       className={`h-7 w-7 rounded-full border-2 transition-all ${active ? "scale-110 border-white" : "border-white/10 hover:border-white/30"}`}
       style={{ background: color }}
     />
+  );
+}
+
+const ICON_TILE = "grid size-8 shrink-0 place-items-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30";
+
+/**
+ * Icon grid for one account/provider. The first tile is the default (folder or
+ * fetched brand mark); choosing it clears the override.
+ */
+function IconGrid({
+  value,
+  color,
+  fallback,
+  fallbackLabel,
+  onChange,
+}: {
+  value: string | null;
+  color: string;
+  fallback: ReactNode;
+  fallbackLabel: string;
+  onChange: (icon: string | null) => void;
+}) {
+  const tile = (active: boolean) =>
+    `${ICON_TILE} ${active ? "border-white/30 bg-white/[0.12]" : "border-white/[0.06] bg-white/[0.02] hover:border-white/20"}`;
+  return (
+    <div role="group" aria-label="Choose an icon" className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-xl border border-white/[0.06] bg-black/25 p-2">
+      <button
+        type="button"
+        aria-pressed={!value}
+        aria-label={`Use the default ${fallbackLabel}`}
+        title={`Default ${fallbackLabel}`}
+        onClick={() => onChange(null)}
+        className={`${tile(!value)} text-zinc-400`}
+      >
+        {fallback}
+      </button>
+      {ENTITY_ICON_OPTIONS.map(({ id, label }) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={value === id}
+          aria-label={label}
+          title={label}
+          onClick={() => onChange(id)}
+          className={`${tile(value === id)} ${value === id ? "" : "text-zinc-500 hover:text-zinc-200"}`}
+        >
+          <EntityIcon icon={id} size={15} color={value === id ? color : undefined} />
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -266,8 +319,8 @@ function PaletteEditor() {
 }
 
 export function SettingsView({ isDemo }: { isDemo?: boolean }) {
-  const { accounts, setColor: setAccountColor } = useAccounts();
-  const { providers, setColor: setProviderColor } = useProviders();
+  const { accounts, setColor: setAccountColor, setIcon: setAccountIcon } = useAccounts();
+  const { providers, setColor: setProviderColor, setIcon: setProviderIcon } = useProviders();
   const { portfolios, setColor: setPortfolioColor, refresh: refreshPortfolios } = usePortfolios();
   const { holdings: allHoldings } = useHoldings();
   const { settings: appSettings, save: saveAppSettings } = useSettings();
@@ -286,6 +339,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   };
   const [saving, setSaving] = useState<string | null>(null);
   const [colorTab, setColorTab] = useState<"accounts" | "providers" | "portfolios">("accounts");
+  const [iconPickerFor, setIconPickerFor] = useState<string | null>(null);
   const [importPortfolioId, setImportPortfolioId] = useState("");
   const [importing, setImporting] = useState(false);
   const [showImportFormat, setShowImportFormat] = useState(false);
@@ -316,6 +370,14 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   const handlePortfolioColor = async (id: string, color: string | null) => {
     setSaving(id);
     try { await setPortfolioColor(id, color); toast({ title: "Portfolio color updated", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
+  };
+  const handleAccountIcon = async (id: string, icon: string | null) => {
+    setSaving(id);
+    try { await setAccountIcon(id, icon); toast({ title: icon ? "Account icon updated" : "Account icon reset", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
+  };
+  const handleProviderIcon = async (id: string, icon: string | null) => {
+    setSaving(id);
+    try { await setProviderIcon(id, icon); toast({ title: icon ? "Provider icon updated" : "Brand icon restored", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
   };
 
   const handleReorder = async (table: OrderTable, ids: string[], previousIds: string[]) => {
@@ -506,7 +568,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
 
         <details className="group py-6" open>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
-            <span className="text-sm font-medium text-white">Colour mapping</span>
+            <span className="text-sm font-medium text-white">Colour &amp; icons</span>
             <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
           </summary>
           <div className="grid gap-6 pt-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-10">
@@ -529,7 +591,11 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 ))}
               </div>
               <p className="mt-3 text-[11px] text-zinc-600">
-                {colorTab === "accounts" ? "Base colour for each account; providers and portfolios tint from these." : colorTab === "providers" ? "Inherit the account tint, or pin a fixed colour." : "Follow the parent tint, or pin a fixed colour."}
+                {colorTab === "accounts"
+                  ? "Base colour and folder icon for each account; providers and portfolios tint from these."
+                  : colorTab === "providers"
+                    ? "Inherit the account tint or pin a fixed colour, and swap a provider's brand mark for your own icon."
+                    : "Follow the parent tint, or pin a fixed colour."}
               </p>
 
               {colorTab === "accounts" && (
@@ -541,10 +607,15 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                         <div key={acc.id} className="py-4">
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex min-w-0 items-center gap-2.5">
-                              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: base }} />
+                              <span className="grid size-7 shrink-0 place-items-center rounded-lg border" style={{ borderColor: `${base}55`, background: `${base}14`, color: base }}>
+                                {acc.icon ? <EntityIcon icon={acc.icon} size={15} /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
+                              </span>
                               <span className="truncate text-sm font-medium text-white">{acc.name}</span>
                             </div>
-                            {acc.color && <Button variant="ghost" size="xs" className="rounded-full text-zinc-500 hover:text-white" onClick={()=>handleAccountColor(acc.id, null)} disabled={saving===acc.id}>Reset</Button>}
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Button variant="ghost" size="xs" aria-expanded={iconPickerFor === acc.id} className="rounded-full text-zinc-500 hover:text-white" onClick={() => setIconPickerFor(iconPickerFor === acc.id ? null : acc.id)} disabled={saving === acc.id}>Icon</Button>
+                              {acc.color && <Button variant="ghost" size="xs" className="rounded-full text-zinc-500 hover:text-white" onClick={()=>handleAccountColor(acc.id, null)} disabled={saving===acc.id}>Reset</Button>}
+                            </div>
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
                             {palette.map(c=> <Swatch key={c.value} color={c.value} active={acc.color===c.value} onClick={()=>handleAccountColor(acc.id, c.value)} />)}
@@ -552,6 +623,15 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                               {[0,0.18,-0.18,0.32].map((t,i)=> <span key={i} className="h-6 w-6 rounded-full border border-white/10" style={{ background: tintColor(base, t) }} title={`Tint ${t>0?"+":""}${t}`} />)}
                             </div>
                           </div>
+                          {iconPickerFor === acc.id && (
+                            <IconGrid
+                              value={acc.icon}
+                              color={base}
+                              fallbackLabel="folder"
+                              fallback={<FolderOpen className="h-4 w-4" aria-hidden="true" />}
+                              onChange={(icon) => { handleAccountIcon(acc.id, icon).catch(() => {}); setIconPickerFor(null); }}
+                            />
+                          )}
                         </div>
                       );
                     })}
@@ -567,15 +647,29 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                       const base = resolveProviderColor(pr, providers, accounts, palette);
                       return (
                         <div key={pr.id} className="py-4">
-                          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: base }} />
-                            <span className="truncate text-sm font-medium text-white">{pr.name}</span>
-                            <span className="shrink-0 text-[11px] text-zinc-600">{acc?.name ?? "—"}</span>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                              <span className="grid size-7 shrink-0 place-items-center rounded-lg border" style={{ borderColor: `${base}55`, background: `${base}14` }}>
+                                {pr.icon ? <EntityIcon icon={pr.icon} size={15} color={base} /> : <BrandIcon provider={pr.name} size={18} />}
+                              </span>
+                              <span className="truncate text-sm font-medium text-white">{pr.name}</span>
+                              <span className="shrink-0 text-[11px] text-zinc-600">{acc?.name ?? "—"}</span>
+                            </div>
+                            <Button variant="ghost" size="xs" aria-expanded={iconPickerFor === pr.id} className="shrink-0 rounded-full text-zinc-500 hover:text-white" onClick={() => setIconPickerFor(iconPickerFor === pr.id ? null : pr.id)} disabled={saving === pr.id}>Icon</Button>
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
                             <button type="button" aria-pressed={!pr.color} onClick={()=>handleProviderColor(pr.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!pr.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-500 hover:text-zinc-300"}`}>Auto tint</button>
                             {palette.map(c=> <Swatch key={c.value} color={c.value} active={pr.color===c.value} onClick={()=>handleProviderColor(pr.id, c.value)} />)}
                           </div>
+                          {iconPickerFor === pr.id && (
+                            <IconGrid
+                              value={pr.icon}
+                              color={base}
+                              fallbackLabel="brand mark"
+                              fallback={<BrandIcon provider={pr.name} size={16} />}
+                              onChange={(icon) => { handleProviderIcon(pr.id, icon).catch(() => {}); setIconPickerFor(null); }}
+                            />
+                          )}
                         </div>
                       );
                     })}

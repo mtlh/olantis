@@ -10,9 +10,13 @@ if (iconPath) {
 
 const backButton = document.getElementById("back-button");
 const forwardButton = document.getElementById("forward-button");
+const homeButton = document.getElementById("home-button");
 
 backButton.addEventListener("click", () => desktop.goBack());
 forwardButton.addEventListener("click", () => desktop.goForward());
+// The brand is the desktop home control: the overview dashboard for a signed-in
+// session, the landing page otherwise. The main process resolves which.
+homeButton.addEventListener("click", () => desktop.goHome());
 
 function updateNavButtons({ canGoBack, canGoForward }) {
   backButton.disabled = !canGoBack;
