@@ -1039,6 +1039,17 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
       <nav className={`flex-1 overflow-y-auto ${rail ? "p-2 xl:pt-4" : "p-3 xl:pt-5"}`}>
         {rail ? (
           <div className="flex flex-col items-center gap-1.5">
+            <RailTip title="Search" subtitle="Portfolios & holdings">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={expandSearch}
+                aria-label="Search portfolios and holdings"
+                className="text-zinc-500 hover:text-white"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </RailTip>
             <RailTip title="Expand sidebar" subtitle="Show account tree">
               <Button
                 variant="ghost"
@@ -1051,20 +1062,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 <PanelLeftOpen className="h-4 w-4" />
               </Button>
             </RailTip>
-            <RailTip title="Search" subtitle="Portfolios & holdings">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={expandSearch}
-                aria-label="Search portfolios and holdings"
-                className="text-zinc-500 hover:text-white"
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            </RailTip>
           </div>
         ) : (
           <div className="flex items-center gap-1.5">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
+              <Input ref={searchInputRef} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" aria-label="Search portfolios and holdings" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
+              {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
+            </div>
             {isDesktop && (
               <Button
                 variant="ghost"
@@ -1077,11 +1082,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             )}
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
-              <Input ref={searchInputRef} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" aria-label="Search portfolios and holdings" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
-              {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
-            </div>
           </div>
         )}
 
