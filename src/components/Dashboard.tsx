@@ -27,7 +27,7 @@ import { useToast } from "@/components/ui/toast";
 
 import { resolvePortfolioColor } from "@/lib/colors";
 import { usePalette } from "@/lib/palette";
-import { fmtPrice, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, valueChangeOverRange } from "@/lib/format";
+import { fmtPrice, holdingValueGBP, holdingCostGBP, todayISODate, valueChangeOverRange } from "@/lib/format";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import type { HoldingFormData } from "@/components/dashboard/HoldingDialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -636,7 +636,6 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   // between sections, which unmounts the chart.
   const [benchmark, setBenchmark] = useState(isDemo ? "VWRL.L" : "__none__");
   const [allocMode, setAllocMode] = useState<AllocationMode>("holding");
-  const [refreshing, setRefreshing] = useState(false);
   const active = useMemo(() => portfolios.find((p) => p.id === activeId) ?? null, [portfolios, activeId]);
   const activeProvider = useMemo(() => providers.find((provider) => provider.id === providerFromUrl) ?? null, [providers, providerFromUrl]);
   const activeAccount = useMemo(() => accounts.find((account) => account.id === accountFromUrl) ?? null, [accounts, accountFromUrl]);
@@ -898,31 +897,6 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   const [assignHolding, setAssignHolding] = useState<Holding | null>(null);
   const openAssign = (holding: Holding) => setAssignHolding(holding);
 
-  const refreshPrices = useCallback(async () => {
-    const allHs = [...portfolios.flatMap(p=>p.holdings), ...directHoldings];
-    if(allHs.length===0) return;
-    setRefreshing(true);
-    try{
-      const manualIds = new Set(portfolios.filter((p) => p.type === "manual").map((p) => p.id));
-      const symbols = allHs.filter((h: Holding)=> isListedSymbol(h.symbol) && !(h.portfolioId && manualIds.has(h.portfolioId))).map(h=>({symbol:h.symbol,exchange:h.exchange}));
-      if(!symbols.length) { toast({title:"No holdings to refresh",variant:"info"}); return; }
-      const r = await fetch("/api/quote",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols})});
-      const quotes = await r.json();
-      if(!Object.keys(quotes).length) { toast({title:"No prices returned",variant:"info"}); return; }
-      const patch = await fetch("/api/holdings",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols:quotes})});
-      const j = await patch.json();
-      if(!patch.ok){ toast({title:j.message||j.error||"Refresh limited",description:j.nextAllowedAt?`Next allowed ${new Date(j.nextAllowedAt*1000).toLocaleTimeString()}`:undefined,variant:"error"}); return; }
-      // PATCH echoes the rows it touched, so there is no follow-up GET.
-      applyHoldings(Array.isArray(j.holdings) ? j.holdings as Holding[] : []);
-      toast({title:`Updated ${j.updated} holdings`,description:j.skipped?`${j.skipped} skipped (24h limit)`:undefined,variant:"success"});
-    } catch(e: unknown){ toast({title:"Refresh failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
-    finally{setRefreshing(false);}
-  }, [portfolios, directHoldings, toast, applyHoldings]);
-
-  // Stable identity so the memoised Sidebar does not re-render on every
-  // Dashboard state change (range switch, dialog open, allocation mode, …).
-  const handleRefreshPrices = useCallback(() => { void refreshPrices(); }, [refreshPrices]);
-
   const handleWizardCreate = async (name: string, type: "live" | "manual", accountId: string | null, providerId: string | null, extra?: { symbol?: string; shares?: string }) => {
     const created = await handleCreate(name, type, accountId, providerId);
     if (extra?.symbol && created?.id) {
@@ -992,7 +966,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} onRefreshPrices={handleRefreshPrices} refreshing={refreshing} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+      <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
         onDeleteAccount={requestDeleteAccount}
         onDeletePortfolio={requestDeletePortfolio} />
       <main id="main-content" className="flex-1 min-w-0 pt-12 xl:pt-0">
@@ -1196,9 +1170,6 @@ range={range}
               periodChange={overviewPeriodChange}
               range={range}
               isLoading={isLoading}
-              refreshing={refreshing}
-              canRefresh={portfolios.length > 0 || directHoldings.length > 0}
-              onRefresh={handleRefreshPrices}
               onNewPortfolio={() => openWizard(null)}
               onCreateFirstPortfolio={() => openWizard(null)}
             >
@@ -1242,9 +1213,7 @@ range={range}
                   <PriceFreshnessCard
                     staleHoldings={staleHoldings}
                     dateFormat={settings.dateFormat}
-                    refreshing={refreshing}
                     onSelectHolding={selectHolding}
-                    onRefresh={handleRefreshPrices}
                   />
                 </div>
               </div>

@@ -3,6 +3,7 @@ import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, app
 import { useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ColorWheel } from "@/components/ui/color-wheel";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
@@ -193,6 +194,7 @@ function PaletteEditor() {
   const [pickerHex, setPickerHex] = useState("#a78bfa");
   const [draftLabel, setDraftLabel] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [wheelOpen, setWheelOpen] = useState(false);
 
   const validDraft = /^#[0-9a-f]{6}$/i.test(draftHex);
   const duplicate = validDraft && palette.some((color) => color.value === draftHex.toLowerCase());
@@ -205,7 +207,7 @@ function PaletteEditor() {
         ? "That colour is already in your palette."
         : !validDraft
           ? "Hex colours look like #60a5fa."
-          : "Name it yourself, or leave that blank and we will name it for you.");
+          : "Click the swatch for a colour wheel, or type the hex. The name is optional — we will name it for you.");
 
   const addDraft = () => {
     if (full) { setNotice(`Your palette can hold up to ${MAX_PALETTE_COLORS} colours.`); return; }
@@ -214,6 +216,7 @@ function PaletteEditor() {
     if (!addPaletteColor(draftHex, draftLabel)) { setNotice("Could not add that colour."); return; }
     setNotice(`Added ${draftLabel.trim() || colorLabel(draftHex)}.`);
     setDraftLabel("");
+    setWheelOpen(false);
   };
 
   return (
@@ -238,22 +241,15 @@ function PaletteEditor() {
       <div className="mt-4 flex flex-wrap gap-2">
         {palette.map((color) => (
           <span key={color.id} className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] py-1 pl-1.5 pr-1">
-            <label
-              title={`Change ${color.label}`}
-              className="relative grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-full focus-within:ring-2 focus-within:ring-white/40"
-            >
-              <span className="h-3.5 w-3.5 rounded-full border border-white/20" style={{ background: color.value }} />
-              <input
-                type="color"
-                value={color.value}
-                aria-label={`Change ${color.label} colour`}
-                onChange={(event) => {
-                  if (!updatePaletteColor(color.id, event.target.value)) setNotice("That colour is already in your palette.");
-                  else setNotice(null);
-                }}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              />
-            </label>
+            <ColorWheel
+              value={color.value}
+              onChange={(hex) => {
+                if (!updatePaletteColor(color.id, hex)) setNotice("That colour is already in your palette.");
+                else setNotice(null);
+              }}
+              label={`Change ${color.label} colour`}
+              className="h-5 w-5 rounded-full"
+            />
             <span className="text-[11px] text-zinc-400">{color.label}</span>
             <Button
               variant="ghost"
@@ -272,24 +268,18 @@ function PaletteEditor() {
 
       <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label
-            title="Pick a colour"
-            className="relative h-8 w-8 shrink-0 cursor-pointer overflow-hidden rounded-lg border border-white/[0.1] focus-within:ring-2 focus-within:ring-white/40"
-            style={{ background: pickerHex }}
-          >
-            <input
-              type="color"
-              value={pickerHex}
-              aria-label="Pick a new palette colour"
-              onChange={(event) => {
-                const value = event.target.value;
-                setPickerHex(value);
-                setDraftHex(value);
-                setNotice(null);
-              }}
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            />
-          </label>
+          <ColorWheel
+            value={pickerHex}
+            onChange={(hex) => {
+              setPickerHex(hex);
+              setDraftHex(hex);
+              setNotice(null);
+            }}
+            label="Pick a new palette colour"
+            className="h-8 w-8 rounded-lg"
+            open={wheelOpen}
+            onOpenChange={setWheelOpen}
+          />
           <Input
             value={draftLabel}
             maxLength={24}
@@ -311,6 +301,7 @@ function PaletteEditor() {
               setNotice(null);
               if (/^#[0-9a-f]{6}$/i.test(value)) setPickerHex(value.toLowerCase());
             }}
+            onFocus={() => setWheelOpen(true)}
           />
           <Button
             size="sm"

@@ -1,16 +1,13 @@
-import { Loader2, RefreshCw } from "lucide-react";
 import { fmtRelative } from "@/lib/format";
 import type { Holding } from "@/lib/store";
 
 type PriceFreshnessCardProps = {
   staleHoldings: Holding[];
   dateFormat: string;
-  refreshing: boolean;
   onSelectHolding: (holding: Holding) => void;
-  onRefresh: () => void;
 };
 
-export function PriceFreshnessCard({ staleHoldings, dateFormat, refreshing, onSelectHolding, onRefresh }: PriceFreshnessCardProps) {
+export function PriceFreshnessCard({ staleHoldings, dateFormat, onSelectHolding }: PriceFreshnessCardProps) {
   const upToDate = staleHoldings.length === 0;
 
   return (
@@ -21,15 +18,6 @@ export function PriceFreshnessCard({ staleHoldings, dateFormat, refreshing, onSe
           <h2 className="text-sm font-medium text-white">Prices</h2>
           <span className="truncate text-[11px] text-zinc-600">{upToDate ? "Up to date" : `${staleHoldings.length} need attention`}</span>
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-500 transition-colors hover:text-white disabled:opacity-50"
-        >
-          {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          Refresh
-        </button>
       </div>
 
       {!upToDate && (

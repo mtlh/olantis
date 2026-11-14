@@ -2,7 +2,7 @@
 import { type Portfolio, type Account, type Provider, type Holding, useSettings } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, Power, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, Power, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -318,19 +318,18 @@ function RailButton({ icon, label, subtitle, rows, active, onClick, href, color,
   );
 }
 
-function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo, onRefreshPrices, refreshing, rail = false }: {
+function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo, rail = false }: {
   activeId: string | null;
   onSelect: (id: string | null) => void;
   onClose: () => void;
-  lastRefreshLabel: string;
+  lastRefreshLabel: string | null;
   isDemo?: boolean;
-  onRefreshPrices?: () => void;
-  refreshing?: boolean;
   rail?: boolean;
 }) {
   const pathname = usePathname();
   const page = pathname.split("/").filter(Boolean)[0] ?? "dashboard";
   const update = useDesktopUpdate();
+  const { toast } = useToast();
   const goDashboard = () => { onSelect(null); onClose(); };
   const navLink = (href: string, label: string, active: boolean, icon: ReactNode, detail: string) => {
     const link = (
@@ -366,77 +365,61 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
     )
   ) : navLink("/dashboard", "Dashboard", false, <LayoutDashboard className={TOOL_ICON_CLASS} />, "Portfolio overview");
 
-  const clockButton = (
-    <div className="group relative">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className={TOOL_BUTTON_CLASS}
-        aria-label={`Prices update daily at 06:00 UTC. Last refresh ${lastRefreshLabel}.`}
-      >
-        <Clock className={TOOL_ICON_CLASS} />
-      </Button>
-      {!rail && (
-        <div
-          role="tooltip"
-          className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-52 rounded-xl border border-white/10 bg-zinc-900/95 p-3 text-left opacity-0 shadow-xl backdrop-blur transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-        >
-          <p className="text-xs font-semibold text-zinc-200">Prices update daily</p>
-          <p className="mt-0.5 text-[11px] text-zinc-500">Scheduled for 06:00 UTC</p>
-          <div className="mt-2 flex items-center justify-between border-t border-white/[0.06] pt-2 text-[11px]">
-            <span className="text-zinc-600">Last refresh</span>
-            <span className="tabular-nums text-zinc-300">{lastRefreshLabel}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  const handleUpdateCheck = () => {
+    void update.check().then((started) => {
+      toast(started
+        ? { title: "Checking for updates", description: "This control will show when one is ready.", variant: "info" }
+        : { title: "Update checks need the desktop app", description: "Install Olantis to receive automatic updates.", variant: "info" });
+    });
+  };
 
-  const refreshButton = onRefreshPrices && (update.ready ? (
+  // Prices are pulled by the daily cron job only, so the only control left here
+  // is the app updater: it checks for a new build and offers the restart.
+  const updateButton = (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`${TOOL_BUTTON_CLASS} relative text-amber-300 hover:text-amber-200`}
-            aria-label={`Update ready${update.version ? ` (v${update.version})` : ""}. Open for refresh and restart options.`}
-            title={rail ? undefined : "Update ready"}
+            className={`${TOOL_BUTTON_CLASS} relative ${update.ready ? "text-amber-300 hover:text-amber-200" : ""}`}
+            aria-label={update.ready ? `Update ready${update.version ? ` (v${update.version})` : ""}. Open for restart options.` : "Check for updates"}
+            title={rail ? undefined : update.ready ? "Update ready" : "Check for updates"}
           >
-            <RefreshCw className={`${TOOL_ICON_CLASS} ${refreshing ? "animate-spin" : ""}`} />
-            <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />
+            <RefreshCw className={TOOL_ICON_CLASS} />
+            {update.ready && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />}
           </Button>
         }
       />
       <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-60 border border-white/10 bg-zinc-900/95 p-1 text-white shadow-xl backdrop-blur">
-        <div className="px-2 py-1.5">
-          <p className="text-xs font-semibold text-amber-300">Update ready{update.version ? ` · v${update.version}` : ""}</p>
-          <p className="mt-0.5 text-[11px] text-zinc-500">Restart Olantis to install it, or refresh prices now.</p>
-        </div>
-        <DropdownMenuSeparator className="bg-white/10" />
-        <DropdownMenuItem onClick={onRefreshPrices} disabled={refreshing} className="text-[13px]">
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh prices
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={update.restart} className="text-[13px]">
-          <Power className="h-3.5 w-3.5" />
-          Restart to update
-        </DropdownMenuItem>
+        {update.ready ? (
+          <>
+            <div className="px-2 py-1.5">
+              <p className="text-xs font-semibold text-amber-300">Update ready{update.version ? ` · v${update.version}` : ""}</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500">Restart Olantis to install it.</p>
+            </div>
+            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuItem onClick={update.restart} className="text-[13px]">
+              <Power className="h-3.5 w-3.5" />
+              Restart to update
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <>
+            <div className="px-2 py-1.5">
+              <p className="text-xs font-semibold text-zinc-200">Updates</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500">Automatic updates for the desktop app.</p>
+            </div>
+            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuItem onClick={handleUpdateCheck} className="text-[13px]">
+              <RefreshCw className="h-3.5 w-3.5" />
+              Check for updates
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
-  ) : (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className={TOOL_BUTTON_CLASS}
-      onClick={onRefreshPrices}
-      disabled={refreshing}
-      aria-label="Refresh prices"
-      title={rail ? undefined : "Refresh prices"}
-    >
-      <RefreshCw className={`${TOOL_ICON_CLASS} ${refreshing ? "animate-spin" : ""}`} />
-    </Button>
-  ));
+  );
 
   const signOutLink = (
     <a
@@ -459,8 +442,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />, "Savings targets")}
           {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
           <div className="my-1 h-px w-6 bg-white/10" />
-          {withTip("Prices update daily", "Scheduled for 06:00 UTC", clockButton, [{ label: "Last refresh", value: lastRefreshLabel }])}
-          {refreshButton && withTip(update.ready ? "Update ready" : "Refresh prices", update.ready ? "Restart to install · or refresh now" : "Pull the latest quotes", refreshButton)}
+          {withTip(update.ready ? "Update ready" : "Updates", update.ready ? "Restart to install" : "Check for updates", updateButton, [{ label: "Tickers updated", value: lastRefreshLabel ?? "Not yet" }])}
           {withTip(isDemo ? "Exit demo" : "Sign out", isDemo ? "Return to the landing page" : "End your session", signOutLink)}
         </div>
       </div>
@@ -469,6 +451,11 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
 
   return (
     <div className="border-t p-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <p className="truncate px-1 pb-1.5 text-right text-[11px] text-zinc-600">
+        {lastRefreshLabel
+          ? <>Tickers updated <span className="tabular-nums text-zinc-400">{lastRefreshLabel}</span></>
+          : "Tickers not updated yet"}
+      </p>
       <div className="flex items-center gap-1">
         {page === "dashboard" ? (
           dashboardButton
@@ -479,8 +466,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
         {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
 
         <div className="ml-auto flex items-center gap-1">
-          {clockButton}
-          {refreshButton}
+          {updateButton}
           {signOutLink}
         </div>
       </div>
@@ -488,13 +474,11 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
   );
 }
 
-export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onOpenWizard, onRefresh, onRefreshPrices, refreshing, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeletePortfolio }: {
+export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeletePortfolio }: {
   accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; activeHoldingId?: string | null; activeProviderId?: string | null; activeAccountId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectAccount?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
   onCreateAccount: (name: string) => Promise<unknown>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
   onRefresh?: () => Promise<void>;
-  onRefreshPrices?: () => void;
-  refreshing?: boolean;
   isDemo?: boolean; accountsReady?: boolean; portfoliosReady?: boolean;
   onRenameAccount?: (id: string, name: string) => Promise<void>;
   onRenameProvider?: (id: string, name: string) => Promise<void>;
@@ -1231,10 +1215,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         activeId={activeId}
         onSelect={onSelect}
         onClose={closeMobileMenu}
-        lastRefreshLabel={lastRefresh ? fmtRelative(lastRefresh, settings.dateFormat) : "—"}
+        lastRefreshLabel={lastRefresh ? fmtRelative(lastRefresh, settings.dateFormat) : null}
         isDemo={isDemo}
-        onRefreshPrices={onRefreshPrices}
-        refreshing={refreshing}
         rail={rail}
       />
 

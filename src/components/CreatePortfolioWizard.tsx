@@ -248,7 +248,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
         </div>
         <div className="flex items-start gap-3 rounded-xl border border-white/[.08] bg-white/[.025] p-4">
           <TrendingUp className="mt-0.5 size-4 shrink-0 text-zinc-400" aria-hidden="true" />
-          <p className="text-xs leading-relaxed text-zinc-400">Live portfolios fetch current prices when refreshed. You can add or edit holdings at any time.</p>
+          <p className="text-xs leading-relaxed text-zinc-400">Live portfolios pick up prices from the daily sync. You can add or edit holdings at any time.</p>
         </div>
       </div>
     </div>

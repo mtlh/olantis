@@ -33,6 +33,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **Check before push**: `git log --oneline -3` — latest `d52a6d6 feat: split routes / and /dashboard, demo -> /dashboard`.
 - **Vercel git link**: already `vercel git connect https://github.com/mtlh/olantis.git` → "mtlh/olantis is already connected". `.vercel/project.json` confirms link.
 
+## Pull Requests (screenshots are the proof)
+- Work lands as a PR against `master`; the template is `.github/pull_request_template.md`. Merge once CI (`.github/workflows/ci.yml`) is green — a plain merge commit, then delete the branch.
+- **Every PR that changes anything visible must embed screenshots in the body.** Before/after images for a changed screen, after-only for something new, cropped to the changed area. A description alone is not evidence the UI renders.
+- Capture at **1440×900** desktop, and add **390×844** when small-screen layout changes. Load the demo workspace (`/api/demo`, or the demo button on `/`) so screenshots show populated data, not an empty dashboard.
+- Drag PNGs into the PR body (GitHub hosts them). Commit to `docs/screenshots/` only when the image is a lasting reference; never commit throwaway captures.
+- Pure refactor / DB / CI / docs PRs skip screenshots but must say so in **What changed**. Agents: run `npm run check` before pushing; if a UI PR arrives without screenshots, ask for them instead of merging.
+
 ## Vercel Deployment (project-specific)
 - **Project**: `olantis` in team `mtlhs-projects`. IDs: `projectId=prj_WeClpTjEIndqh9AW8IBT1WsTP2pG`, `orgId=team_rZcougDtgd3bcmkavBTGm01K`. Config: `.vercel/project.json`.
 - **URLs**: Production `https://olantis.vercel.app` (aliased), deployments like `https://olantis-*.vercel.app` (e.g. `olantis-kdnbxvsj6...`). CLI: `vercel project ls` lists `olantis` → `olantis.vercel.app` Node 24.x.
