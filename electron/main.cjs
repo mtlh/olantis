@@ -73,7 +73,7 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow;
   let appView;
   let appRevealed = false;
-  // Surfaced in the app's refresh-prices control through app-preload.cjs.
+  // Surfaced in the app's update control through app-preload.cjs.
   let updateStatus = { state: "idle", version: null };
   let updaterInstance;
 
@@ -172,6 +172,13 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   ipcMain.handle("olantis:update:status", (event) => (appViewWindowFor(event) ? updateStatus : { state: "idle", version: null }));
+  // Manual "check for updates" from the sidebar. The periodic check keeps
+  // running on its own; this just lets someone ask early.
+  ipcMain.handle("olantis:update:check", (event) => {
+    if (!appViewWindowFor(event) || !updaterInstance) return { state: "idle", version: null };
+    updaterInstance.checkForUpdates().catch((error) => console.error("[updater] check failed:", error?.message ?? error));
+    return updateStatus;
+  });
   ipcMain.on("olantis:update:restart", (event) => {
     if (!appViewWindowFor(event) || updateStatus.state !== "ready" || !updaterInstance) return;
     // Same handoff the native "Restart now" prompt used: quit, install, relaunch.
@@ -421,8 +428,8 @@ if (!app.requestSingleInstanceLock()) {
     updater.autoDownload = true;
     updater.autoInstallOnAppQuit = true;
     updater.on("error", (error) => console.error("[updater]", error?.message ?? error));
-    // No native dialog: the app's refresh-prices control shows the update and
-    // offers the restart, so a background download never interrupts anyone.
+    // No native dialog: the app's update control shows the update and offers
+    // the restart, so a background download never interrupts anyone.
     updater.on("update-available", (info) => setUpdateStatus("downloading", info?.version));
     updater.on("update-downloaded", (info) => setUpdateStatus("ready", info?.version));
 
