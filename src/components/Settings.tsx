@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { Building2, Briefcase, Folder, Trash2, Download, Upload, ChevronUp, ChevronDown } from "lucide-react";
+import { Building2, Briefcase, Folder, Trash2, Download, Upload, ChevronUp, ChevronDown, Info } from "lucide-react";
 import { PALETTE, tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { AllocationCard } from "@/components/dashboard/shared/AllocationCard";
@@ -56,6 +56,16 @@ function Swatch({ color, active, onClick }: { color: string; active?: boolean; o
       className={`h-7 w-7 rounded-full border-2 transition-all ${active ? "scale-110 border-white" : "border-white/10 hover:border-white/30"}`}
       style={{ background: color }}
     />
+  );
+}
+
+function CsvFormatBlock({ label, required, sample }: { label: string; required: string; sample: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium text-zinc-200">{label}</p>
+      <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">{required}</p>
+      <pre className="mt-1.5 overflow-x-auto rounded-lg border border-white/[0.07] bg-black/50 px-2.5 py-1.5 font-mono text-[10px] leading-relaxed text-zinc-300">{sample}</pre>
+    </div>
   );
 }
 
@@ -113,6 +123,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   const [colorTab, setColorTab] = useState<"accounts" | "providers" | "portfolios">("accounts");
   const [importPortfolioId, setImportPortfolioId] = useState("");
   const [importing, setImporting] = useState(false);
+  const [showImportFormat, setShowImportFormat] = useState(false);
 
   const saveSettings = async (patch: Partial<AppSettings>) => {
     setSettingsPatch((current) => ({
@@ -548,12 +559,49 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             </div>
 
             <details className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3.5 [&::-webkit-details-marker]:hidden">
+              <summary className="relative flex cursor-pointer list-none items-center justify-between gap-3 py-3.5 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <p className="text-sm text-zinc-200">Import CSV</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm text-zinc-200">Import CSV</p>
+                    <button
+                      type="button"
+                      aria-expanded={showImportFormat}
+                      aria-controls="import-csv-format"
+                      aria-label="Show the expected CSV format"
+                      title="Expected CSV format"
+                      onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowImportFormat((open) => !open); }}
+                      className={`rounded-full p-0.5 transition-colors ${showImportFormat ? "text-white" : "text-zinc-500 hover:text-zinc-200"}`}
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   <p className={ROW_HINT}>Holdings or buy/sell trades into a portfolio.</p>
                 </div>
                 <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+                {showImportFormat && (
+                  <div
+                    id="import-csv-format"
+                    role="note"
+                    onClick={(event) => event.stopPropagation()}
+                    className="absolute left-0 top-full z-30 mt-1 w-[min(30rem,calc(100vw-3rem))] rounded-2xl border border-white/[0.1] bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-xl"
+                  >
+                    <p className="text-[11px] font-medium text-white">Expected CSV format</p>
+                    <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Comma separated with a header row. Column order doesn&apos;t matter, and headers are matched loosely — e.g. Symbol or Ticker, Shares or Qty, AvgPrice or CostBasis.</p>
+                    <div className="mt-2.5 space-y-2.5">
+                      <CsvFormatBlock
+                        label="Holdings"
+                        required="Required: Symbol, Shares, AvgPrice. CurrentPrice is optional."
+                        sample={"Symbol,Name,Shares,AvgPrice,CurrentPrice,Currency\nAAPL,Apple Inc.,10,150.25,182.40,USD"}
+                      />
+                      <CsvFormatBlock
+                        label="Trades"
+                        required="Required: Symbol, Type, Shares, Price. Type is Buy or Sell."
+                        sample={"Symbol,Type,Shares,Price,Date,Currency\nAAPL,Buy,5,152.10,2024-03-11,USD"}
+                      />
+                    </div>
+                    <p className="mt-2.5 text-[10px] leading-snug text-zinc-500">Optional columns: Name, Sector, Exchange, Date. Date defaults to today, Currency to GBP.</p>
+                  </div>
+                )}
               </summary>
               <div className="space-y-2 pb-4">
                 <Label htmlFor="import-portfolio" className="sr-only">Import CSV into portfolio</Label>
