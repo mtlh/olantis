@@ -1,9 +1,9 @@
 "use client";
-import { type Portfolio, type Account, type Provider, type Holding, useSettings } from "@/lib/store";
+import { type Portfolio, type Account, type Provider, type Holding, useSettings, applyWorkspaceOrder } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Clock, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, Power, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -529,6 +529,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [draggingRow, setDraggingRow] = useState<{ group: string; index: number } | null>(null);
+  const [dropRow, setDropRow] = useState<{ group: string; index: number } | null>(null);
 
   const closeMobileMenu = useCallback(() => setMobileOpen(false), []);
 
@@ -784,7 +786,63 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     return portfolio.accountId ? "Direct portfolio" : "Unassigned";
   };
 
-  const renderPortfolioItem = (portfolio: Portfolio) => {
+  // The tree itself is the ordering surface: dragging a row writes the same
+  // order the settings screen used to. A row only accepts drops from its own
+  // group, so an account drag never mixes with the portfolios inside its card.
+  const reorderRows = async (table: "accounts" | "portfolios", ids: string[], previousIds: string[]) => {
+    // Paint the accepted order everywhere — the sidebar keeps its own copy of
+    // these rows — then persist it in the background. A failed save puts the
+    // previous order back so the sidebar never disagrees with the server.
+    applyWorkspaceOrder(table, ids);
+    try {
+      const res = await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table, ids }) });
+      if (!res.ok) throw new Error((await res.text()) || `Reorder failed (${res.status})`);
+    } catch (e: unknown) {
+      applyWorkspaceOrder(table, previousIds);
+      toast({ title: "Reorder failed", description: e instanceof Error ? e.message : String(e), variant: "error" });
+    }
+  };
+
+  const moveRow = (table: "accounts" | "portfolios", list: { id: string }[], from: number, to: number) => {
+    if (from === to || to < 0 || to >= list.length) return;
+    const previousIds = list.map((row) => row.id);
+    const ids = [...previousIds];
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
+    void reorderRows(table, ids, previousIds);
+  };
+
+  // Search narrows the visible rows without changing their stored order, so
+  // reordering is paused while a filter is active.
+  const rowDragProps = (table: "accounts" | "portfolios", group: string, list: { id: string }[], index: number) => ({
+    draggable: !searchTerm,
+    onDragStart: (event: ReactDragEvent<HTMLDivElement>) => {
+      if (searchTerm) return;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", list[index]?.id ?? "");
+      setDraggingRow({ group, index });
+      setDropRow(null);
+    },
+    onDragOver: (event: ReactDragEvent<HTMLDivElement>) => {
+      if (draggingRow?.group !== group) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      if (dropRow?.group !== group || dropRow.index !== index) setDropRow({ group, index });
+    },
+    onDrop: (event: ReactDragEvent<HTMLDivElement>) => {
+      if (draggingRow?.group !== group) return;
+      event.preventDefault();
+      moveRow(table, list, draggingRow.index, index);
+      setDraggingRow(null);
+      setDropRow(null);
+    },
+    onDragEnd: () => {
+      setDraggingRow(null);
+      setDropRow(null);
+    },
+  });
+
+  const renderPortfolioItem = (portfolio: Portfolio, drag?: { group: string; list: Portfolio[]; index: number }) => {
     const { total, holdings: holdingsInValueOrder, values } = valuationFor(portfolio);
     const portfolioColor = resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette);
     const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name ?? null : null;
@@ -792,9 +850,18 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     const selectedHolding = holdingsInValueOrder.some((holding) => holding.id === activeHoldingId);
     const searchMatchesHolding = !!searchTerm && holdingsInValueOrder.some(matchesHolding);
     const isOpen = expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding || searchMatchesHolding);
+    const isDragging = !!drag && draggingRow?.group === drag.group && draggingRow.index === drag.index;
+    const isDropTarget = !!drag
+      && draggingRow?.group === drag.group
+      && dropRow?.group === drag.group
+      && dropRow.index === drag.index
+      && dropRow.index !== draggingRow.index;
     return (
       <div key={portfolio.id}>
-        <div className={`group/portfolio relative flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`}>
+        <div
+          {...(drag ? rowDragProps("portfolios", drag.group, drag.list, drag.index) : {})}
+          className={`group/portfolio relative flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"} ${isDragging ? "opacity-40" : ""} ${isDropTarget ? "ring-1 ring-inset ring-white/25" : ""}`}
+        >
           {/* The card itself opens the portfolio. The chevron, provider link and
               edit menu are lifted above it so they keep their own actions. */}
           <button
@@ -1114,11 +1181,16 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           : accounts.length === 0 && unassigned.length === 0 ? <Card className="p-6 text-center border-dashed bg-white/[0.02]"><p className="text-sm text-zinc-500">No portfolios yet</p><p className="text-xs text-zinc-600 mt-1">Create an account to start tracking portfolios</p><Button size="sm" className="mt-3" onClick={()=>setShowAccountDialog(true)}><Plus className="w-3.5 h-3.5"/>New account</Button></Card>
           : (
           <div className="space-y-3">
-            {filteredAccounts.map((acc) => {
+            {filteredAccounts.map((acc, accountRowIndex) => {
               const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
               const total = accountTotalsById.get(acc.id) ?? 0;
               const accountActive = activeAccountId === acc.id;
               const accColor = accColorFor(acc);
+              const accountDragging = draggingRow?.group === "accounts" && draggingRow.index === accountRowIndex;
+              const accountDropTarget = draggingRow?.group === "accounts"
+                && dropRow?.group === "accounts"
+                && dropRow.index === accountRowIndex
+                && dropRow.index !== draggingRow.index;
               const accountPortfolios = filteredPortfolios(
                 portfolios.filter((portfolio) => accountIdForPortfolio(portfolio) === acc.id),
                 accountNameMatches,
@@ -1128,8 +1200,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 && accountIdForHolding(holding) === acc.id
                 && (accountNameMatches || matchesHolding(holding)));
               return (
-                <div key={acc.id} className={`group overflow-hidden rounded-2xl border transition-colors ${accountActive ? "ring-1 ring-white/10" : ""}`} style={{ borderColor: accountActive ? `${accColor}90` : `${accColor}38`, background: accountActive ? `${accColor}18` : `${accColor}0d` }}>
-                  <div className="flex items-center gap-2 px-3 py-2.5">
+                <div key={acc.id} className={`group overflow-hidden rounded-2xl border transition-colors ${accountDragging ? "opacity-40" : ""} ${accountDropTarget ? "ring-1 ring-white/30" : accountActive ? "ring-1 ring-white/10" : ""}`} style={{ borderColor: accountActive ? `${accColor}90` : `${accColor}38`, background: accountActive ? `${accColor}18` : `${accColor}0d` }}>
+                  <div className="flex items-center gap-2 px-3 py-2.5" {...rowDragProps("accounts", "accounts", filteredAccounts, accountRowIndex)}>
                     <button type="button" aria-pressed={accountActive} onClick={() => { onSelectAccount?.(acc.id); setMobileOpen(false); }} className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
                       <FolderOpen className="h-4 w-4 shrink-0" style={{ color: accColor }} />
                       <span className={`truncate text-sm font-semibold ${accountActive ? "text-white" : "text-zinc-100"}`}>{acc.name}</span>
@@ -1158,7 +1230,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                     </div>
                   ) : (
                     <div className="ml-3 mr-1 space-y-0.5 pb-2">
-                      {accountPortfolios.map((portfolio) => renderPortfolioItem(portfolio))}
+                      {accountPortfolios.map((portfolio, portfolioIndex) => renderPortfolioItem(portfolio, {
+                        group: `portfolios:${acc.id}`,
+                        list: accountPortfolios,
+                        index: portfolioIndex,
+                      }))}
 
                       {accountDirectHoldings.length > 0 && (
                         <div className="mt-1 border-t border-white/[0.05] pt-1.5">
@@ -1215,7 +1291,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                   <Button variant="ghost" size="icon-xs" onClick={() => openWizard(null)} aria-label="New portfolio"><Plus className="w-3.5 h-3.5" /></Button>
                 </div>
                 <div className="px-2 pb-2 space-y-1">
-                  {filteredPortfolios(unassigned).map((p) => renderPortfolioItem(p))}
+                  {filteredPortfolios(unassigned).map((p, portfolioIndex, portfolioList) => renderPortfolioItem(p, {
+                    group: "portfolios:unassigned",
+                    list: portfolioList,
+                    index: portfolioIndex,
+                  }))}
                 </div>
               </div>
             )}
