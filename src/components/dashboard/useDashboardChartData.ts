@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useMemo } from "react";
-import { resolvePortfolioColor } from "@/lib/colors";
+import { resolvePortfolioColor, type PaletteColor, PALETTE } from "@/lib/colors";
 import { chartDateLabel, filterByRange, holdingValueGBP, todayISODate, valueByDate, type FxRates } from "@/lib/format";
 import type { Account, Portfolio, Provider, Snapshot, Transaction } from "@/lib/store";
 import type { PerformanceSeries } from "@/components/dashboard/PerformanceChart";
@@ -30,9 +30,10 @@ type UseDashboardChartDataProps = {
    * (chartData/chartDots) still computes immediately.
    */
   deferSeries?: boolean;
+  palette?: readonly PaletteColor[];
 };
 
-const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
+const CHART_FALLBACK_COLOR = "#60a5fa";
 
 export function useDashboardChartData({
   activePortfolio,
@@ -49,6 +50,7 @@ export function useDashboardChartData({
   fxRates,
   range,
   deferSeries = false,
+  palette = PALETTE,
 }: UseDashboardChartDataProps) {
   const filteredSnapshots = useMemo(() => filterByRange(snapshots, range), [snapshots, range]);
 
@@ -118,10 +120,12 @@ export function useDashboardChartData({
         key: portfolioId,
         dataKey: info.name,
         name: info.name,
-        color: portfolio ? resolvePortfolioColor(portfolio, deferredPortfolios, deferredProviders, deferredAccounts) : CHART_COLORS[index % CHART_COLORS.length],
+        color: portfolio
+          ? resolvePortfolioColor(portfolio, deferredPortfolios, deferredProviders, deferredAccounts, palette)
+          : palette[index % palette.length]?.value ?? CHART_FALLBACK_COLOR,
       };
     });
-  }, [deferSeries, deferredAccounts, deferredByPortfolio, deferredPortfolios, deferredProviders]);
+  }, [deferSeries, deferredAccounts, deferredByPortfolio, deferredPortfolios, deferredProviders, palette]);
 
   const performanceSeries = useMemo<PerformanceSeries[]>(() => overviewSeries.map(({ key, name, color }) => ({ key, name, color })), [overviewSeries]);
 

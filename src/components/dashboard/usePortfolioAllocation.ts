@@ -1,15 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import { portfolioTint, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
+import { portfolioTint, resolveAccountColor, resolvePortfolioColor, resolveProviderColor, type PaletteColor, PALETTE } from "@/lib/colors";
 import { holdingValueGBP, type FxRates } from "@/lib/format";
 import { holdingSector } from "@/lib/sectors";
 import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
 import type { AllocationItem } from "@/components/dashboard/shared/AllocationCard";
 
 export type AllocationMode = "holding" | "account" | "sector";
-
-const CHART_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#facc15", "#a78bfa", "#fb7185", "#38bdf8", "#f97316"];
 
 type UsePortfolioAllocationProps = {
   activePortfolio: Portfolio | null;
@@ -20,6 +18,7 @@ type UsePortfolioAllocationProps = {
   fxRates: FxRates;
   activeBaseColor: string | null;
   mode: AllocationMode;
+  palette?: readonly PaletteColor[];
 };
 
 export function usePortfolioAllocation({
@@ -31,8 +30,10 @@ export function usePortfolioAllocation({
   fxRates,
   activeBaseColor,
   mode,
+  palette = PALETTE,
 }: UsePortfolioAllocationProps): AllocationItem[] {
   return useMemo(() => {
+    const paletteValues = palette.map((color) => color.value);
     const uniqueHoldings = new Map<string, Holding>();
     const parentByHolding = new Map<string, Portfolio>();
     if (activePortfolio) {
@@ -80,7 +81,7 @@ export function usePortfolioAllocation({
       for (const account of accounts) {
         const value = valuesByAccount.get(account.id) ?? 0;
         if (value <= 0) continue;
-        allocation.push({ name: account.name, value, color: resolveAccountColor(account, accounts), pct: value / totalValue * 100 });
+        allocation.push({ name: account.name, value, color: resolveAccountColor(account, accounts, palette), pct: value / totalValue * 100 });
       }
       if (unassignedValue > 0) allocation.push({ name: "Unassigned", value: unassignedValue, color: "#71717a", pct: unassignedValue / totalValue * 100 });
       return allocation.sort((a, b) => b.value - a.value);
@@ -94,21 +95,21 @@ export function usePortfolioAllocation({
       }
       return [...valuesBySector.entries()]
         .sort((a, b) => b[1] - a[1])
-        .map(([name, value], index) => ({ name, value, color: CHART_COLORS[index % CHART_COLORS.length], pct: value / totalValue * 100 }));
+        .map(([name, value], index) => ({ name, value, color: paletteValues[index % paletteValues.length] ?? "#71717a", pct: value / totalValue * 100 }));
     }
 
     const valuesBySymbol = new Map<string, { value: number; colorBase: string | null }>();
     for (const holding of holdings) {
       const value = holdingValueGBP(holding, fxRates);
       const parent = parentByHolding.get(holding.id);
-      let colorBase: string | null = parent ? resolvePortfolioColor(parent, portfolios, providers, accounts) : null;
+      let colorBase: string | null = parent ? resolvePortfolioColor(parent, portfolios, providers, accounts, palette) : null;
       if (!colorBase && holding.providerId) {
         const provider = providers.find((item) => item.id === holding.providerId);
-        if (provider) colorBase = resolveProviderColor(provider, providers, accounts);
+        if (provider) colorBase = resolveProviderColor(provider, providers, accounts, palette);
       }
       if (!colorBase && holding.accountId) {
         const account = accounts.find((item) => item.id === holding.accountId);
-        if (account) colorBase = resolveAccountColor(account, accounts);
+        if (account) colorBase = resolveAccountColor(account, accounts, palette);
       }
 
       const existing = valuesBySymbol.get(holding.symbol);
@@ -116,14 +117,14 @@ export function usePortfolioAllocation({
       else valuesBySymbol.set(holding.symbol, { value, colorBase });
     }
 
-    const activeColor = activePortfolio ? activeBaseColor ?? CHART_COLORS[0] : null;
+    const activeColor = activePortfolio ? activeBaseColor ?? paletteValues[0] : null;
     return [...valuesBySymbol.entries()]
       .sort((a, b) => b[1].value - a[1].value)
       .map(([symbol, info], index) => ({
         name: symbol,
         value: info.value,
-        color: portfolioTint(activePortfolio ? activeColor : info.colorBase, index),
+        color: portfolioTint(activePortfolio ? activeColor : info.colorBase, index, palette),
         pct: info.value / totalValue * 100,
       }));
-  }, [activeBaseColor, activePortfolio, accounts, directHoldings, fxRates, mode, portfolios, providers]);
+  }, [activeBaseColor, activePortfolio, accounts, directHoldings, fxRates, mode, palette, portfolios, providers]);
 }
