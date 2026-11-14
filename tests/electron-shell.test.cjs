@@ -46,6 +46,22 @@ test("the startup mark can never swallow clicks meant for the app", () => {
   assert.match(cssRules, /\.titlebar\s*\{[^}]*-webkit-app-region:\s*drag/s);
 });
 
+test("the title bar brand opens home, which is the dashboard when signed in", () => {
+  const shellJs = read("electron/shell.js");
+  const shellPreload = read("electron/shell-preload.cjs");
+
+  assert.match(shell, /<button[^>]*class="brand"[^>]*id="home-button"/, "the brand must be a real button");
+  assert.match(shell, /aria-label="Olantis — home"/);
+  // A button inside the drag region would still swallow clicks: the brand needs
+  // its own no-drag region before the click listener can ever run.
+  assert.match(shellCss, /\.brand\s*\{[^}]*-webkit-app-region:\s*no-drag/s);
+  assert.match(shellJs, /getElementById\("home-button"\)[\s\S]*desktop\.goHome\(\)/);
+  assert.match(shellPreload, /goHome:\s*\(\)\s*=>\s*ipcRenderer\.send\("olantis:nav:home"\)/);
+  assert.match(main, /ipcMain\.on\("olantis:nav:home"/);
+  // Signed-in sessions land on /dashboard, signed-out ones on the root URL.
+  assert.match(main, /resolveEntryUrl\(APP_URL, cookies\)/);
+});
+
 test("the startup mark is removed once the app view is revealed", () => {
   assert.match(main, /webContents\.send\("olantis:app:ready"\)/);
   assert.match(main, /ipcMain\.handle\("olantis:app:is-ready"/);
