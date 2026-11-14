@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { DialogActions } from "@/components/shared/DialogActions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,19 +52,15 @@ export function DeleteConfirmationDialog({
           </div>
         )}
         {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
-        <div className="flex justify-end gap-2 mt-4">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 border border-red-500/20"
-            disabled={saving || (confirmationText != null && input !== confirmationText)}
-            onClick={() => void confirm()}
-          >
-            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-            {confirmLabel}
-          </Button>
-        </div>
+        <DialogActions
+          onCancel={() => onOpenChange(false)}
+          onSubmit={() => void confirm()}
+          submitLabel={confirmLabel}
+          savingLabel={confirmLabel}
+          submitClassName="border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300"
+          disabled={confirmationText != null && input !== confirmationText}
+          saving={saving}
+        />
       </DialogContent>
     </Dialog>
   );

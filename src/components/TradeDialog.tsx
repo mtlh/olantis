@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { DialogActions } from "@/components/shared/DialogActions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +67,7 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
 
   if (!holding && type === "sell") return null;
   const cur = holding?.currency;
+  const submitLabel = `${type === "buy" ? "Buy" : "Sell"}${s ? ` ${s} @ ${fmtPrice(p, cur)}` : ""}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -133,12 +134,15 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
           <div className="flex items-center gap-2 text-xs text-zinc-500"><TrendingUp className="w-3 h-3" /> Uses weighted average. Chart will mark this trade.</div>
         </div>
 
-        <div className="flex justify-end gap-2 mt-6">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={() => void submit()} disabled={saving || !hasValues} className={type === "buy" ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "bg-red-600 hover:bg-red-700 text-white border-red-600"}>
-            {saving ? "Saving…" : type === "buy" ? <><Plus className="w-4 h-4" /> Buy {s ? `${s} @ ${fmtPrice(p, cur)}` : ""}</> : <><Minus className="w-4 h-4" /> Sell {s ? `${s} @ ${fmtPrice(p, cur)}` : ""}</>}
-          </Button>
-        </div>
+        <DialogActions
+          onCancel={() => onOpenChange(false)}
+          onSubmit={() => void submit()}
+          submitLabel={submitLabel}
+          submitIcon={type === "buy" ? <Plus className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
+          submitClassName={type === "buy" ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600" : "bg-red-600 hover:bg-red-700 text-white border-red-600"}
+          disabled={!hasValues}
+          saving={saving}
+        />
       </DialogContent>
     </Dialog>
   );

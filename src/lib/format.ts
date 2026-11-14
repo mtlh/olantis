@@ -264,6 +264,16 @@ export function fmtPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
+/** "1 portfolio" / "3 portfolios" — one spelling rule for every count label. */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
+/** A share of a total as a one-decimal percent, safe when the total is zero. */
+export function percentOf(value: number, total: number): string {
+  return total > 0 ? `${(value / total * 100).toFixed(1)}%` : "0.0%";
+}
+
 export function fmtRelative(ts?: number | null, locale = "en-GB"): string {
   if (!ts) return "never";
   const diff = Math.floor(Date.now() / 1000) - ts;

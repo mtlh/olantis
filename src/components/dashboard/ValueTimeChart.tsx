@@ -5,11 +5,11 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, Tool
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
+import { SegmentedControl } from "@/components/shared/SegmentedControl";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { useChartAnimation } from "@/lib/use-chart-animation";
 import { evenAxisTicks, fmtGBP, fmtPct, fmtPrice, gbpAxisFormatter, numericValues, paddedDomain, priceAxisFormatter } from "@/lib/format";
 import { Maximize2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 export type ValueTimeChartRow = {
   date: string;
@@ -239,10 +239,12 @@ export const ValueTimeChart = memo(function ValueTimeChart({
             {description && <CardDescription className="mt-1 text-xs text-zinc-500">{description}</CardDescription>}
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.03] p-0.5">
-              <button type="button" onClick={() => setMode("value")} aria-pressed={mode === "value"} className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors", mode === "value" ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300")}>Value</button>
-              <button type="button" onClick={() => setMode("percent")} aria-pressed={mode === "percent"} className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors", mode === "percent" ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300")}>%</button>
-            </div>
+            <SegmentedControl
+              value={mode}
+              ariaLabel="Chart scale"
+              onChange={setMode}
+              options={[{ value: "value", label: "Value" }, { value: "percent", label: "%" }]}
+            />
             <ChartRangeSelector range={range} onRangeChange={onRangeChange} segmented />
             {chartZoom.zoomed && <ZoomResetButton onReset={chartZoom.reset} />}
             <button type="button" onClick={() => setExpanded(true)} aria-label="Expand chart" className="rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-white">

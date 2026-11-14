@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { fmtGBP } from "@/lib/format";
 import { useWorkspaceBootstrap, type Goal } from "@/lib/store";
+import { ProgressBar } from "@/components/shared/ProgressBar";
+import { SectionHeading } from "@/components/shared/SectionHeading";
 
 type DashboardGoalCardProps = {
   currentValue: number;
@@ -39,20 +41,21 @@ export function DashboardGoalCard({ currentValue, onViewGoals }: DashboardGoalCa
 
   return (
     <section className="pb-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-medium text-white">{goals.length > 1 ? "Goals" : "Goal"}</h2>
-        <div className="flex items-baseline gap-2">
-          {goals.length > 1 && <span className="text-[11px] text-zinc-600">{goals.length} tracked</span>}
-          {goal && <span className="text-xs font-medium tabular-nums text-emerald-300">{progress.toFixed(0)}%</span>}
-        </div>
-      </div>
+      <SectionHeading
+        title={goals.length > 1 ? "Goals" : "Goal"}
+        spacing="none"
+        action={
+          <div className="flex items-baseline gap-2">
+            {goals.length > 1 && <span className="text-[11px] text-zinc-600">{goals.length} tracked</span>}
+            {goal && <span className="text-xs font-medium tabular-nums text-emerald-300">{progress.toFixed(0)}%</span>}
+          </div>
+        }
+      />
 
       {goal ? (
         <>
           <p className="mt-1 truncate text-xs text-zinc-400">{goal.name}{remainingCount > 0 ? ` +${remainingCount} more` : ""}</p>
-          <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.07]">
-            <div className="h-full rounded-full bg-emerald-400/80" style={{ width: `${Math.min(progress, 100)}%` }} />
-          </div>
+          <ProgressBar value={progress} label={`${goal.name} progress`} className="mt-3" />
           <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px] text-zinc-600">
             <span className="tabular-nums">{fmtGBP(currentValue)} of {fmtGBP(goal.targetValue)}</span>
             <button type="button" onClick={onViewGoals} className="shrink-0 text-zinc-500 transition-colors hover:text-white">View</button>

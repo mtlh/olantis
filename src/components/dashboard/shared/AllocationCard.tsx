@@ -3,6 +3,7 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { memo, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SegmentedControl } from "@/components/shared/SegmentedControl";
 import { fmtGBP } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -52,22 +53,12 @@ export const AllocationCard = memo(function AllocationCard({
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="text-sm font-medium text-white">Allocation</CardTitle>
         {showModeSelector && (
-          <div className="flex items-center gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.03] p-0.5">
-            {MODES.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                aria-pressed={mode === item.value}
-                onClick={() => onModeChange(item.value)}
-                className={cn(
-                  "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
-                  mode === item.value ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300",
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            value={mode}
+            ariaLabel="Allocation grouping"
+            onChange={onModeChange}
+            options={MODES}
+          />
         )}
       </CardHeader>
       <CardContent className={`flex-1 min-h-0 ${fillsCard ? "flex" : ""}`}>

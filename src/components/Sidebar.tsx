@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { resolvePortfolioColor } from "@/lib/colors";
 import { usePalette } from "@/lib/palette";
 import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP, isLiveHolding, holdingCurrency } from "@/lib/format";
+import { LiveBadge } from "@/components/shared/LiveBadge";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
@@ -66,13 +67,6 @@ function TreeToggle({ open, onToggle, label, className = "" }: {
 
 // A live quote belongs to the holding, not the portfolio: cash and
 // manually-valued assets share the list without one.
-function LiveBadge() {
-  return (
-    <span title="Price updates automatically" className="shrink-0 rounded-full border border-white/[0.06] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500">
-      Live
-    </span>
-  );
-}
 
 // A collapsed rail keeps navigation one click away without stealing width from
 // the charts. The choice is remembered per device, like the sidebar width.

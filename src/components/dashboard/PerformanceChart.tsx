@@ -8,6 +8,10 @@ import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/C
 import { useChartAnimation } from "@/lib/use-chart-animation";
 import { chartDateLabel, carryForward, rangeCutoff, paddedDomain, fmtPct, seriesCursor, type SeriesCursor } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
+import { Metric, MetricStrip } from "@/components/shared/MetricStrip";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { SectionHeading } from "@/components/shared/SectionHeading";
+import { signedTone } from "@/components/shared/SignedValue";
 import type { Snapshot } from "@/lib/store";
 
 export type PerformanceChartRow = {
@@ -18,12 +22,9 @@ export type PerformanceChartRow = {
 
 export type PerformanceSeries = { key: string; name: string; color: string };
 
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
-
 // Module-level cache of benchmark series, keyed by symbol, so remounts/route
 // changes do not refetch the benchmark MAX chart.
 const benchmarkCache = new Map<string, Array<{ date: string; price: number }>>();
-const SUB = "mt-2 text-[11px] text-zinc-600";
 
 // Base UI renders the raw selected value unless `items` is passed to the
 // select, so every option needs a human label here.
@@ -34,13 +35,6 @@ const BENCHMARK_OPTIONS = [
   { value: "^GSPC", label: "S&P 500" },
   { value: "MSFT", label: "Microsoft" },
 ];
-
-function tone(value: number | null | undefined) {
-  if (value == null) return "text-zinc-500";
-  if (value > 0) return "text-emerald-400";
-  if (value < 0) return "text-red-400";
-  return "text-zinc-300";
-}
 
 function drawdownLabel(value: number | null | undefined) {
   if (value == null) return "—";
@@ -227,45 +221,52 @@ export const PerformanceChart = memo(function PerformanceChart({
 
   return (
     <section aria-label="Portfolio performance" className="flex min-h-[calc(100vh-7rem)] flex-col gap-6">
-      <header>
-        <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Performance</h1>
-        <p className="mt-2 text-xs text-zinc-500">Indexed value movement — not adjusted for contributions, withdrawals or trading.</p>
-      </header>
+      <PageHeader
+        title="Performance"
+        description="Indexed value movement — not adjusted for contributions, withdrawals or trading."
+      />
 
       {hasData && (
-        <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-y border-white/[0.06] py-6 sm:grid-cols-3 sm:gap-x-10 lg:grid-cols-[1.35fr_1fr_1fr_1fr] lg:gap-0 lg:py-7">
-          <div className="col-span-2 sm:col-span-3 lg:col-span-1 lg:pr-8">
-            <p className={LABEL}>Total portfolio · {range}</p>
-            <p className={`mt-2 text-[34px] font-semibold leading-none tracking-tight tabular-nums sm:text-[38px] ${tone(totalSummary?.periodChange)}`}>
-              {totalSummary?.periodChange == null ? "—" : fmtPct(totalSummary.periodChange)}
-            </p>
-            <p className={SUB}>Since {chartDateLabel(rangedData[0].dateISO)}</p>
-          </div>
+        <MetricStrip variant="performance">
+          <Metric
+            wide
+            size="hero"
+            position="first"
+            className="sm:col-span-3"
+            label={`Total portfolio · ${range}`}
+            tone={signedTone(totalSummary?.periodChange)}
+            valueClassName="text-[34px] sm:text-[38px]"
+            value={totalSummary?.periodChange == null ? "—" : fmtPct(totalSummary.periodChange)}
+            sub={`Since ${chartDateLabel(rangedData[0].dateISO)}`}
+          />
 
-          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
-            <p className={LABEL}>Largest pullback</p>
-            <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${totalSummary?.maxDrawdown != null && totalSummary.maxDrawdown < 0 ? "text-red-400" : "text-zinc-300"}`}>
-              {drawdownLabel(totalSummary?.maxDrawdown)}
-            </p>
-            <p className={SUB}>Peak to trough</p>
-          </div>
+          <Metric
+            position="middle"
+            label="Largest pullback"
+            tone={totalSummary?.maxDrawdown != null && totalSummary.maxDrawdown < 0 ? "text-red-400" : "text-zinc-300"}
+            value={drawdownLabel(totalSummary?.maxDrawdown)}
+            sub="Peak to trough"
+          />
 
-          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
-            <p className={LABEL}>Leading portfolio</p>
-            <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${tone(leadingPortfolio?.periodChange)}`}>
-              {leadingPortfolio?.periodChange == null ? "—" : fmtPct(leadingPortfolio.periodChange)}
-            </p>
-            <p className={`${SUB} truncate`} title={leadingPortfolio?.name}>{leadingPortfolio?.name ?? "No portfolio history"}</p>
-          </div>
+          <Metric
+            position="middle"
+            label="Leading portfolio"
+            tone={signedTone(leadingPortfolio?.periodChange)}
+            value={leadingPortfolio?.periodChange == null ? "—" : fmtPct(leadingPortfolio.periodChange)}
+            sub={leadingPortfolio?.name ?? "No portfolio history"}
+            subClassName="truncate"
+            title={leadingPortfolio?.name}
+          />
 
-          <div className="col-span-2 sm:col-span-1 lg:col-span-1 lg:border-l lg:border-white/[0.06] lg:pl-8">
-            <p className={LABEL}>{benchmarkName ?? "Benchmark"}</p>
-            <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${tone(benchmarkSummary?.periodChange)}`}>
-              {benchmarkSummary?.periodChange == null ? "—" : fmtPct(benchmarkSummary.periodChange)}
-            </p>
-            <p className={SUB}>{benchmarkName ? "Price only, no dividends" : "Not selected"}</p>
-          </div>
-        </div>
+          <Metric
+            position="last"
+            className="col-span-2 sm:col-span-1"
+            label={benchmarkName ?? "Benchmark"}
+            tone={signedTone(benchmarkSummary?.periodChange)}
+            value={benchmarkSummary?.periodChange == null ? "—" : fmtPct(benchmarkSummary.periodChange)}
+            sub={benchmarkName ? "Price only, no dividends" : "Not selected"}
+          />
+        </MetricStrip>
       )}
 
       <Card className="panel flex flex-1 flex-col overflow-hidden">
@@ -337,10 +338,12 @@ export const PerformanceChart = memo(function PerformanceChart({
 
       {hasData && seriesRows.length > 0 && (
         <section aria-labelledby="performance-series-heading">
-          <div className="flex items-baseline justify-between gap-3 pb-2">
-            <h2 id="performance-series-heading" className="text-sm font-medium text-white">By series</h2>
-            <span className="text-[11px] text-zinc-600">Indexed · {range}</span>
-          </div>
+          <SectionHeading
+            id="performance-series-heading"
+            title="By series"
+            meta={`Indexed · ${range}`}
+            spacing="tight"
+          />
           <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600 sm:grid-cols-[minmax(0,1fr)_6rem_6rem]">
             <span>Series</span>
             <span className="text-right">Change</span>
@@ -353,7 +356,7 @@ export const PerformanceChart = memo(function PerformanceChart({
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: colorFor(item.key) }} />
                   <span className="truncate" title={item.name}>{item.name}</span>
                 </span>
-                <span className={`text-right text-sm tabular-nums ${tone(item.periodChange)}`}>{item.periodChange == null ? "—" : fmtPct(item.periodChange)}</span>
+                <span className={`text-right text-sm tabular-nums ${signedTone(item.periodChange)}`}>{item.periodChange == null ? "—" : fmtPct(item.periodChange)}</span>
                 <span className="text-right text-sm tabular-nums text-zinc-400">{drawdownLabel(item.maxDrawdown)}</span>
               </div>
             ))}

@@ -26,9 +26,13 @@ import { useToast } from "@/components/ui/toast";
 
 import { resolvePortfolioColor } from "@/lib/colors";
 import { usePalette } from "@/lib/palette";
-import { fmtPrice, holdingValueGBP, holdingCostGBP, todayISODate, valueChangeOverRange } from "@/lib/format";
+import { fmtPrice, holdingValueGBP, holdingCostGBP, plural, todayISODate, valueChangeOverRange } from "@/lib/format";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import type { HoldingFormData } from "@/components/dashboard/HoldingDialog";
+import { MetricStripSkeleton } from "@/components/shared/MetricStrip";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { SectionHeading } from "@/components/shared/SectionHeading";
+import { TradeRow } from "@/components/shared/TradeRow";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Sections and dialogs that are not part of the default dashboard view each get
@@ -61,24 +65,6 @@ const AccountBreakdownCard = dynamic(() => import("@/components/dashboard/Accoun
 // Shared metric-band frame: every dashboard level leads with a label/value/sub
 // strip between hairlines, so one placeholder covers the overview, account,
 // provider and performance headers.
-function MetricStripSkeleton() {
-  return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.3fr_1fr_1fr_0.75fr] lg:gap-0 lg:py-7">
-      <div className="col-span-2 lg:col-span-1 lg:pr-8">
-        <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
-        <Skeleton className="mt-2 h-[38px] w-28 bg-white/[0.09] sm:h-[42px]" />
-        <Skeleton className="mt-2 h-2.5 w-24 bg-white/[0.04]" />
-      </div>
-      {[1, 2, 3].map((index) => (
-        <div key={index} className={index === 3 ? "hidden lg:block lg:border-l lg:border-white/[0.06] lg:pl-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
-          <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
-          <Skeleton className="mt-2 h-7 w-20 bg-white/[0.05] sm:h-8" />
-          <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.04]" />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 // Overview chart/allocation/breakdown chunks load after first paint. Each
 // fallback mirrors its card's stable frame (hairlines, panel edges, header
@@ -980,12 +966,17 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
             <SettingsView isDemo={isDemo} />
           ) : section === "watchlist" ? (
             <section className="space-y-4">
-              <div><h1 className="text-3xl font-bold tracking-tight text-white">Watchlist</h1><p className="mt-1 text-sm text-zinc-500">Keep an eye on symbols before adding them to a portfolio.</p></div>
+              <PageHeader
+                title="Watchlist"
+                titleClassName="text-3xl font-bold tracking-tight"
+                description="Keep an eye on symbols before adding them to a portfolio."
+                descriptionClassName="text-sm"
+              />
               <WatchlistPanel />
             </section>
           ) : section === "goals" ? (
             <section className="space-y-6">
-              <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Goals</h1>
+              <PageHeader title="Goals" />
               <GoalPanel currentValue={totalValue} history={snapshots} dateFormat={settings.dateFormat} />
             </section>
           ) : section === "performance" ? (
@@ -1230,19 +1221,24 @@ range={range}
 
               {overviewTx.transactions.length > 0 && (
                 <section>
-                  <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
-                    <h2 className="text-sm font-medium text-white">Recent trades</h2>
-                    <span className="text-[11px] text-zinc-600">{overviewTx.transactions.length} trades</span>
-                  </div>
+                  <SectionHeading
+                    title="Recent trades"
+                    meta={plural(overviewTx.transactions.length, "trade")}
+                    divider
+                    spacing="tight"
+                  />
                   <div className="max-h-[240px] divide-y divide-white/[0.05] overflow-auto">
                     {overviewTx.transactions.slice(0, 20).map((t) => (
-                      <div key={t.id} className="flex items-center gap-3 px-1 py-2.5 text-sm">
-                        <span className={`grid h-6 w-6 place-items-center rounded-full text-xs ${t.type === "buy" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>{t.type === "buy" ? "+" : "−"}</span>
-                        <span className="font-medium text-white">{t.symbol}</span>
-                        <span className={t.type === "buy" ? "text-emerald-400" : "text-red-400"}>{t.type === "buy" ? "Buy" : "Sell"}</span>
-                        <span className="text-zinc-500">{t.shares} @ £{Number(t.price).toFixed(2)}</span>
-                        <span className="ml-auto text-[11px] text-zinc-600">{t.date}</span>
-                      </div>
+                      <TradeRow
+                        key={t.id}
+                        symbol={t.symbol}
+                        type={t.type}
+                        shares={t.shares}
+                        price={Number(t.price)}
+                        date={t.date}
+                        dateFormat={settings.dateFormat}
+                        showTotal={false}
+                      />
                     ))}
                   </div>
                 </section>

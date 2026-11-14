@@ -1,15 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { Maximize2, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Maximize2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { chartDateLabel, fmtPct, fmtPrice } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { BrandIcon } from "@/components/BrandIcon";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { Metric, MetricStrip, MetricSkeleton } from "@/components/shared/MetricStrip";
+import { SearchField } from "@/components/shared/SearchField";
+import { SectionHeading } from "@/components/shared/SectionHeading";
 
 type WatchItem = { id: string; symbol: string; name: string; exchange: string | null; currency: string | null };
 type Quote = { price: number; currency?: string | null };
@@ -28,9 +32,6 @@ function apiError(data: unknown, fallback: string) {
     ? data.error
     : fallback;
 }
-
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
-const SUB = "mt-2 text-[11px] text-zinc-600";
 
 type PriceChartProps = {
   data: ChartPoint[];
@@ -277,80 +278,80 @@ export function WatchlistPanel() {
   return (
     <div className="space-y-6">
       {loading ? (
-        <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.6fr_1fr_1fr] lg:gap-0 lg:py-7">
-          {[1, 2, 3].map((index) => (
-            <div key={index} className={index === 1 ? "col-span-2 lg:col-span-1 lg:pr-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
-              <div className="h-2.5 w-20 animate-pulse rounded bg-white/[0.07]" />
-              <div className={`mt-2 animate-pulse rounded bg-white/[0.09] ${index === 1 ? "h-[38px] w-28 sm:h-[42px]" : "h-7 w-16 sm:h-8"}`} />
-              <div className="mt-2 h-2.5 w-16 animate-pulse rounded bg-white/[0.05]" />
-            </div>
-          ))}
-        </div>
+        <MetricStrip variant="watchlist" aria-busy="true">
+          <MetricSkeleton emphasis wide position="first" />
+          <MetricSkeleton position="middle" />
+          <MetricSkeleton position="last" />
+        </MetricStrip>
       ) : items.length > 0 ? (
-        <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.6fr_1fr_1fr] lg:gap-0 lg:py-7">
-          <div className="col-span-2 lg:col-span-1 lg:pr-8">
-            <p className={LABEL}>{activeSymbol ? `${activeSymbol} · ${range}` : "Selected"}</p>
-            <p className="mt-2 text-[38px] font-semibold leading-none tracking-tight tabular-nums text-white sm:text-[42px]">
-              {displayPrice == null ? "—" : fmtPrice(displayPrice, activeQuote?.currency ?? activeItem?.currency)}
-            </p>
-            <p className={SUB}>
-              {chartChange == null ? (
-                "No price history yet"
-              ) : (
-                <>
-                  <span className={chartChange >= 0 ? "text-emerald-400" : "text-red-400"}>{fmtPct(chartChange)}</span>
-                  {chart[0]?.date && <span> since {chartDateLabel(chart[0].date)}</span>}
-                </>
-              )}
-            </p>
-          </div>
+        <MetricStrip variant="watchlist">
+          <Metric
+            wide
+            size="hero"
+            position="first"
+            label={activeSymbol ? `${activeSymbol} · ${range}` : "Selected"}
+            value={displayPrice == null ? "—" : fmtPrice(displayPrice, activeQuote?.currency ?? activeItem?.currency)}
+            sub={chartChange == null ? (
+              "No price history yet"
+            ) : (
+              <>
+                <span className={chartChange >= 0 ? "text-emerald-400" : "text-red-400"}>{fmtPct(chartChange)}</span>
+                {chart[0]?.date && <span> since {chartDateLabel(chart[0].date)}</span>}
+              </>
+            )}
+          />
 
-          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
-            <p className={LABEL}>Tracking</p>
-            <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{items.length}</p>
-            <p className={SUB}>{items.length === 1 ? "symbol" : "symbols"}</p>
-          </div>
+          <Metric
+            position="middle"
+            label="Tracking"
+            value={items.length}
+            sub={items.length === 1 ? "symbol" : "symbols"}
+          />
 
-          <div className="lg:border-l lg:border-white/[0.06] lg:px-8">
-            <p className={LABEL}>Live prices</p>
-            <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">
-              {pricedCount}
-              <span className="ml-1.5 text-[11px] font-normal text-zinc-500 sm:text-xs">of {items.length}</span>
-            </p>
-            <p className={SUB}>{pricedCount === items.length ? "All up to date" : "Awaiting quotes"}</p>
-          </div>
-        </div>
+          <Metric
+            position="last"
+            label="Live prices"
+            value={
+              <>
+                {pricedCount}
+                <span className="ml-1.5 text-[11px] font-normal text-zinc-500 sm:text-xs">of {items.length}</span>
+              </>
+            }
+            sub={pricedCount === items.length ? "All up to date" : "Awaiting quotes"}
+          />
+        </MetricStrip>
       ) : null}
 
       <div className={`grid grid-cols-1 gap-8 ${activeItem ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] xl:gap-0" : ""}`}>
         <section className="min-w-0 xl:pr-8" aria-labelledby="watchlist-symbols-heading">
-          <div className="flex items-baseline justify-between gap-3 pb-3">
-            <h2 id="watchlist-symbols-heading" className="text-sm font-medium text-white">Symbols</h2>
-            <button
-              type="button"
-              onClick={() => void handleRefresh()}
-              disabled={refreshing}
-              className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-500 transition-colors hover:text-white disabled:opacity-50"
-            >
-              <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
+          <SectionHeading
+            id="watchlist-symbols-heading"
+            title="Symbols"
+            action={
+              <button
+                type="button"
+                onClick={() => void handleRefresh()}
+                disabled={refreshing}
+                className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-500 transition-colors hover:text-white disabled:opacity-50"
+              >
+                <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+            }
+          />
 
           <form className="relative flex gap-2" onSubmit={(event) => { event.preventDefault(); void add(suggestions[0]); }}>
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
-              <Input
-                aria-label="Search symbols to add"
-                aria-autocomplete="list"
-                placeholder="Search a company or ticker"
-                className="pl-9 pr-9"
-                value={symbol}
-                onChange={(event) => { setSymbol(event.target.value); setSuggestions([]); }}
-                maxLength={50}
-                autoComplete="off"
-              />
-              {symbol && <button type="button" onClick={() => { setSymbol(""); setSuggestions([]); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white" aria-label="Clear search"><X className="size-4" /></button>}
+            <SearchField
+              className="min-w-0 flex-1"
+              label="Search symbols to add"
+              ariaAutocomplete="list"
+              placeholder="Search a company or ticker"
+              value={symbol}
+              onChange={(value) => { setSymbol(value); setSuggestions([]); }}
+              onClear={() => setSuggestions([])}
+              maxLength={50}
+              autoComplete="off"
+            >
               {suggestions.length > 0 && symbol.trim() && (
                 <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-72 overflow-auto rounded-xl border border-white/10 bg-zinc-950 p-1 shadow-2xl">
                   {suggestions.slice(0, 5).map((result) => (
@@ -363,7 +364,7 @@ export function WatchlistPanel() {
                   ))}
                 </div>
               )}
-            </div>
+            </SearchField>
             <Button type="submit" size="icon" disabled={saving || !symbol.trim()} aria-label="Add symbol"><Plus className="size-4" /></Button>
           </form>
 
@@ -373,20 +374,22 @@ export function WatchlistPanel() {
             <div className="mt-4 border-t border-white/[0.06]" aria-label="Loading watchlist">
               {[1, 2, 3].map((row) => (
                 <div key={row} className="flex items-center gap-3 border-b border-white/[0.05] px-1 py-3">
-                  <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-white/[0.04]" />
+                  <Skeleton className="h-9 w-9 shrink-0 rounded-full bg-white/[0.04]" />
                   <div className="min-w-0 flex-1">
-                    <div className="h-3.5 w-32 animate-pulse rounded bg-white/[0.05]" />
-                    <div className="mt-1 h-2.5 w-20 animate-pulse rounded bg-white/[0.04]" />
+                    <Skeleton className="h-3.5 w-32 bg-white/[0.05]" />
+                    <Skeleton className="mt-1 h-2.5 w-20 bg-white/[0.04]" />
                   </div>
-                  <div className="h-3.5 w-16 animate-pulse rounded bg-white/[0.05]" />
+                  <Skeleton className="h-3.5 w-16 bg-white/[0.05]" />
                 </div>
               ))}
             </div>
           ) : items.length === 0 ? (
-            <div className="mt-4 border-t border-white/[0.06] py-14 text-center">
-              <p className="text-sm text-zinc-400">Nothing on your watchlist yet</p>
-              <p className="mt-1 text-xs text-zinc-600">Search above to follow a company’s market price.</p>
-            </div>
+            <EmptyState
+              bordered="top"
+              className="mt-4"
+              title="Nothing on your watchlist yet"
+              description="Search above to follow a company’s market price."
+            />
           ) : (
             <div className="mt-4">
               <div className="grid grid-cols-[minmax(0,1fr)_auto_24px] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600">

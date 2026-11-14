@@ -1,12 +1,15 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { Download, Minus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Download, Minus, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandIcon } from "@/components/BrandIcon";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { LiveBadge } from "@/components/shared/LiveBadge";
+import { SearchField } from "@/components/shared/SearchField";
+import { SectionHeading } from "@/components/shared/SectionHeading";
 import { fmtGBP, fmtPct, fmtPrice, fmtRelative, fmtTimestamp, holdingCostGBP, holdingCurrency, holdingValueGBP, isLiveHolding, type FxRates } from "@/lib/format";
 import type { Holding, Portfolio } from "@/lib/store";
 
@@ -94,49 +97,47 @@ export function HoldingsTable({
 
   return (
     <section aria-labelledby="holdings-heading">
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
-        <div className="flex items-baseline gap-2">
-          <h2 id="holdings-heading" className="text-sm font-medium text-white">Holdings</h2>
-          <span className="text-[11px] tabular-nums text-zinc-600">
-            {query ? `${rows.length} of ${portfolio.holdings.length}` : rows.length}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+      <SectionHeading
+        id="holdings-heading"
+        title="Holdings"
+        meta={query ? `${rows.length} of ${portfolio.holdings.length}` : rows.length}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <SearchField
+              size="sm"
+              label="Search holdings"
               placeholder="Search symbol or name"
-              className="h-8 w-full bg-white/[0.04] pl-8 text-xs sm:w-44"
+              value={query}
+              onChange={setQuery}
+              className="w-full sm:w-44"
+              inputClassName="bg-white/[0.04]"
             />
-            {query && (
-              <button type="button" onClick={() => setQuery("")} aria-label="Clear holdings search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white">
-                <X className="h-3 w-3" />
-              </button>
-            )}
+            <Select value={sort} onValueChange={(value) => setSort(value ?? "value")}>
+              <SelectTrigger className="h-8 w-28 bg-white/[0.04] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="value">Value</SelectItem>
+                <SelectItem value="gain">Gain</SelectItem>
+                <SelectItem value="symbol">Symbol</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={exportCsv} disabled={!portfolio.holdings.length}>
+              <Download className="h-3.5 w-3.5" /> CSV
+            </Button>
           </div>
-          <Select value={sort} onValueChange={(value) => setSort((value ?? "value"))}>
-            <SelectTrigger className="h-8 w-28 bg-white/[0.04] text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="value">Value</SelectItem>
-              <SelectItem value="gain">Gain</SelectItem>
-              <SelectItem value="symbol">Symbol</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={exportCsv} disabled={!portfolio.holdings.length}>
-            <Download className="h-3.5 w-3.5" /> CSV
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {rows.length === 0 ? (
-        <div className="border-y border-white/[0.06] px-4 py-14 text-center">
-          <p className="text-sm text-zinc-400">{query ? "No holdings match your search." : "No holdings yet."}</p>
-          <p className="mt-1 text-[11px] text-zinc-600">{query ? "Try a different symbol or name." : "Add your first position to start tracking it."}</p>
-          {!query && <Button type="button" size="sm" className="mt-4 rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onAdd}><Plus className="h-3.5 w-3.5" /> Add holding</Button>}
-          {query && <Button type="button" variant="ghost" size="sm" className="mt-4 text-zinc-400 hover:text-white" onClick={() => setQuery("")}>Clear search</Button>}
-        </div>
+        <EmptyState
+          bordered
+          title={query ? "No holdings match your search." : "No holdings yet."}
+          description={query ? "Try a different symbol or name." : "Add your first position to start tracking it."}
+          action={query ? (
+            <Button type="button" variant="ghost" size="sm" className="text-zinc-400 hover:text-white" onClick={() => setQuery("")}>Clear search</Button>
+          ) : (
+            <Button type="button" size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onAdd}><Plus className="h-3.5 w-3.5" /> Add holding</Button>
+          )}
+        />
       ) : (
         <Table className="border-b border-white/[0.06]">
           <TableHeader>
@@ -168,7 +169,7 @@ export function HoldingsTable({
                         <div className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate text-sm font-medium text-white">{holding.symbol}</span>
                           {isLiveHolding(holding, portfolio.type) && (
-                            <span title="Price updates automatically" className="shrink-0 rounded-full border border-white/[0.06] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500">Live</span>
+                            <LiveBadge />
                           )}
                         </div>
                         <div className="max-w-[128px] truncate text-[11px] text-zinc-500 sm:max-w-[160px]">{holding.name}</div>
