@@ -33,7 +33,8 @@ import { BrandIcon } from "@/components/BrandIcon";
 import { useDesktopUpdate } from "@/components/useDesktopUpdate";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PALETTE, resolvePortfolioColor } from "@/lib/colors";
+import { resolvePortfolioColor } from "@/lib/colors";
+import { usePalette } from "@/lib/palette";
 import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP, isLiveHolding } from "@/lib/format";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
@@ -513,6 +514,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const [directTarget, setDirectTarget] = useState<{ accountId?: string | null; providerId?: string | null } | null>(null);
   const [directForm, setDirectForm] = useState({ symbol: "", name: "", shares: "", avgPrice: "", exchange: "", currentPrice: "", currency: "GBP" });
   const { settings } = useSettings();
+  const palette = usePalette();
   const fxRates = settings.fxRates;
   const blankDirectForm = () => ({ symbol: "", name: "", shares: "", avgPrice: "", exchange: "", currentPrice: "", currency: settings.currency || "GBP" });
   const [editingDirectId, setEditingDirectId] = useState<string | null>(null);
@@ -747,7 +749,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     }
     return totals;
   }, [accounts, accountIdForHolding, accountIdForPortfolio, directHoldings, fxRates, portfolioValuations, portfolios]);
-  const accColorFor = (acc: Account) => acc.color || PALETTE[(accountIndex.get(acc.id) ?? 0) % PALETTE.length].value;
+  const accColorFor = (acc: Account) => acc.color || palette[(accountIndex.get(acc.id) ?? 0) % palette.length]?.value || "#60a5fa";
 
   const togglePortfolio = (id: string) => setExpandedPortfolio((e) => ({ ...e, [id]: !e[id] }));
   // A portfolio only looks expanded by default while it is the active one, so
@@ -784,7 +786,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const renderPortfolioItem = (portfolio: Portfolio) => {
     const { total, holdings: holdingsInValueOrder, values } = valuationFor(portfolio);
-    const portfolioColor = resolvePortfolioColor(portfolio, portfolios, providers, accounts);
+    const portfolioColor = resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette);
     const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name ?? null : null;
     const isActive = activeId === portfolio.id;
     const selectedHolding = holdingsInValueOrder.some((holding) => holding.id === activeHoldingId);
@@ -1008,7 +1010,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               { label: "Type", value: portfolio.type },
             ]}
             active={activeId === portfolio.id}
-            color={resolvePortfolioColor(portfolio, portfolios, providers, accounts)}
+            color={resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette)}
             onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
           />
         ))}
