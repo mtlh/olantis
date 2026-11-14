@@ -17,6 +17,8 @@ export const accounts = pgTable("accounts", {
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
   color: text("color"),
+  /** Optional custom folder glyph (see lib/entity-icons.ts); null = default folder. */
+  icon: text("icon"),
   sortOrder: integer("sort_order"),
   createdAt: integer("created_at").notNull(),
 }, (t) => ({ userIdIdx: index("accounts_user_id_idx").on(t.userId) }));
@@ -27,6 +29,8 @@ export const providers = pgTable("providers", {
   accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   color: text("color"),
+  /** Overrides the fetched brand mark (see lib/entity-icons.ts); null = brand mark. */
+  icon: text("icon"),
   sortOrder: integer("sort_order"),
   createdAt: integer("created_at").notNull(),
 }, (t) => ({

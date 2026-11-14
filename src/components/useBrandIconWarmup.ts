@@ -58,7 +58,7 @@ type IconSubject = {
 };
 
 type WarmupInput = {
-  providers?: Array<{ id: string; name: string }>;
+  providers?: Array<{ id: string; name: string; icon?: string | null }>;
   portfolios?: Array<{ providerId?: string | null }>;
   holdings?: IconSubject[];
 };
@@ -73,14 +73,21 @@ export function useBrandIconWarmup({ providers, portfolios, holdings }: WarmupIn
   const sources = useMemo(() => {
     const out = new Set<string>();
     const providerNames = new Map<string, string>();
+    // A provider whose mark the user replaced never renders remote artwork, so
+    // prefetching it would be a wasted request.
+    const overridden = new Set<string>();
 
     for (const provider of providers ?? []) {
+      if (provider.icon) {
+        overridden.add(provider.id);
+        continue;
+      }
       providerNames.set(provider.id, provider.name);
       const src = brandIconSrc({ provider: provider.name });
       if (src) out.add(src);
     }
     for (const portfolio of portfolios ?? []) {
-      const name = portfolio.providerId ? providerNames.get(portfolio.providerId) : null;
+      const name = portfolio.providerId && !overridden.has(portfolio.providerId) ? providerNames.get(portfolio.providerId) : null;
       if (!name) continue;
       const src = brandIconSrc({ provider: name });
       if (src) out.add(src);

@@ -1069,6 +1069,7 @@ range={range}
           ) : activeProvider ? (
             <ProviderDashboard
               name={activeProvider.name}
+              icon={activeProvider.icon}
               accountName={accounts.find((account) => account.id === activeProvider.accountId)?.name ?? "Account"}
               color={providerData.color ?? palette[0]?.value ?? "#60a5fa"}
               dateFormat={settings.dateFormat}

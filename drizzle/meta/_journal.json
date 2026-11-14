@@ -29,6 +29,13 @@
       "when": 1793823343422,
       "tag": "0004_history_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794655267069,
+      "tag": "0005_account_provider_icons",
+      "breakpoints": true
     }
   ]
 }

@@ -129,8 +129,8 @@ async function seedDemo(userId: string) {
   ].filter((item) => !existingSymbols.has(item.symbol));
 
   const now = Math.floor(Date.now() / 1000);
-  const accHousehold: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Household", createdAt: now };
-  const accPersonal: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Personal", createdAt: now };
+  const accHousehold: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Household", icon: "users", createdAt: now };
+  const accPersonal: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Personal", icon: "user", createdAt: now };
 
   const provVanguard: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Vanguard", createdAt: now };
   const provT212: typeof providers.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accHousehold.id, name: "Trading 212", createdAt: now };
