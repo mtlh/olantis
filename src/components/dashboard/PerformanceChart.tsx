@@ -25,6 +25,16 @@ const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600
 const benchmarkCache = new Map<string, Array<{ date: string; price: number }>>();
 const SUB = "mt-2 text-[11px] text-zinc-600";
 
+// Base UI renders the raw selected value unless `items` is passed to the
+// select, so every option needs a human label here.
+const BENCHMARK_OPTIONS = [
+  { value: "__none__", label: "None" },
+  { value: "VWRL.L", label: "VWRL" },
+  { value: "^FTSE", label: "FTSE 100" },
+  { value: "^GSPC", label: "S&P 500" },
+  { value: "MSFT", label: "Microsoft" },
+];
+
 function tone(value: number | null | undefined) {
   if (value == null) return "text-zinc-500";
   if (value > 0) return "text-emerald-400";
@@ -152,10 +162,7 @@ export const PerformanceChart = memo(function PerformanceChart({
   const animateSeries = useChartAnimation(chartZoom.visible.length);
   const benchmarkName = useMemo(() => {
     if (benchmark === "__none__") return null;
-    if (benchmark === "VWRL.L") return "VWRL";
-    if (benchmark === "^FTSE") return "FTSE 100";
-    if (benchmark === "^GSPC") return "S&P 500";
-    return benchmark;
+    return BENCHMARK_OPTIONS.find((option) => option.value === benchmark)?.label ?? benchmark;
   }, [benchmark]);
   const visibleKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -265,14 +272,12 @@ export const PerformanceChart = memo(function PerformanceChart({
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="text-sm font-medium text-white">Change over time</CardTitle>
           <div className="flex flex-wrap items-center gap-1">
-            <Select value={benchmark} onValueChange={(value) => onBenchmarkChange(value ?? "__none__")}>
+            <Select items={BENCHMARK_OPTIONS} value={benchmark} onValueChange={(value) => onBenchmarkChange(value ?? "__none__")}>
               <SelectTrigger className="h-8 w-28 border-white/[0.08] bg-transparent text-[11px] text-zinc-300"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">Benchmark</SelectItem>
-                <SelectItem value="VWRL.L">VWRL</SelectItem>
-                <SelectItem value="^FTSE">FTSE 100</SelectItem>
-                <SelectItem value="^GSPC">S&amp;P 500</SelectItem>
-                <SelectItem value="MSFT">Microsoft</SelectItem>
+                {BENCHMARK_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <ChartRangeSelector range={range} onRangeChange={onRangeChange} segmented />
