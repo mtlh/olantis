@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { AllocationItem } from "@/components/dashboard/shared/AllocationCard";
-import { portfolioTint, resolveAccountColor, resolveProviderColor } from "@/lib/colors";
+import { portfolioTint, resolveAccountColor, resolveProviderColor, type PaletteColor, PALETTE } from "@/lib/colors";
 import { combineHistories, holdingCostGBP, holdingValueGBP, type FxRates } from "@/lib/format";
 import type { Account, Holding, Portfolio, Provider, Snapshot } from "@/lib/store";
 
@@ -18,6 +18,7 @@ type UseAccountProviderDashboardDataProps = {
   byPortfolio: HistoryIndex;
   byHolding?: HistoryIndex;
   fxRates: FxRates;
+  palette?: readonly PaletteColor[];
 };
 
 function sortByOrder<T extends { sortOrder?: number | null }>(items: T[]) {
@@ -42,7 +43,7 @@ function summarizeHoldings(holdings: Holding[], fxRates: FxRates) {
   return { value, cost, gain: value - cost };
 }
 
-function createAllocation(holdings: Holding[], totalValue: number, baseColor: string | null, fxRates: FxRates): AllocationItem[] {
+function createAllocation(holdings: Holding[], totalValue: number, baseColor: string | null, fxRates: FxRates, palette: readonly PaletteColor[]): AllocationItem[] {
   if (!totalValue) return [];
 
   const bySymbol = new Map<string, number>();
@@ -55,7 +56,7 @@ function createAllocation(holdings: Holding[], totalValue: number, baseColor: st
     .map(([name, value], index) => ({
       name,
       value,
-      color: portfolioTint(baseColor, index),
+      color: portfolioTint(baseColor, index, palette),
       pct: (value / totalValue) * 100,
     }));
 }
@@ -70,6 +71,7 @@ export function useAccountProviderDashboardData({
   byPortfolio,
   byHolding,
   fxRates,
+  palette = PALETTE,
 }: UseAccountProviderDashboardDataProps) {
   const account = useMemo(() => {
     const accountProviders = activeAccount
@@ -92,7 +94,7 @@ export function useAccountProviderDashboardData({
       ...accountDirectHoldings,
     ];
     const { value, cost, gain } = summarizeHoldings(holdings, fxRates);
-    const color = activeAccount ? resolveAccountColor(activeAccount, accounts) : null;
+    const color = activeAccount ? resolveAccountColor(activeAccount, accounts, palette) : null;
     const latestRefresh = holdings.reduce<number | null>((latest, holding) => {
       const refreshedAt = holding.lastRefreshedAt;
       return refreshedAt && (!latest || refreshedAt > latest) ? refreshedAt : latest;
@@ -119,7 +121,7 @@ export function useAccountProviderDashboardData({
         id: provider.id,
         name: provider.name,
         icon: provider.icon,
-        color: provider.color || portfolioTint(color, providerIndex),
+        color: provider.color || portfolioTint(color, providerIndex, palette),
         portfoliosCount: providerPortfolios.length,
         holdingsCount: providerHoldings.length,
         value: totals.value,
@@ -132,7 +134,7 @@ export function useAccountProviderDashboardData({
       return {
         id: portfolio.id,
         name: portfolio.name,
-        color: portfolio.color || portfolioTint(color, Math.max(0, directPortfolioIndexes.get(portfolio.id) ?? -1)),
+        color: portfolio.color || portfolioTint(color, Math.max(0, directPortfolioIndexes.get(portfolio.id) ?? -1), palette),
         holdingsCount: portfolio.holdings.length,
         value: totals.value,
         gain: totals.gain,
@@ -152,14 +154,14 @@ export function useAccountProviderDashboardData({
       allPortfolios,
       holdings,
       history,
-      allocation: createAllocation(holdings, value, color, fxRates),
+      allocation: createAllocation(holdings, value, color, fxRates, palette),
       latestRefresh,
       value,
       cost,
       gain,
       gainPct: cost ? (gain / cost) * 100 : 0,
     };
-  }, [activeAccount, accounts, byHolding, byPortfolio, directHoldings, fxRates, portfolios, providers]);
+  }, [activeAccount, accounts, byHolding, byPortfolio, directHoldings, fxRates, palette, portfolios, providers]);
 
   const provider = useMemo(() => {
     const providerPortfolios = activeProvider
@@ -170,7 +172,7 @@ export function useAccountProviderDashboardData({
       : [];
     const holdings = [...providerPortfolios.flatMap((portfolio) => portfolio.holdings), ...directProviderHoldings];
     const { value, cost, gain } = summarizeHoldings(holdings, fxRates);
-    const color = activeProvider ? resolveProviderColor(activeProvider, providers, accounts) : null;
+    const color = activeProvider ? resolveProviderColor(activeProvider, providers, accounts, palette) : null;
     const latestRefresh = holdings.reduce<number | null>((latest, holding) => {
       const refreshedAt = holding.lastRefreshedAt;
       return refreshedAt && (!latest || refreshedAt > latest) ? refreshedAt : latest;
@@ -189,7 +191,7 @@ export function useAccountProviderDashboardData({
       return {
         id: portfolio.id,
         name: portfolio.name,
-        color: portfolio.color || portfolioTint(color, Math.max(0, providerPortfolioIndexes.get(portfolio.id) ?? -1)),
+        color: portfolio.color || portfolioTint(color, Math.max(0, providerPortfolioIndexes.get(portfolio.id) ?? -1), palette),
         value: totals.value,
         gain: totals.gain,
         holdingsCount: portfolio.holdings.length,
@@ -207,14 +209,14 @@ export function useAccountProviderDashboardData({
       portfolioSummaries,
       directHoldingSummaries,
       history,
-      allocation: createAllocation(holdings, value, color, fxRates),
+      allocation: createAllocation(holdings, value, color, fxRates, palette),
       latestRefresh,
       value,
       cost,
       gain,
       gainPct: cost ? (gain / cost) * 100 : 0,
     };
-  }, [activeProvider, accounts, byHolding, byPortfolio, directHoldings, fxRates, portfolios, providers]);
+  }, [activeProvider, accounts, byHolding, byPortfolio, directHoldings, fxRates, palette, portfolios, providers]);
 
   return { account, provider };
 }

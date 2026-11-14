@@ -53,7 +53,7 @@ function ChartPlaceholder({
   );
 }
 
-export function StockDetail({ holding, portfolioId, portfolioValue, portfolioName, color, onBack, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioValue: number; portfolioName?: string; color: string; onBack: () => void; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
+export function StockDetail({ holding, portfolioId, portfolioValue, portfolioName, color, onBuy, onSell, onAddToPortfolio }: { holding: Holding; portfolioId?: string | null; portfolioValue: number; portfolioName?: string; color: string; onBuy?: () => void; onSell?: () => void; onAddToPortfolio?: () => void }) {
   const { settings } = useSettings();
   // Derived rather than synced: the preference is the fallback and a manual pick
   // is an override, so no effect has to write range when settings load.
@@ -182,7 +182,6 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
           {!portfolioId && onAddToPortfolio && (
             <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onAddToPortfolio} title="Move this holding into a portfolio"><FolderPlus className="h-3.5 w-3.5" /> Add to portfolio</Button>
           )}
-          <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onBack}>← Back</Button>
         </div>
       </div>
 

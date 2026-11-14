@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 
 import { resolvePortfolioColor } from "@/lib/colors";
+import { usePalette } from "@/lib/palette";
 import { fmtPrice, holdingValueGBP, holdingCostGBP, isListedSymbol, todayISODate, valueChangeOverRange } from "@/lib/format";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import type { HoldingFormData } from "@/components/dashboard/HoldingDialog";
@@ -616,6 +617,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   // off a cold remote lookup at that moment.
   useBrandIconWarmup({ providers, portfolios, holdings: allHoldingsList });
   const { settings } = useSettings();
+  const palette = usePalette();
   const { snapshots, byPortfolio, byHolding, moverChanges } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
   const [tradeRequest, setTradeRequest] = useState<{ holding: Holding; type: "buy" | "sell" } | null>(null);
@@ -648,6 +650,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     byPortfolio,
     byHolding,
     fxRates: settings.fxRates,
+    palette,
   });
   const holdingViewId = holdingFromUrl;
   const { holding: viewHolding, portfolio: viewPortfolio, color: viewColor, scopeValue: holdingScopeValue } = useHoldingViewData({
@@ -658,11 +661,12 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     providers,
     accounts,
     fxRates: settings.fxRates,
+    palette,
   });
   const activeBaseColor = useMemo(() => {
     if (!active) return null;
-    return resolvePortfolioColor(active, portfolios, providers, accounts);
-  }, [active, accounts, portfolios, providers]);
+    return resolvePortfolioColor(active, portfolios, providers, accounts, palette);
+  }, [active, accounts, palette, portfolios, providers]);
   const overviewTx = useTransactions(null);
   const { create: createTx, refresh: refreshTx, remove: removeTx } = overviewTx;
   const displayTx = useMemo(() => {
@@ -793,6 +797,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     // The performance page leads with its series toggle, so only the overview
     // defers it past first paint.
     deferSeries: section === "performance" ? false : !showBelowFold,
+    palette,
   });
   const allocation = usePortfolioAllocation({
     activePortfolio: active,
@@ -803,6 +808,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     fxRates: settings.fxRates,
     activeBaseColor,
     mode: allocMode,
+    palette,
   });
 
   const handleCreate = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
@@ -870,7 +876,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     const gain = value - cost;
     return { value, cost, gain, gainPct: cost ? (gain / cost) * 100 : 0 };
   }, [active, settings.fxRates, totalCost, totalGain, totalGainPct, totalValue]);
-  const portfolioChartColor = activeBaseColor ?? "#60a5fa";
+  const portfolioChartColor = activeBaseColor ?? palette[0]?.value ?? "#60a5fa";
 
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
   const [editPortfolio, setEditPortfolio] = useState<Portfolio | null>(null);
@@ -1039,14 +1045,6 @@ range={range}
               portfolioValue={holdingScopeValue}
               portfolioName={viewPortfolio?.name ?? providers.find((provider) => provider.id === viewHolding.providerId)?.name ?? accounts.find((account) => account.id === viewHolding.accountId)?.name}
               color={viewColor}
-              onBack={() => {
-                const parentProviderId = viewPortfolio?.providerId ?? viewHolding.providerId;
-                const parentProvider = providers.find((provider) => provider.id === parentProviderId);
-                const parentAccountId = viewPortfolio?.accountId ?? viewHolding.accountId;
-                if (parentProvider) selectProvider(parentProvider.id);
-                else if (parentAccountId) selectAccount(parentAccountId);
-                else clearSelection();
-              }}
               onBuy={() => openTrade(viewHolding, "buy")}
               onSell={() => openTrade(viewHolding, "sell")}
               onAddToPortfolio={() => openAssign(viewHolding)}
@@ -1068,7 +1066,7 @@ range={range}
           ) : activeAccount ? (
             <AccountDashboard
               name={activeAccount.name}
-              color={accountData.color ?? "#60a5fa"}
+              color={accountData.color ?? palette[0]?.value ?? "#60a5fa"}
               dateFormat={settings.dateFormat}
               providers={accountData.providers}
               portfolios={accountData.portfolios}
@@ -1099,7 +1097,7 @@ range={range}
               name={activeProvider.name}
               icon={activeProvider.icon}
               accountName={accounts.find((account) => account.id === activeProvider.accountId)?.name ?? "Account"}
-              color={providerData.color ?? "#60a5fa"}
+              color={providerData.color ?? palette[0]?.value ?? "#60a5fa"}
               dateFormat={settings.dateFormat}
               portfolios={providerData.portfolioSummaries}
               directHoldings={providerData.directHoldingSummaries}

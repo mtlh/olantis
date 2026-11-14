@@ -9,7 +9,6 @@ type IndividualDashboardProps = {
   portfolioValue: number;
   portfolioName?: string;
   color: string;
-  onBack: () => void;
   onBuy: () => void;
   onSell: () => void;
   onAddToPortfolio: () => void;
@@ -22,7 +21,6 @@ export function IndividualDashboard({
   portfolioValue,
   portfolioName,
   color,
-  onBack,
   onBuy,
   onSell,
   onAddToPortfolio,
@@ -36,7 +34,6 @@ export function IndividualDashboard({
         portfolioValue={portfolioValue}
         portfolioName={portfolioName}
         color={color}
-        onBack={onBack}
         onBuy={onBuy}
         onSell={onSell}
         onAddToPortfolio={onAddToPortfolio}

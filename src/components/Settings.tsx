@@ -1,12 +1,14 @@
 "use client";
-import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, type AppSettings } from "@/lib/store";
+import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, applyWorkspaceOrder, type AppSettings, type Portfolio } from "@/lib/store";
 import { useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { Building2, Briefcase, Folder, FolderOpen, Trash2, Download, Upload, ChevronUp, ChevronDown, GripVertical, Info } from "lucide-react";
-import { PALETTE, tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
+import { Building2, Briefcase, Folder, FolderOpen, Trash2, Download, Upload, ChevronUp, ChevronDown, GripVertical, Info, Plus, RotateCcw, X } from "lucide-react";
+import { tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
+import { MAX_PALETTE_COLORS, addPaletteColor, colorLabel, isDefaultPalette, removePaletteColor, resetPalette, updatePaletteColor, usePalette } from "@/lib/palette";
 import { ENTITY_ICON_OPTIONS } from "@/lib/entity-icons";
 import { EntityIcon } from "@/components/EntityIcon";
 import { BrandIcon } from "@/components/BrandIcon";
@@ -20,6 +22,9 @@ interface SettingsState {
   defaultRange: AppSettings["defaultRange"];
   showTradeMarkers: number;
 }
+
+/** The three sortable tables behind /api/reorder. */
+type OrderTable = "accounts" | "providers" | "portfolios";
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const ROW_HINT = "mt-0.5 text-[11px] text-zinc-600";
@@ -182,12 +187,153 @@ function OrderRow({ name, meta, color, index, count, dragging, dropTarget, onDra
   );
 }
 
+function PaletteEditor() {
+  const palette = usePalette();
+  const [draftHex, setDraftHex] = useState("#a78bfa");
+  const [pickerHex, setPickerHex] = useState("#a78bfa");
+  const [draftLabel, setDraftLabel] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const validDraft = /^#[0-9a-f]{6}$/i.test(draftHex);
+  const duplicate = validDraft && palette.some((color) => color.value === draftHex.toLowerCase());
+  const full = palette.length >= MAX_PALETTE_COLORS;
+
+  const hint = notice
+    ?? (full
+      ? `Palette is full — ${MAX_PALETTE_COLORS} colours is the maximum.`
+      : duplicate
+        ? "That colour is already in your palette."
+        : !validDraft
+          ? "Hex colours look like #60a5fa."
+          : "Name it yourself, or leave that blank and we will name it for you.");
+
+  const addDraft = () => {
+    if (full) { setNotice(`Your palette can hold up to ${MAX_PALETTE_COLORS} colours.`); return; }
+    if (!validDraft) { setNotice("Enter a hex colour such as #60a5fa."); return; }
+    if (duplicate) { setNotice("That colour is already in your palette."); return; }
+    if (!addPaletteColor(draftHex, draftLabel)) { setNotice("Could not add that colour."); return; }
+    setNotice(`Added ${draftLabel.trim() || colorLabel(draftHex)}.`);
+    setDraftLabel("");
+  };
+
+  return (
+    <section aria-labelledby="palette-heading" className="py-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <h2 id="palette-heading" className="text-sm font-medium text-white">Palette</h2>
+          <span className="text-[11px] text-zinc-600">{palette.length} data {palette.length === 1 ? "colour" : "colours"}</span>
+        </div>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="rounded-full text-zinc-500 hover:text-white"
+          disabled={isDefaultPalette(palette)}
+          onClick={() => { resetPalette(); setNotice(null); }}
+        >
+          <RotateCcw className="h-3 w-3" /> Reset to default
+        </Button>
+      </div>
+      <p className="mt-1 text-[11px] text-zinc-600">Auto-tints cycle through this list. Click a swatch to recolour it; remove the ones you never use.</p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {palette.map((color) => (
+          <span key={color.id} className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] py-1 pl-1.5 pr-1">
+            <label
+              title={`Change ${color.label}`}
+              className="relative grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-full focus-within:ring-2 focus-within:ring-white/40"
+            >
+              <span className="h-3.5 w-3.5 rounded-full border border-white/20" style={{ background: color.value }} />
+              <input
+                type="color"
+                value={color.value}
+                aria-label={`Change ${color.label} colour`}
+                onChange={(event) => {
+                  if (!updatePaletteColor(color.id, event.target.value)) setNotice("That colour is already in your palette.");
+                  else setNotice(null);
+                }}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              />
+            </label>
+            <span className="text-[11px] text-zinc-400">{color.label}</span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="h-5 w-5 rounded-full text-zinc-600 hover:text-white"
+              aria-label={`Remove ${color.label}`}
+              title={palette.length <= 1 ? "Keep at least one colour" : `Remove ${color.label}`}
+              disabled={palette.length <= 1}
+              onClick={() => { removePaletteColor(color.id); setNotice(null); }}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label
+            title="Pick a colour"
+            className="relative h-8 w-8 shrink-0 cursor-pointer overflow-hidden rounded-lg border border-white/[0.1] focus-within:ring-2 focus-within:ring-white/40"
+            style={{ background: pickerHex }}
+          >
+            <input
+              type="color"
+              value={pickerHex}
+              aria-label="Pick a new palette colour"
+              onChange={(event) => {
+                const value = event.target.value;
+                setPickerHex(value);
+                setDraftHex(value);
+                setNotice(null);
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </label>
+          <Input
+            value={draftLabel}
+            maxLength={24}
+            placeholder="Name (optional)"
+            aria-label="New palette colour name"
+            className="h-8 border-white/[0.08] bg-white/[0.03] sm:w-44"
+            onChange={(event) => { setDraftLabel(event.target.value); setNotice(null); }}
+          />
+          <Input
+            value={draftHex}
+            maxLength={7}
+            spellCheck={false}
+            placeholder="#a78bfa"
+            aria-label="New palette hex colour"
+            className="h-8 border-white/[0.08] bg-white/[0.03] font-mono sm:w-32"
+            onChange={(event) => {
+              const value = event.target.value;
+              setDraftHex(value);
+              setNotice(null);
+              if (/^#[0-9a-f]{6}$/i.test(value)) setPickerHex(value.toLowerCase());
+            }}
+          />
+          <Button
+            size="sm"
+            className="rounded-full"
+            disabled={full || !validDraft || duplicate}
+            onClick={addDraft}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add colour
+          </Button>
+        </div>
+        <p className="mt-2 text-[11px] text-zinc-600" aria-live="polite">{hint}</p>
+      </div>
+    </section>
+  );
+}
+
 export function SettingsView({ isDemo }: { isDemo?: boolean }) {
-  const { accounts, setColor: setAccountColor, setIcon: setAccountIcon, refresh: refreshAccounts } = useAccounts();
-  const { providers, setColor: setProviderColor, setIcon: setProviderIcon, refresh: refreshProviders } = useProviders();
+  const { accounts, setColor: setAccountColor, setIcon: setAccountIcon } = useAccounts();
+  const { providers, setColor: setProviderColor, setIcon: setProviderIcon } = useProviders();
   const { portfolios, setColor: setPortfolioColor, refresh: refreshPortfolios } = usePortfolios();
   const { holdings: allHoldings } = useHoldings();
   const { settings: appSettings, save: saveAppSettings } = useSettings();
+  const palette = usePalette();
   const { toast } = useToast();
   // The store hook already holds the server settings (bootstrapped or fetched
   // once by the hook), so this view keeps no second copy. A save overlays its
@@ -243,31 +389,35 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     try { await setProviderIcon(id, icon); toast({ title: icon ? "Provider icon updated" : "Brand icon restored", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
   };
 
-  const handleReorder = async (table: string, ids: string[]) => {
+  const handleReorder = async (table: OrderTable, ids: string[], previousIds: string[]) => {
+    // Paint the accepted order everywhere — the sidebar keeps its own copy of
+    // these rows — then persist it in the background. A failed save puts the
+    // previous order back so the sidebar never disagrees with the server.
+    applyWorkspaceOrder(table, ids);
     try {
       const res = await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table, ids }) });
       if (!res.ok) throw new Error((await res.text()) || `Reorder failed (${res.status})`);
-      if (table === "accounts") await refreshAccounts();
-      else if (table === "providers") await refreshProviders();
-      else if (table === "portfolios") await refreshPortfolios();
       toast({ title: "Order updated", variant: "success" });
-    } catch (e: unknown) { toast({ title: "Reorder failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); }
+    } catch (e: unknown) {
+      applyWorkspaceOrder(table, previousIds);
+      toast({ title: "Reorder failed", description: e instanceof Error ? e.message : String(e), variant: "error" });
+    }
   };
 
-  const moveItem = (table: string, list: { id: string }[], from: number, to: number) => {
+  const moveItem = (table: OrderTable, list: { id: string }[], from: number, to: number) => {
     if (from === to || to < 0 || to >= list.length) return;
     const ids = list.map(x => x.id);
     const [moved] = ids.splice(from, 1);
     ids.splice(to, 0, moved);
-    void handleReorder(table, ids);
+    void handleReorder(table, ids, list.map(x => x.id));
   };
 
   const [drag, setDrag] = useState<{ group: string; index: number } | null>(null);
   const [dragOver, setDragOver] = useState<{ group: string; index: number } | null>(null);
 
-  // Rows are only droppable inside their own group, so dragging never reorders
-  // a provider across accounts (or a portfolio across providers).
-  const orderProps = (table: string, group: string, list: { id: string }[], index: number) => ({
+  // Rows are only droppable inside their own group, so dragging never mixes
+  // accounts, providers of different accounts, or portfolios of different accounts.
+  const orderProps = (table: OrderTable, group: string, list: { id: string }[], index: number) => ({
     index,
     count: list.length,
     dragging: drag?.group === group && drag.index === index,
@@ -300,26 +450,43 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
     return m;
   }, [providers]);
-  const { portfoliosByProvider, portfoliosByAccount, unassignedPortfolios } = useMemo(() => {
-    const byProvider = new Map<string, typeof portfolios>();
-    const byAccount = new Map<string, typeof portfolios>();
-    const unassigned: typeof portfolios = [];
-    for (const p of portfolios) {
-      if (p.providerId) { const arr = byProvider.get(p.providerId) ?? []; arr.push(p); byProvider.set(p.providerId, arr); }
-      else if (p.accountId) { const arr = byAccount.get(p.accountId) ?? []; arr.push(p); byAccount.set(p.accountId, arr); }
-      else { unassigned.push(p); }
-    }
-    for (const [, arr] of byProvider) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    for (const [, arr] of byAccount) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    unassigned.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    return { portfoliosByProvider: byProvider, portfoliosByAccount: byAccount, unassignedPortfolios: unassigned };
-  }, [portfolios]);
 
   const directHoldings = useMemo(() => allHoldings.filter((holding) => !holding.portfolioId), [allHoldings]);
   const holdingCount = useMemo(
     () => portfolios.reduce((sum, portfolio) => sum + portfolio.holdings.length, 0) + directHoldings.length,
     [portfolios, directHoldings],
   );
+  // Only siblings inside the same group can trade places, so a group with a
+  // single row is not a candidate for swapping and is left out entirely.
+  const providerGroups = useMemo(
+    () => sortedAccounts
+      .map((account) => ({ account, items: providersByAccount.get(account.id) ?? [] }))
+      .filter((group) => group.items.length > 1),
+    [providersByAccount, sortedAccounts],
+  );
+  const portfolioGroups = useMemo(() => {
+    // The sidebar lists portfolios inside their account card (provider is only a
+    // subtitle), so an account is the unit whose portfolios can swap places.
+    const accountIdByProvider = new Map(providers.map((provider) => [provider.id, provider.accountId]));
+    const byAccount = new Map<string, Portfolio[]>();
+    const unassigned: Portfolio[] = [];
+    for (const portfolio of sortedPortfolios) {
+      const accountId = portfolio.providerId ? accountIdByProvider.get(portfolio.providerId) ?? portfolio.accountId : portfolio.accountId;
+      if (!accountId) { unassigned.push(portfolio); continue; }
+      const items = byAccount.get(accountId) ?? [];
+      items.push(portfolio);
+      byAccount.set(accountId, items);
+    }
+    const groups: { key: string; label: string; items: Portfolio[] }[] = [];
+    for (const account of sortedAccounts) {
+      const items = byAccount.get(account.id) ?? [];
+      if (items.length > 1) groups.push({ key: `account:${account.id}`, label: account.name, items });
+    }
+    if (unassigned.length > 1) groups.push({ key: "unassigned", label: "Unassigned", items: unassigned });
+    return groups;
+  }, [providers, sortedAccounts, sortedPortfolios]);
+  const hasAccountSwaps = sortedAccounts.length > 1;
+  const hasSwaps = hasAccountSwaps || providerGroups.length > 0 || portfolioGroups.length > 0;
   const allocation = usePortfolioAllocation({
     activePortfolio: null,
     portfolios,
@@ -329,9 +496,9 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     fxRates: appSettings.fxRates,
     activeBaseColor: null,
     mode: "account",
+    palette,
   });
   const defaultRange: ChartRange = settings.defaultRange === "1M" || settings.defaultRange === "3M" || settings.defaultRange === "MAX" ? settings.defaultRange : "1Y";
-  const ordered = sortedAccounts.length === 0 && providers.length === 0 && portfolios.length === 0;
 
   const exportAll = async () => {
     const data = { accounts, providers, portfolios, exportedAt: new Date().toISOString() };
@@ -444,7 +611,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 accounts.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No accounts yet. Create one from the sidebar.</p> : (
                   <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
                     {sortedAccounts.map((acc) => {
-                      const base = resolveAccountColor(acc, accounts);
+                      const base = resolveAccountColor(acc, accounts, palette);
                       return (
                         <div key={acc.id} className="py-4">
                           <div className="flex items-center justify-between gap-3">
@@ -460,7 +627,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                             </div>
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={acc.color===c.value} onClick={()=>handleAccountColor(acc.id, c.value)} />)}
+                            {palette.map(c=> <Swatch key={c.value} color={c.value} active={acc.color===c.value} onClick={()=>handleAccountColor(acc.id, c.value)} />)}
                             <div className="ml-1 hidden items-center gap-1.5 border-l border-white/[0.08] pl-2.5 sm:flex">
                               {[0,0.18,-0.18,0.32].map((t,i)=> <span key={i} className="h-6 w-6 rounded-full border border-white/10" style={{ background: tintColor(base, t) }} title={`Tint ${t>0?"+":""}${t}`} />)}
                             </div>
@@ -486,7 +653,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                   <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
                     {sortedProviders.map((pr)=>{
                       const acc = accounts.find(a=>a.id===pr.accountId);
-                      const base = resolveProviderColor(pr, providers, accounts);
+                      const base = resolveProviderColor(pr, providers, accounts, palette);
                       return (
                         <div key={pr.id} className="py-4">
                           <div className="flex items-center justify-between gap-3">
@@ -501,7 +668,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
                             <button type="button" aria-pressed={!pr.color} onClick={()=>handleProviderColor(pr.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!pr.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-500 hover:text-zinc-300"}`}>Auto tint</button>
-                            {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={pr.color===c.value} onClick={()=>handleProviderColor(pr.id, c.value)} />)}
+                            {palette.map(c=> <Swatch key={c.value} color={c.value} active={pr.color===c.value} onClick={()=>handleProviderColor(pr.id, c.value)} />)}
                           </div>
                           {iconPickerFor === pr.id && (
                             <IconGrid
@@ -525,7 +692,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                     {sortedPortfolios.map((p)=>{
                       const prov = providers.find(pr=> pr.id===p.providerId);
                       const acc = accounts.find(a=>a.id===p.accountId) ?? (prov ? accounts.find(a=>a.id===prov.accountId) : null);
-                      const tinted = resolvePortfolioColor(p, portfolios, providers, accounts);
+                      const tinted = resolvePortfolioColor(p, portfolios, providers, accounts, palette);
                       return (
                         <div key={p.id} className="py-4">
                           <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -536,7 +703,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
                             <button type="button" aria-pressed={!p.color} onClick={()=>handlePortfolioColor(p.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!p.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-500 hover:text-zinc-300"}`}>Auto tint</button>
-                            {PALETTE.map(c=> <Swatch key={c.value} color={c.value} active={p.color===c.value} onClick={()=>handlePortfolioColor(p.id, c.value)} />)}
+                            {palette.map(c=> <Swatch key={c.value} color={c.value} active={p.color===c.value} onClick={()=>handlePortfolioColor(p.id, c.value)} />)}
                           </div>
                         </div>
                       );
@@ -565,117 +732,70 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
           </summary>
           <div className="pt-3">
-            {ordered ? (
+            {!hasSwaps ? (
               <p className="text-sm text-zinc-500">Nothing to reorder yet.</p>
             ) : (
-              <div className="grid max-w-3xl items-start gap-x-10 gap-y-4 lg:grid-cols-2">
-                <p className="text-[11px] text-zinc-600 lg:col-span-2">Drag a row to move it; the arrows appear on hover.</p>
+              <div className={`grid max-w-3xl items-start gap-x-10 gap-y-4 ${hasAccountSwaps && providerGroups.length ? "lg:grid-cols-2" : ""}`}>
+                <p className="text-[11px] text-zinc-600">Drag a row to move it; the arrows appear on hover.</p>
 
-                <div>
-                  <p className={LABEL}>Accounts</p>
-                  {sortedAccounts.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No accounts</p> : (
+                {hasAccountSwaps && (
+                  <div>
+                    <p className={LABEL}>Accounts</p>
                     <div className="mt-1">
                       {sortedAccounts.map((acc, i) => (
                         <OrderRow
                           key={acc.id}
                           name={acc.name}
-                          color={resolveAccountColor(acc, accounts)}
+                          color={resolveAccountColor(acc, accounts, palette)}
                           {...orderProps("accounts", "accounts", sortedAccounts, i)}
                         />
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div>
-                  <p className={LABEL}>Providers</p>
-                  {providers.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No providers</p> : (
+                {providerGroups.length > 0 && (
+                  <div>
+                    <p className={LABEL}>Providers</p>
                     <div className="mt-1 space-y-2">
-                      {sortedAccounts.map(acc => {
-                        const provs = providersByAccount.get(acc.id) ?? [];
-                        if (provs.length === 0) return null;
-                        return (
-                          <div key={acc.id}>
-                            <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{acc.name}</p>
-                            {provs.map((pr, i) => (
-                              <OrderRow
-                                key={pr.id}
-                                name={pr.name}
-                                color={resolveProviderColor(pr, providers, accounts)}
-                                {...orderProps("providers", `providers:${acc.id}`, provs, i)}
-                              />
-                            ))}
-                          </div>
-                        );
-                      })}
+                      {providerGroups.map(({ account, items }) => (
+                        <div key={account.id}>
+                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{account.name}</p>
+                          {items.map((pr, i) => (
+                            <OrderRow
+                              key={pr.id}
+                              name={pr.name}
+                              color={resolveProviderColor(pr, providers, accounts, palette)}
+                              {...orderProps("providers", `providers:${account.id}`, items, i)}
+                            />
+                          ))}
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div className="lg:col-span-2">
-                  <p className={LABEL}>Portfolios</p>
-                  {portfolios.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No portfolios</p> : (
+                {portfolioGroups.length > 0 && (
+                  <div>
+                    <p className={LABEL}>Portfolios</p>
                     <div className="mt-1 space-y-2">
-                      {sortedAccounts.map(acc => {
-                        const provs = providersByAccount.get(acc.id) ?? [];
-                        const directPfs = portfoliosByAccount.get(acc.id) ?? [];
-                        const hasContent = provs.some(pr => (portfoliosByProvider.get(pr.id) ?? []).length > 0) || directPfs.length > 0;
-                        if (!hasContent) return null;
-                        return (
-                          <div key={acc.id}>
-                            <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{acc.name}</p>
-                            {provs.map(pr => {
-                              const pfs = portfoliosByProvider.get(pr.id) ?? [];
-                              if (pfs.length === 0) return null;
-                              return (
-                                <div key={pr.id} className="pl-2">
-                                  <p className="px-1 text-[10px] text-zinc-600">{pr.name}</p>
-                                  {pfs.map((p, i) => (
-                                    <OrderRow
-                                      key={p.id}
-                                      name={p.name}
-                                      meta={p.type}
-                                      color={resolvePortfolioColor(p, portfolios, providers, accounts)}
-                                      {...orderProps("portfolios", `portfolios:${pr.id}`, pfs, i)}
-                                    />
-                                  ))}
-                                </div>
-                              );
-                            })}
-                            {directPfs.length > 0 && (
-                              <div className="pl-2">
-                                <p className="px-1 text-[10px] text-zinc-600">Direct</p>
-                                {directPfs.map((p, i) => (
-                                  <OrderRow
-                                    key={p.id}
-                                    name={p.name}
-                                    meta={p.type}
-                                    color={resolvePortfolioColor(p, portfolios, providers, accounts)}
-                                    {...orderProps("portfolios", `direct:${acc.id}`, directPfs, i)}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {unassignedPortfolios.length > 0 && (
-                        <div>
-                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">Unassigned</p>
-                          {unassignedPortfolios.map((p, i) => (
+                      {portfolioGroups.map((group) => (
+                        <div key={group.key}>
+                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{group.label}</p>
+                          {group.items.map((p, i) => (
                             <OrderRow
                               key={p.id}
                               name={p.name}
                               meta={p.type}
-                              color={resolvePortfolioColor(p, portfolios, providers, accounts)}
-                              {...orderProps("portfolios", "unassigned", unassignedPortfolios, i)}
+                              color={resolvePortfolioColor(p, portfolios, providers, accounts, palette)}
+                              {...orderProps("portfolios", group.key, group.items, i)}
                             />
                           ))}
                         </div>
-                      )}
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -825,19 +945,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
           </div>
         </section>
 
-        <section aria-labelledby="palette-heading" className="py-6">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 id="palette-heading" className="text-sm font-medium text-white">Palette</h2>
-            <span className="text-[11px] text-zinc-600">{PALETTE.length} data colours</span>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2.5">
-            {PALETTE.map(c=> (
-              <span key={c.value} className="flex items-center gap-2 text-[11px] text-zinc-500">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.value }} /> {c.label}
-              </span>
-            ))}
-          </div>
-        </section>
+        <PaletteEditor />
       </div>
     </section>
   );
