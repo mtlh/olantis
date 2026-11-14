@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
+import { resolveAccountColor, resolvePortfolioColor, resolveProviderColor, type PaletteColor, PALETTE } from "@/lib/colors";
 import { holdingValueGBP, type FxRates } from "@/lib/format";
 import type { Account, Holding, Portfolio, Provider } from "@/lib/store";
 
@@ -13,6 +13,7 @@ type UseHoldingViewDataProps = {
   providers: Provider[];
   accounts: Account[];
   fxRates: FxRates;
+  palette?: readonly PaletteColor[];
 };
 
 export function useHoldingViewData({
@@ -23,6 +24,7 @@ export function useHoldingViewData({
   providers,
   accounts,
   fxRates,
+  palette = PALETTE,
 }: UseHoldingViewDataProps) {
   const holding = useMemo(() => {
     if (!holdingId) return null;
@@ -37,13 +39,14 @@ export function useHoldingViewData({
   );
 
   const color = useMemo(() => {
-    if (!holding) return "#60a5fa";
+    const fallback = palette[0]?.value ?? "#60a5fa";
+    if (!holding) return fallback;
     const provider = holding.providerId ? providers.find((item) => item.id === holding.providerId) : undefined;
     const account = holding.accountId ? accounts.find((item) => item.id === holding.accountId) : undefined;
-    if (portfolio) return resolvePortfolioColor(portfolio, portfolios, providers, accounts);
-    if (provider) return resolveProviderColor(provider, providers, accounts);
-    return account ? resolveAccountColor(account, accounts) : "#60a5fa";
-  }, [accounts, holding, portfolio, portfolios, providers]);
+    if (portfolio) return resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette);
+    if (provider) return resolveProviderColor(provider, providers, accounts, palette);
+    return account ? resolveAccountColor(account, accounts, palette) : fallback;
+  }, [accounts, holding, palette, portfolio, portfolios, providers]);
 
   const scopeValue = useMemo(() => {
     if (!holding) return 0;

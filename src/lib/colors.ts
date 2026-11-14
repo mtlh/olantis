@@ -1,4 +1,11 @@
-export const PALETTE = [
+export type PaletteColor = { id: string; label: string; value: string };
+
+/**
+ * The default data palette. Users can edit, extend and trim this list in
+ * Settings; resolved colours accept a palette argument so a custom list only
+ * affects the workspace it belongs to.
+ */
+export const PALETTE: readonly PaletteColor[] = [
   { id: "blue", label: "Blue", value: "#60a5fa" },
   { id: "emerald", label: "Emerald", value: "#34d399" },
   { id: "pink", label: "Pink", value: "#f472b6" },
@@ -11,7 +18,7 @@ export const PALETTE = [
   { id: "indigo", label: "Indigo", value: "#818cf8" },
   { id: "lime", label: "Lime", value: "#84cc16" },
   { id: "zinc", label: "Zinc", value: "#71717a" },
-] as const;
+];
 
 export function tintColor(color: string, amount: number) {
   try {
@@ -31,8 +38,12 @@ export function tintColor(color: string, amount: number) {
 
 export const TINT_STEPS = [0, 0.18, -0.18, 0.32, -0.32, 0.12, -0.12] as const;
 
-export function portfolioTint(base: string | null | undefined, index: number) {
-  if (!base) return PALETTE[index % PALETTE.length].value;
+export function portfolioTint(
+  base: string | null | undefined,
+  index: number,
+  palette: readonly PaletteColor[] = PALETTE,
+) {
+  if (!base) return palette[index % palette.length]?.value ?? PALETTE[0]?.value ?? "#60a5fa";
   return tintColor(base, TINT_STEPS[index % TINT_STEPS.length]);
 }
 
@@ -75,7 +86,11 @@ function orderedIndexInGroup<T extends ColorItem>(
 
 const accountIndexCache = new WeakMap<readonly ColorAccount[], Map<string, number>>();
 
-export function resolveAccountColor(account: ColorAccount, accounts: readonly ColorAccount[]) {
+export function resolveAccountColor(
+  account: ColorAccount,
+  accounts: readonly ColorAccount[],
+  palette: readonly PaletteColor[] = PALETTE,
+) {
   if (account.color) return account.color;
   let index = accountIndexCache.get(accounts);
   if (!index) {
@@ -86,20 +101,26 @@ export function resolveAccountColor(account: ColorAccount, accounts: readonly Co
     accountIndexCache.set(accounts, index);
   }
   const position = index.get(account.id);
-  return PALETTE[(position === undefined || position < 0 ? 0 : position) % PALETTE.length].value;
+  return palette[(position === undefined || position < 0 ? 0 : position) % palette.length]?.value
+    ?? PALETTE[0]?.value
+    ?? "#60a5fa";
 }
 
 export function resolveProviderColor(
   provider: ColorProvider,
   providers: readonly ColorProvider[],
   accounts: readonly ColorAccount[],
+  palette: readonly PaletteColor[] = PALETTE,
 ) {
   if (provider.color) return provider.color;
   const account = accounts.find((item) => item.id === provider.accountId);
-  const accountColor = account ? resolveAccountColor(account, accounts) : PALETTE[0].value;
+  const accountColor = account
+    ? resolveAccountColor(account, accounts, palette)
+    : palette[0]?.value ?? PALETTE[0]?.value ?? "#60a5fa";
   return portfolioTint(
     accountColor,
     orderedIndexInGroup(providers, `account:${provider.accountId}`, (item) => item.accountId, provider.id),
+    palette,
   );
 }
 
@@ -108,6 +129,7 @@ export function resolvePortfolioColor(
   portfolios: readonly ColorPortfolio[],
   providers: readonly ColorProvider[],
   accounts: readonly ColorAccount[],
+  palette: readonly PaletteColor[] = PALETTE,
 ) {
   if (portfolio.color) return portfolio.color;
 
@@ -115,10 +137,11 @@ export function resolvePortfolioColor(
     ? providers.find((item) => item.id === portfolio.providerId)
     : undefined;
   if (provider) {
-    const providerColor = resolveProviderColor(provider, providers, accounts);
+    const providerColor = resolveProviderColor(provider, providers, accounts, palette);
     return portfolioTint(
       providerColor,
       orderedIndexInGroup(portfolios, `provider:${provider.id}`, (item) => item.providerId ?? "", portfolio.id),
+      palette,
     );
   }
 
@@ -126,7 +149,7 @@ export function resolvePortfolioColor(
     ? accounts.find((item) => item.id === portfolio.accountId)
     : undefined;
   if (account) {
-    const accountColor = resolveAccountColor(account, accounts);
+    const accountColor = resolveAccountColor(account, accounts, palette);
     return portfolioTint(
       accountColor,
       orderedIndexInGroup(
@@ -135,11 +158,13 @@ export function resolvePortfolioColor(
         (item) => (item.providerId ? "" : item.accountId ?? ""),
         portfolio.id,
       ),
+      palette,
     );
   }
 
   return portfolioTint(
     null,
     orderedIndexInGroup(portfolios, "unassigned", (item) => (!item.accountId && !item.providerId ? "unassigned" : ""), portfolio.id),
+    palette,
   );
 }
