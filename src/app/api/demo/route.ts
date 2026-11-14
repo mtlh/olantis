@@ -167,16 +167,29 @@ async function seedDemo(userId: string) {
   // let the four dependent waves below run in the foreground.
   const sideWrites: Promise<unknown>[] = [];
   if (existingGoals.length === 0) {
-    const targetDate = new Date();
-    targetDate.setUTCFullYear(targetDate.getUTCFullYear() + 2);
-    sideWrites.push(db.insert(goals).values({
-      id: crypto.randomUUID(),
-      userId,
-      name: "Build a £50,000 portfolio",
-      targetValue: 50000,
-      targetDate: targetDate.toISOString().slice(0, 10),
-      createdAt: now,
-    }));
+    // Two milestones so the demo shows how several goals share one portfolio.
+    const nearDate = new Date();
+    nearDate.setUTCFullYear(nearDate.getUTCFullYear() + 2);
+    const longDate = new Date();
+    longDate.setUTCFullYear(longDate.getUTCFullYear() + 5);
+    sideWrites.push(db.insert(goals).values([
+      {
+        id: crypto.randomUUID(),
+        userId,
+        name: "Build a £50,000 portfolio",
+        targetValue: 50000,
+        targetDate: nearDate.toISOString().slice(0, 10),
+        createdAt: now,
+      },
+      {
+        id: crypto.randomUUID(),
+        userId,
+        name: "Reach £100,000",
+        targetValue: 100000,
+        targetDate: longDate.toISOString().slice(0, 10),
+        createdAt: now + 1,
+      },
+    ]));
   }
   if (demoWatchlist.length > 0) {
     sideWrites.push(db.insert(watchlistItems).values(demoWatchlist.map((item) => ({
