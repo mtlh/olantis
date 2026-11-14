@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect, useEffectEvent, useState, useCallback, useRef, useMemo } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useState, useCallback, useRef, useMemo, useSyncExternalStore } from "react";
 import { DEFAULT_FX_RATES, holdingValueGBP, type FxRates, type ValueChange } from "@/lib/format";
 import { DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "@/lib/settings";
 
@@ -73,6 +73,56 @@ export function useWorkspaceBootstrap(): WorkspaceBootstrap | null {
   return useContext(WorkspaceBootstrapContext);
 }
 
+/**
+ * A reorder is accepted by the server but only the view that issued it holds
+ * fresh rows — every hook call keeps its own state, so the sidebar used to wait
+ * for its next refetch before it reflected the new order. The accepted order is
+ * broadcast here instead, and each hook layers it over its own rows until the
+ * server order lands. Small, synchronous and external, so it is a store rather
+ * than state that needs an effect to stay in sync.
+ */
+type OrderTable = "accounts" | "providers" | "portfolios";
+type WorkspaceOrder = Record<OrderTable, Record<string, number>>;
+
+const EMPTY_ORDER: Record<string, number> = {};
+const EMPTY_WORKSPACE_ORDER: WorkspaceOrder = { accounts: EMPTY_ORDER, providers: EMPTY_ORDER, portfolios: EMPTY_ORDER };
+
+let workspaceOrder: WorkspaceOrder = EMPTY_WORKSPACE_ORDER;
+const orderListeners = new Set<() => void>();
+
+function subscribeWorkspaceOrder(listener: () => void) {
+  orderListeners.add(listener);
+  return () => {
+    orderListeners.delete(listener);
+  };
+}
+
+function readWorkspaceOrder() {
+  return workspaceOrder;
+}
+
+/** Publishes the order the server accepted (or is about to accept) for a table. */
+export function applyWorkspaceOrder(table: OrderTable, ids: string[]) {
+  workspaceOrder = {
+    ...workspaceOrder,
+    [table]: ids.length ? Object.fromEntries(ids.map((id, index) => [id, index])) : EMPTY_ORDER,
+  };
+  for (const listener of orderListeners) listener();
+}
+
+function useWorkspaceOrder(): WorkspaceOrder {
+  return useSyncExternalStore(subscribeWorkspaceOrder, readWorkspaceOrder, () => EMPTY_WORKSPACE_ORDER);
+}
+
+/** Overlays a broadcast order on rows, reusing every row the order did not move. */
+function applyOrder<T extends { id: string; sortOrder?: number | null }>(rows: T[], order: Record<string, number>): T[] {
+  if (order === EMPTY_ORDER) return rows;
+  return rows.map((row) => {
+    const next = order[row.id];
+    return next === undefined || next === row.sortOrder ? row : { ...row, sortOrder: next };
+  });
+}
+
 type AccountPayload = { id: string; name?: string; color?: string | null };
 type ProviderPayload = { id: string; name?: string; color?: string | null; accountId?: string };
 type HoldingsBody = { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; sector?: string | null; purchaseDate?: string; exchange?: string };
@@ -129,12 +179,14 @@ function useAsyncInit(load: () => Promise<void>) {
 
 export function useAccounts() {
   const boot = useWorkspaceBootstrap();
-  const [accounts, setAccounts] = useState<Account[]>(boot?.accounts ?? []);
+  const [rows, setRows] = useState<Account[]>(boot?.accounts ?? []);
+  const order = useWorkspaceOrder();
+  const accounts = useMemo(() => applyOrder(rows, order.accounts), [rows, order.accounts]);
   const [ready, setReady] = useState(!!boot);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
-      setAccounts(parseList<Account>(await api("/api/accounts")));
+      setRows(parseList<Account>(await api("/api/accounts")));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load accounts");
@@ -144,7 +196,7 @@ export function useAccounts() {
   useAsyncInit(() => (boot ? Promise.resolve() : refresh()));
   const create = useCallback(async (name: string) => {
     const r = await api("/api/accounts", { method: "POST", body: JSON.stringify({ name }) }) as { id: string };
-    setAccounts((prev) => [...prev, { id: r.id, name, color: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) }]);
+    setRows((prev) => [...prev, { id: r.id, name, color: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) }]);
     return r;
   }, []);
   const remove = useCallback(async (id: string) => {
@@ -155,24 +207,26 @@ export function useAccounts() {
     const payload: AccountPayload = { id, name };
     if (color !== undefined) payload.color = color;
     await api("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
-    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, name, ...(color !== undefined ? { color: color ?? null } : {}) } : a)));
+    setRows((prev) => prev.map((a) => (a.id === id ? { ...a, name, ...(color !== undefined ? { color: color ?? null } : {}) } : a)));
   }, []);
   const setColor = useCallback(async (id: string, color: string | null) => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ id, color }) });
-    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, color } : a)));
+    setRows((prev) => prev.map((a) => (a.id === id ? { ...a, color } : a)));
   }, []);
-  return { accounts, ready, error, create, remove, rename, setColor, refresh, setAccounts };
+  return { accounts, ready, error, create, remove, rename, setColor, refresh, setAccounts: setRows };
 }
 
 export function useProviders() {
   const boot = useWorkspaceBootstrap();
-  const [providers, setProviders] = useState<Provider[]>(boot?.providers ?? []);
+  const [rows, setRows] = useState<Provider[]>(boot?.providers ?? []);
+  const order = useWorkspaceOrder();
+  const providers = useMemo(() => applyOrder(rows, order.providers), [rows, order.providers]);
   const [ready, setReady] = useState(!!boot);
   const refresh = useCallback(async () => {
     try {
-      setProviders(parseList<Provider>(await api("/api/providers")));
+      setRows(parseList<Provider>(await api("/api/providers")));
     } catch {
-      setProviders([]);
+      setRows([]);
     }
     setReady(true);
   }, []);
@@ -185,23 +239,25 @@ export function useProviders() {
     const payload: ProviderPayload = { id, name };
     if (color !== undefined) payload.color = color;
     await api("/api/providers", { method: "POST", body: JSON.stringify(payload) });
-    setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, name, ...(color !== undefined ? { color: color ?? null } : {}) } : p)));
+    setRows((prev) => prev.map((p) => (p.id === id ? { ...p, name, ...(color !== undefined ? { color: color ?? null } : {}) } : p)));
   }, []);
   const setColor = useCallback(async (id: string, color: string | null) => {
     await api("/api/providers", { method: "POST", body: JSON.stringify({ id, color }) });
-    setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
+    setRows((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
   }, []);
-  return { providers, ready, remove, rename, setColor, refresh, setProviders };
+  return { providers, ready, remove, rename, setColor, refresh, setProviders: setRows };
 }
 
 export function usePortfolios() {
   const boot = useWorkspaceBootstrap();
-  const [portfolios, setPortfolios] = useState<Portfolio[]>(boot?.portfolios ?? []);
+  const [rows, setRows] = useState<Portfolio[]>(boot?.portfolios ?? []);
+  const order = useWorkspaceOrder();
+  const portfolios = useMemo(() => applyOrder(rows, order.portfolios), [rows, order.portfolios]);
   const [ready, setReady] = useState(!!boot);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
-      setPortfolios(parseList<Portfolio>(await api("/api/portfolios")));
+      setRows(parseList<Portfolio>(await api("/api/portfolios")));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load portfolios");
@@ -213,7 +269,7 @@ export function usePortfolios() {
 
   const create = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
     const r = await api("/api/portfolios", { method: "POST", body: JSON.stringify({ name, type, accountId: accountId ?? null, providerId: providerId ?? null }) }) as { id: string };
-    setPortfolios((prev) => [...prev, { id: r.id, name, type, accountId: accountId ?? null, providerId: providerId ?? null, color: null, holdings: [], sortOrder: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) } as Portfolio]);
+    setRows((prev) => [...prev, { id: r.id, name, type, accountId: accountId ?? null, providerId: providerId ?? null, color: null, holdings: [], sortOrder: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) } as Portfolio]);
     return r;
   };
   const remove = async (id: string) => {
@@ -225,12 +281,12 @@ export function usePortfolios() {
     if (providerId) {
       await refresh();
     } else {
-      setPortfolios((prev) => prev.map((p) => (p.id === id ? { ...p, accountId, providerId: providerId ?? null } : p)));
+      setRows((prev) => prev.map((p) => (p.id === id ? { ...p, accountId, providerId: providerId ?? null } : p)));
     }
   };
   const setColor = async (id: string, color: string | null) => {
     await api("/api/portfolios", { method: "POST", body: JSON.stringify({ id, color }) });
-    setPortfolios((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
+    setRows((prev) => prev.map((p) => (p.id === id ? { ...p, color } : p)));
   };
   const upsertHolding = async (targetId: string, h: Omit<Holding, "id"> & { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null }, kind: "portfolio" | "provider" | "account" = "portfolio") => {
     const body: HoldingsBody = { ...h, id: h.id };
@@ -254,14 +310,14 @@ export function usePortfolios() {
   const updatePrices = async (prices: Record<string, { price: number; currency: string }>) => {
     const r = await api("/api/holdings", { method: "PATCH", body: JSON.stringify({ symbols: prices }) }) as { holdings?: Holding[] };
     // The route echoes the rows it touched, so apply them without a re-read.
-    const rows = Array.isArray(r.holdings) ? r.holdings : [];
-    if (rows.length) {
-      const byId = new Map(rows.map((h) => [h.id, h]));
-      setPortfolios((prev) => prev.map((p) => ({ ...p, holdings: p.holdings.map((h) => byId.get(h.id) ?? h) })));
+    const touched = Array.isArray(r.holdings) ? r.holdings : [];
+    if (touched.length) {
+      const byId = new Map(touched.map((h) => [h.id, h]));
+      setRows((prev) => prev.map((p) => ({ ...p, holdings: p.holdings.map((h) => byId.get(h.id) ?? h) })));
     }
-    return rows;
+    return touched;
   };
-  return { portfolios, ready, error, create, remove, move, setColor, upsertHolding, deleteHolding, moveHolding, updatePrices, refresh, setPortfolios };
+  return { portfolios, ready, error, create, remove, move, setColor, upsertHolding, deleteHolding, moveHolding, updatePrices, refresh, setPortfolios: setRows };
 }
 
 const SNAPSHOT_DEBOUNCE_MS = 2000;

@@ -1,5 +1,5 @@
 "use client";
-import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, type AppSettings } from "@/lib/store";
+import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, applyWorkspaceOrder, type AppSettings, type Portfolio } from "@/lib/store";
 import { useMemo, useState, type DragEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,9 @@ interface SettingsState {
   defaultRange: AppSettings["defaultRange"];
   showTradeMarkers: number;
 }
+
+/** The three sortable tables behind /api/reorder. */
+type OrderTable = "accounts" | "providers" | "portfolios";
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const ROW_HINT = "mt-0.5 text-[11px] text-zinc-600";
@@ -272,8 +275,8 @@ function PaletteEditor() {
 }
 
 export function SettingsView({ isDemo }: { isDemo?: boolean }) {
-  const { accounts, setColor: setAccountColor, refresh: refreshAccounts } = useAccounts();
-  const { providers, setColor: setProviderColor, refresh: refreshProviders } = useProviders();
+  const { accounts, setColor: setAccountColor } = useAccounts();
+  const { providers, setColor: setProviderColor } = useProviders();
   const { portfolios, setColor: setPortfolioColor, refresh: refreshPortfolios } = usePortfolios();
   const { holdings: allHoldings } = useHoldings();
   const { settings: appSettings, save: saveAppSettings } = useSettings();
@@ -324,31 +327,35 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     try { await setPortfolioColor(id, color); toast({ title: "Portfolio color updated", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
   };
 
-  const handleReorder = async (table: string, ids: string[]) => {
+  const handleReorder = async (table: OrderTable, ids: string[], previousIds: string[]) => {
+    // Paint the accepted order everywhere — the sidebar keeps its own copy of
+    // these rows — then persist it in the background. A failed save puts the
+    // previous order back so the sidebar never disagrees with the server.
+    applyWorkspaceOrder(table, ids);
     try {
       const res = await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table, ids }) });
       if (!res.ok) throw new Error((await res.text()) || `Reorder failed (${res.status})`);
-      if (table === "accounts") await refreshAccounts();
-      else if (table === "providers") await refreshProviders();
-      else if (table === "portfolios") await refreshPortfolios();
       toast({ title: "Order updated", variant: "success" });
-    } catch (e: unknown) { toast({ title: "Reorder failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); }
+    } catch (e: unknown) {
+      applyWorkspaceOrder(table, previousIds);
+      toast({ title: "Reorder failed", description: e instanceof Error ? e.message : String(e), variant: "error" });
+    }
   };
 
-  const moveItem = (table: string, list: { id: string }[], from: number, to: number) => {
+  const moveItem = (table: OrderTable, list: { id: string }[], from: number, to: number) => {
     if (from === to || to < 0 || to >= list.length) return;
     const ids = list.map(x => x.id);
     const [moved] = ids.splice(from, 1);
     ids.splice(to, 0, moved);
-    void handleReorder(table, ids);
+    void handleReorder(table, ids, list.map(x => x.id));
   };
 
   const [drag, setDrag] = useState<{ group: string; index: number } | null>(null);
   const [dragOver, setDragOver] = useState<{ group: string; index: number } | null>(null);
 
-  // Rows are only droppable inside their own group, so dragging never reorders
-  // a provider across accounts (or a portfolio across providers).
-  const orderProps = (table: string, group: string, list: { id: string }[], index: number) => ({
+  // Rows are only droppable inside their own group, so dragging never mixes
+  // accounts, providers of different accounts, or portfolios of different accounts.
+  const orderProps = (table: OrderTable, group: string, list: { id: string }[], index: number) => ({
     index,
     count: list.length,
     dragging: drag?.group === group && drag.index === index,
@@ -381,26 +388,43 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
     return m;
   }, [providers]);
-  const { portfoliosByProvider, portfoliosByAccount, unassignedPortfolios } = useMemo(() => {
-    const byProvider = new Map<string, typeof portfolios>();
-    const byAccount = new Map<string, typeof portfolios>();
-    const unassigned: typeof portfolios = [];
-    for (const p of portfolios) {
-      if (p.providerId) { const arr = byProvider.get(p.providerId) ?? []; arr.push(p); byProvider.set(p.providerId, arr); }
-      else if (p.accountId) { const arr = byAccount.get(p.accountId) ?? []; arr.push(p); byAccount.set(p.accountId, arr); }
-      else { unassigned.push(p); }
-    }
-    for (const [, arr] of byProvider) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    for (const [, arr] of byAccount) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    unassigned.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    return { portfoliosByProvider: byProvider, portfoliosByAccount: byAccount, unassignedPortfolios: unassigned };
-  }, [portfolios]);
 
   const directHoldings = useMemo(() => allHoldings.filter((holding) => !holding.portfolioId), [allHoldings]);
   const holdingCount = useMemo(
     () => portfolios.reduce((sum, portfolio) => sum + portfolio.holdings.length, 0) + directHoldings.length,
     [portfolios, directHoldings],
   );
+  // Only siblings inside the same group can trade places, so a group with a
+  // single row is not a candidate for swapping and is left out entirely.
+  const providerGroups = useMemo(
+    () => sortedAccounts
+      .map((account) => ({ account, items: providersByAccount.get(account.id) ?? [] }))
+      .filter((group) => group.items.length > 1),
+    [providersByAccount, sortedAccounts],
+  );
+  const portfolioGroups = useMemo(() => {
+    // The sidebar lists portfolios inside their account card (provider is only a
+    // subtitle), so an account is the unit whose portfolios can swap places.
+    const accountIdByProvider = new Map(providers.map((provider) => [provider.id, provider.accountId]));
+    const byAccount = new Map<string, Portfolio[]>();
+    const unassigned: Portfolio[] = [];
+    for (const portfolio of sortedPortfolios) {
+      const accountId = portfolio.providerId ? accountIdByProvider.get(portfolio.providerId) ?? portfolio.accountId : portfolio.accountId;
+      if (!accountId) { unassigned.push(portfolio); continue; }
+      const items = byAccount.get(accountId) ?? [];
+      items.push(portfolio);
+      byAccount.set(accountId, items);
+    }
+    const groups: { key: string; label: string; items: Portfolio[] }[] = [];
+    for (const account of sortedAccounts) {
+      const items = byAccount.get(account.id) ?? [];
+      if (items.length > 1) groups.push({ key: `account:${account.id}`, label: account.name, items });
+    }
+    if (unassigned.length > 1) groups.push({ key: "unassigned", label: "Unassigned", items: unassigned });
+    return groups;
+  }, [providers, sortedAccounts, sortedPortfolios]);
+  const hasAccountSwaps = sortedAccounts.length > 1;
+  const hasSwaps = hasAccountSwaps || providerGroups.length > 0 || portfolioGroups.length > 0;
   const allocation = usePortfolioAllocation({
     activePortfolio: null,
     portfolios,
@@ -413,7 +437,6 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     palette,
   });
   const defaultRange: ChartRange = settings.defaultRange === "1M" || settings.defaultRange === "3M" || settings.defaultRange === "MAX" ? settings.defaultRange : "1Y";
-  const ordered = sortedAccounts.length === 0 && providers.length === 0 && portfolios.length === 0;
 
   const exportAll = async () => {
     const data = { accounts, providers, portfolios, exportedAt: new Date().toISOString() };
@@ -615,15 +638,15 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
           </summary>
           <div className="pt-3">
-            {ordered ? (
+            {!hasSwaps ? (
               <p className="text-sm text-zinc-500">Nothing to reorder yet.</p>
             ) : (
-              <div className="grid max-w-3xl items-start gap-x-10 gap-y-4 lg:grid-cols-2">
-                <p className="text-[11px] text-zinc-600 lg:col-span-2">Drag a row to move it; the arrows appear on hover.</p>
+              <div className={`grid max-w-3xl items-start gap-x-10 gap-y-4 ${hasAccountSwaps && providerGroups.length ? "lg:grid-cols-2" : ""}`}>
+                <p className="text-[11px] text-zinc-600">Drag a row to move it; the arrows appear on hover.</p>
 
-                <div>
-                  <p className={LABEL}>Accounts</p>
-                  {sortedAccounts.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No accounts</p> : (
+                {hasAccountSwaps && (
+                  <div>
+                    <p className={LABEL}>Accounts</p>
                     <div className="mt-1">
                       {sortedAccounts.map((acc, i) => (
                         <OrderRow
@@ -634,98 +657,51 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                         />
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div>
-                  <p className={LABEL}>Providers</p>
-                  {providers.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No providers</p> : (
+                {providerGroups.length > 0 && (
+                  <div>
+                    <p className={LABEL}>Providers</p>
                     <div className="mt-1 space-y-2">
-                      {sortedAccounts.map(acc => {
-                        const provs = providersByAccount.get(acc.id) ?? [];
-                        if (provs.length === 0) return null;
-                        return (
-                          <div key={acc.id}>
-                            <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{acc.name}</p>
-                            {provs.map((pr, i) => (
-                              <OrderRow
-                                key={pr.id}
-                                name={pr.name}
-                                color={resolveProviderColor(pr, providers, accounts, palette)}
-                                {...orderProps("providers", `providers:${acc.id}`, provs, i)}
-                              />
-                            ))}
-                          </div>
-                        );
-                      })}
+                      {providerGroups.map(({ account, items }) => (
+                        <div key={account.id}>
+                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{account.name}</p>
+                          {items.map((pr, i) => (
+                            <OrderRow
+                              key={pr.id}
+                              name={pr.name}
+                              color={resolveProviderColor(pr, providers, accounts, palette)}
+                              {...orderProps("providers", `providers:${account.id}`, items, i)}
+                            />
+                          ))}
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div className="lg:col-span-2">
-                  <p className={LABEL}>Portfolios</p>
-                  {portfolios.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No portfolios</p> : (
+                {portfolioGroups.length > 0 && (
+                  <div>
+                    <p className={LABEL}>Portfolios</p>
                     <div className="mt-1 space-y-2">
-                      {sortedAccounts.map(acc => {
-                        const provs = providersByAccount.get(acc.id) ?? [];
-                        const directPfs = portfoliosByAccount.get(acc.id) ?? [];
-                        const hasContent = provs.some(pr => (portfoliosByProvider.get(pr.id) ?? []).length > 0) || directPfs.length > 0;
-                        if (!hasContent) return null;
-                        return (
-                          <div key={acc.id}>
-                            <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{acc.name}</p>
-                            {provs.map(pr => {
-                              const pfs = portfoliosByProvider.get(pr.id) ?? [];
-                              if (pfs.length === 0) return null;
-                              return (
-                                <div key={pr.id} className="pl-2">
-                                  <p className="px-1 text-[10px] text-zinc-600">{pr.name}</p>
-                                  {pfs.map((p, i) => (
-                                    <OrderRow
-                                      key={p.id}
-                                      name={p.name}
-                                      meta={p.type}
-                                      color={resolvePortfolioColor(p, portfolios, providers, accounts, palette)}
-                                      {...orderProps("portfolios", `portfolios:${pr.id}`, pfs, i)}
-                                    />
-                                  ))}
-                                </div>
-                              );
-                            })}
-                            {directPfs.length > 0 && (
-                              <div className="pl-2">
-                                <p className="px-1 text-[10px] text-zinc-600">Direct</p>
-                                {directPfs.map((p, i) => (
-                                  <OrderRow
-                                    key={p.id}
-                                    name={p.name}
-                                    meta={p.type}
-                                    color={resolvePortfolioColor(p, portfolios, providers, accounts, palette)}
-                                    {...orderProps("portfolios", `direct:${acc.id}`, directPfs, i)}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {unassignedPortfolios.length > 0 && (
-                        <div>
-                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">Unassigned</p>
-                          {unassignedPortfolios.map((p, i) => (
+                      {portfolioGroups.map((group) => (
+                        <div key={group.key}>
+                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{group.label}</p>
+                          {group.items.map((p, i) => (
                             <OrderRow
                               key={p.id}
                               name={p.name}
                               meta={p.type}
                               color={resolvePortfolioColor(p, portfolios, providers, accounts, palette)}
-                              {...orderProps("portfolios", "unassigned", unassignedPortfolios, i)}
+                              {...orderProps("portfolios", group.key, group.items, i)}
                             />
                           ))}
                         </div>
-                      )}
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
