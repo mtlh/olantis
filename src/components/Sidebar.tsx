@@ -200,6 +200,9 @@ function useDesktopLayout() {
 }
 
 type RailTipRow = { label: string; value: string };
+// A collapsed rail row only shows an icon, so the card lists what the portfolio
+// actually holds instead of just an aggregate count.
+type RailTipHolding = { id: string; label: string; value: string };
 
 // Per-portfolio valuation is recomputed only when the portfolio data or the FX
 // rates change, not on every render of the tree.
@@ -210,10 +213,11 @@ const EMPTY_VALUATION: PortfolioValuation = { total: 0, holdings: [], values: ne
 // Icon-only rows need their detail somewhere. A portal keeps the card clear of
 // the sidebar's scroll container, which would otherwise clip it. The same card
 // also serves full-width rows in the expanded tree, anchoring to the row.
-function RailTip({ title, subtitle, rows, anchorClassName = "mx-auto block w-fit", children }: {
+function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto block w-fit", children }: {
   title: string;
   subtitle?: string;
   rows?: RailTipRow[];
+  holdings?: RailTipHolding[];
   anchorClassName?: string;
   children: ReactNode;
 }) {
@@ -232,13 +236,16 @@ function RailTip({ title, subtitle, rows, anchorClassName = "mx-auto block w-fit
     // Estimate the card height so it can be centred on the icon without a
     // transform (transformed fixed layers rasterise badly in some Chromium
     // screenshots and hurt text sharpness).
-    const estimatedHeight = 54 + (subtitle ? 16 : 0) + (rows?.length ? 14 + rows.length * 18 : 0);
-    const top = Math.min(
+    const estimatedHeight = 54
+      + (subtitle ? 16 : 0)
+      + (rows?.length ? 14 + rows.length * 18 : 0)
+      + (holdings?.length ? 32 + holdings.length * 18 : 0);
+    const top = Math.max(8, Math.min(
       window.innerHeight - estimatedHeight - 8,
       Math.max(8, rect.top + rect.height / 2 - estimatedHeight / 2),
-    );
+    ));
     setCoords({ top, left });
-  }, [rows, subtitle]);
+  }, [holdings, rows, subtitle]);
 
   const hide = useCallback(() => setCoords(null), []);
 
@@ -281,6 +288,19 @@ function RailTip({ title, subtitle, rows, anchorClassName = "mx-auto block w-fit
               ))}
             </div>
           )}
+          {!!holdings?.length && (
+            <div className="mt-2 border-t border-white/[0.06] pt-2">
+              <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Holdings</p>
+              <div className="space-y-1">
+                {holdings.map((holding) => (
+                  <div key={holding.id} className="flex items-center justify-between gap-3 text-[11px]">
+                    <span className="min-w-0 truncate text-zinc-400">{holding.label}</span>
+                    <span className="shrink-0 tabular-nums text-zinc-300">{holding.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>,
         document.body,
       )}
@@ -288,11 +308,12 @@ function RailTip({ title, subtitle, rows, anchorClassName = "mx-auto block w-fit
   );
 }
 
-function RailButton({ icon, label, subtitle, rows, active, onClick, href, color, level = 0 }: {
+function RailButton({ icon, label, subtitle, rows, holdings, active, onClick, href, color, level = 0 }: {
   icon: ReactNode;
   label: string;
   subtitle?: string;
   rows?: RailTipRow[];
+  holdings?: RailTipHolding[];
   active?: boolean;
   onClick?: () => void;
   href?: string;
@@ -304,7 +325,7 @@ function RailButton({ icon, label, subtitle, rows, active, onClick, href, color,
   const style = { color: color ?? undefined, borderColor: active ? "rgba(255,255,255,0.12)" : "transparent" };
 
   return (
-    <RailTip title={label} subtitle={subtitle} rows={rows}>
+    <RailTip title={label} subtitle={subtitle} rows={rows} holdings={holdings}>
       {href ? (
         <Link href={href} onClick={onClick} aria-label={label} aria-current={active ? "page" : undefined} className={className} style={style}>
           {icon}
@@ -1051,24 +1072,32 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
     return (
       <div className="space-y-1 pt-1">
-        {railPortfolios.map((portfolio) => (
-          <RailButton
-            key={portfolio.id}
-            icon={portfolio.providerId && providerById.get(portfolio.providerId)?.name
-              ? <ProviderIcon provider={providerById.get(portfolio.providerId)!} size={22} />
-              : <Layers className="h-[17px] w-[17px]" />}
-            label={portfolio.name}
-            subtitle={portfolioContext(portfolio)}
-            rows={[
-              { label: "Value", value: fmtGBP(valuationFor(portfolio).total) },
-              { label: "Holdings", value: String(portfolio.holdings.length) },
-              { label: "Type", value: portfolio.type },
-            ]}
-            active={activeId === portfolio.id}
-            color={resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette)}
-            onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
-          />
-        ))}
+        {railPortfolios.map((portfolio) => {
+          const valuation = valuationFor(portfolio);
+          return (
+            <RailButton
+              key={portfolio.id}
+              icon={portfolio.providerId && providerById.get(portfolio.providerId)?.name
+                ? <ProviderIcon provider={providerById.get(portfolio.providerId)!} size={22} />
+                : <Layers className="h-[17px] w-[17px]" />}
+              label={portfolio.name}
+              subtitle={portfolioContext(portfolio)}
+              rows={[
+                { label: "Value", value: fmtGBP(valuation.total) },
+                { label: "Holdings", value: String(valuation.holdings.length) },
+                { label: "Type", value: portfolio.type },
+              ]}
+              holdings={valuation.holdings.map((holding) => ({
+                id: holding.id,
+                label: holding.symbol,
+                value: fmtGBP(valuation.values.get(holding.id) ?? 0),
+              }))}
+              active={activeId === portfolio.id}
+              color={resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette)}
+              onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
+            />
+          );
+        })}
         {railDirectHoldings.map((holding) => (
           <RailButton
             key={holding.id}
