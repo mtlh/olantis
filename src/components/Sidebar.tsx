@@ -2,7 +2,7 @@
 import { type Portfolio, type Account, type Provider, type Holding, useSettings, applyWorkspaceOrder } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, Power, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -350,7 +350,6 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
   const pathname = usePathname();
   const page = pathname.split("/").filter(Boolean)[0] ?? "dashboard";
   const update = useDesktopUpdate();
-  const { toast } = useToast();
   const goDashboard = () => { onSelect(null); onClose(); };
   const navLink = (href: string, label: string, active: boolean, icon: ReactNode, detail: string) => {
     const link = (
@@ -387,60 +386,32 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
   ) : navLink("/dashboard", "Dashboard", false, <LayoutDashboard className={TOOL_ICON_CLASS} />, "Portfolio overview");
 
   const handleUpdateCheck = () => {
-    void update.check().then((started) => {
-      toast(started
-        ? { title: "Checking for updates", description: "This control will show when one is ready.", variant: "info" }
-        : { title: "Update checks need the desktop app", description: "Install Olantis to receive automatic updates.", variant: "info" });
-    });
+    void update.check();
   };
 
-  // Prices are pulled by the daily cron job only, so the only control left here
-  // is the app updater: it checks for a new build and offers the restart.
-  const updateButton = (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className={`${TOOL_BUTTON_CLASS} relative ${update.ready ? "text-amber-300 hover:text-amber-200" : ""}`}
-            aria-label={update.ready ? `Update ready${update.version ? ` (v${update.version})` : ""}. Open for restart options.` : "Check for updates"}
-            title={rail ? undefined : update.ready ? "Update ready" : "Check for updates"}
-          >
-            <RefreshCw className={TOOL_ICON_CLASS} />
-            {update.ready && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />}
-          </Button>
-        }
-      />
-      <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-60 border border-white/10 bg-zinc-900/95 p-1 text-white shadow-xl backdrop-blur">
-        {update.ready ? (
-          <>
-            <div className="px-2 py-1.5">
-              <p className="text-xs font-semibold text-amber-300">Update ready{update.version ? ` · v${update.version}` : ""}</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500">Restart Olantis to install it.</p>
-            </div>
-            <DropdownMenuSeparator className="bg-white/10" />
-            <DropdownMenuItem onClick={update.restart} className="text-[13px]">
-              <Power className="h-3.5 w-3.5" />
-              Restart to update
-            </DropdownMenuItem>
-          </>
-        ) : (
-          <>
-            <div className="px-2 py-1.5">
-              <p className="text-xs font-semibold text-zinc-200">Updates</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500">Automatic updates for the desktop app.</p>
-            </div>
-            <DropdownMenuSeparator className="bg-white/10" />
-            <DropdownMenuItem onClick={handleUpdateCheck} className="text-[13px]">
-              <RefreshCw className="h-3.5 w-3.5" />
-              Check for updates
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  const updateLabel = update.ready
+    ? `Updating to ${update.version ? `v${update.version}` : "the new version"} and restarting…`
+    : update.busy
+      ? "Checking for updates…"
+      : "Check for updates";
+
+  // Desktop only: the icon spins while a check or download runs, then shows the
+  // new version and relaunches into it. The browser has no updater at all, so
+  // the web app gets no control.
+  const updateButton = update.desktop ? (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={`${TOOL_BUTTON_CLASS} relative ${update.ready ? "text-amber-300 hover:text-amber-200" : ""}`}
+      onClick={update.ready ? update.restart : handleUpdateCheck}
+      disabled={update.busy}
+      aria-label={updateLabel}
+      title={rail ? undefined : updateLabel}
+    >
+      <RefreshCw className={`${TOOL_ICON_CLASS} ${update.busy ? "animate-spin" : ""}`} />
+      {update.ready && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />}
+    </Button>
+  ) : null;
 
   const signOutLink = (
     <a
@@ -463,7 +434,12 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />, "Savings targets")}
           {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
           <div className="my-1 h-px w-6 bg-white/10" />
-          {withTip(update.ready ? "Update ready" : "Updates", update.ready ? "Restart to install" : "Check for updates", updateButton, [{ label: "Tickers updated", value: lastRefreshLabel ?? "Not yet" }])}
+          {update.desktop && withTip(
+            update.ready ? "Update ready" : update.busy ? "Checking for updates" : "Updates",
+            update.ready ? "Restarting to install" : update.busy ? "Looking for a new build" : "Check for updates",
+            updateButton,
+            [{ label: "Tickers updated", value: lastRefreshLabel ?? "Not yet" }],
+          )}
           {withTip(isDemo ? "Exit demo" : "Sign out", isDemo ? "Return to the landing page" : "End your session", signOutLink)}
         </div>
       </div>
