@@ -1071,7 +1071,6 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 size="icon-sm"
                 onClick={toggleSidebar}
                 aria-label="Collapse sidebar"
-                aria-expanded
                 title="Collapse sidebar"
                 className="shrink-0 text-zinc-500 hover:text-white"
               >
