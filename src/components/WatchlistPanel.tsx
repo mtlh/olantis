@@ -12,7 +12,7 @@ import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shar
 import { BrandIcon } from "@/components/BrandIcon";
 
 type WatchItem = { id: string; symbol: string; name: string; exchange: string | null; currency: string | null };
-type Quote = { price: number; currency: string };
+type Quote = { price: number; currency?: string | null };
 type SearchResult = {
   symbol: string;
   name: string;
@@ -75,7 +75,7 @@ function PriceChart({ data, loading, symbol, currency, change, heightClassName }
 
 export function WatchlistPanel() {
   const [items, setItems] = useState<WatchItem[]>([]);
-  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
+  const [quotes, setQuotes] = useState<Partial<Record<string, Quote>>>({});
   const [symbol, setSymbol] = useState("");
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -127,7 +127,7 @@ export function WatchlistPanel() {
     });
     const data: unknown = await response.json();
     if (!response.ok) throw new Error(apiError(data, "Could not refresh prices"));
-    setQuotes(data && typeof data === "object" ? data as Record<string, Quote> : {});
+    setQuotes(data && typeof data === "object" ? data : {});
   }, [items]);
 
   useEffect(() => {
@@ -141,7 +141,7 @@ export function WatchlistPanel() {
       .then(async (response) => {
         const data: unknown = await response.json();
         if (!response.ok) throw new Error(apiError(data, "Could not load prices"));
-        if (!cancelled) setQuotes(data && typeof data === "object" ? data as Record<string, Quote> : {});
+        if (!cancelled) setQuotes(data && typeof data === "object" ? data : {});
       })
       .catch(() => { if (!cancelled) setQuotes({}); });
     return () => { cancelled = true; };
@@ -168,11 +168,11 @@ export function WatchlistPanel() {
     };
   }, [items, symbol]);
 
-  const activeItem = items.find((item) => item.id === selectedId) ?? items[0] ?? null;
+  const activeItem = items.find((item) => item.id === selectedId) ?? items.at(0) ?? null;
   const activeSymbol = activeItem?.symbol;
   const activeExchange = activeItem?.exchange;
   const activeChartKey = activeItem ? `${activeItem.id}:${range}` : "";
-  const chartLoading = !!activeChartKey && loadedChartKey !== activeChartKey;
+  const chartLoading = Boolean(activeChartKey) && loadedChartKey !== activeChartKey;
   const activeQuote = activeItem
     ? quotes[`${activeItem.symbol.toUpperCase()}:${(activeItem.exchange ?? "").toUpperCase()}`] ?? quotes[activeItem.symbol.toUpperCase()] ?? quotes[activeItem.symbol]
     : undefined;
@@ -180,7 +180,7 @@ export function WatchlistPanel() {
     const quote = quotes[`${item.symbol.toUpperCase()}:${(item.exchange ?? "").toUpperCase()}`] ?? quotes[item.symbol.toUpperCase()] ?? quotes[item.symbol];
     return quote?.price != null;
   }).length;
-  const firstPrice = chart[0]?.price;
+  const firstPrice = chart.at(0)?.price;
   const lastPrice = activeQuote?.price ?? chart.at(-1)?.price;
   const chartChange = firstPrice != null && lastPrice != null && firstPrice !== 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : null;
   const chartData = useMemo(() => chart.map((point) => ({ ...point, label: chartDateLabel(point.date) })), [chart]);

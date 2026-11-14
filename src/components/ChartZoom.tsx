@@ -35,10 +35,10 @@ export function useChartZoom<T extends { date: string }>(data: T[]) {
   const renderedDragRef = useRef<DragState<T>>(null);
   const frameRef = useRef<number | null>(null);
 
-  const zoomed = zoom && zoom.data === data ? zoom : null;
+  const zoomed = zoom?.data === data ? zoom : null;
   const base = zoomed ? zoomed.i1 : 0;
   const visible = useMemo(() => (zoomed ? data.slice(zoomed.i1, zoomed.i2 + 1) : data), [data, zoomed]);
-  const activeDrag = drag && drag.data === data ? drag : null;
+  const activeDrag = drag?.data === data ? drag : null;
 
   const cancelPendingFrame = useCallback(() => {
     if (frameRef.current === null) return;
@@ -67,7 +67,7 @@ export function useChartZoom<T extends { date: string }>(data: T[]) {
       cancelPendingFrame();
       renderedDragRef.current = null;
       setDrag(null);
-      if (!d || d.data !== data) return;
+      if (d?.data !== data) return;
       const a = Math.min(d.a, d.b);
       const b = Math.max(d.a, d.b);
       if (b - a < 1) return;
@@ -92,7 +92,7 @@ export function useChartZoom<T extends { date: string }>(data: T[]) {
   };
   const onMouseMove = (e: ChartMouseEvent) => {
     const d = dragRef.current;
-    if (!d || d.data !== data) return;
+    if (d?.data !== data) return;
     const i = indexFromEvent(e, visible);
     // The ref already holds the newest index, so samples inside the same column
     // cost nothing at all.

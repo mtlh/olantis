@@ -116,7 +116,7 @@ export function HoldingsTable({
               </button>
             )}
           </div>
-          <Select value={sort} onValueChange={(value) => setSort((value ?? "value") as HoldingSort)}>
+          <Select value={sort} onValueChange={(value) => setSort((value ?? "value"))}>
             <SelectTrigger className="h-8 w-28 bg-white/[0.04] text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="value">Value</SelectItem>

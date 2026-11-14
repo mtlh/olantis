@@ -60,7 +60,7 @@ function ledgerFor(holding: HoldingRow, rows: readonly TransactionRow[]): Ledger
         (!t.holdingId && t.symbol === holding.symbol && (t.portfolioId ?? null) === (holding.portfolioId ?? null)),
     )
     .map((t) => ({ type: t.type, shares: t.shares, date: t.date, createdAt: t.createdAt }))
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt ?? 0) - (b.createdAt ?? 0));
+    .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
 }
 
 async function replaceHoldingSeries(userId: string, holdingId: string, series: readonly DatedValue[]) {
@@ -198,7 +198,7 @@ export async function backfillUserHistory(userId: string, opts?: { limit?: numbe
     loadOwnedHoldings(db, userId, { includeEmpty: true }),
     db.select({ id: portfolios.id, type: portfolios.type }).from(portfolios).where(eq(portfolios.userId, userId)),
     db.select().from(transactions).where(eq(transactions.userId, userId)),
-    getLatestFxRates().catch(() => ({ date: null, rates: {} as FxRates })),
+    getLatestFxRates().catch(() => ({ date: null, rates: {} })),
   ]);
 
   const manualPortfolioIds = new Set(portfolioRows.filter((p) => p.type === "manual").map((p) => p.id));
@@ -217,7 +217,7 @@ export async function backfillUserHistory(userId: string, opts?: { limit?: numbe
   const currencies = [...new Set(marketHoldings.map((h) => holdingCurrency(h)))];
   const rangeStart = marketHoldings
     .map((h) => isoDay(h.purchaseDate) ?? isoDay(ledgerFor(h, txRows)[0]?.date ?? null))
-    .filter((d): d is string => !!d)
+    .filter((d): d is string => Boolean(d))
     .sort()[0];
   const floor = addDays(today, -Math.round(365.25 * BACKFILL_MAX_YEARS));
 
@@ -226,11 +226,11 @@ export async function backfillUserHistory(userId: string, opts?: { limit?: numbe
     try {
       const from = rangeStart > floor ? rangeStart : floor;
       const earliest = await earliestFxDates(currencies);
-      const missing = currencies.filter(
-        (code) =>
-          !["GBP", "GBX"].includes(code.toUpperCase()) &&
-          (!earliest.get(code.toUpperCase()) || earliest.get(code.toUpperCase())! > from),
-      );
+      const missing = currencies.filter((code) => {
+        if (["GBP", "GBX"].includes(code.toUpperCase())) return false;
+        const earliestDate = earliest.get(code.toUpperCase());
+        return earliestDate == null || earliestDate > from;
+      });
       if (missing.length) await importFxHistory(from, today, missing);
       ratesByCurrency = await getFxRateSeries(currencies);
     } catch {
@@ -246,7 +246,7 @@ export async function backfillUserHistory(userId: string, opts?: { limit?: numbe
   const updates: HoldingUpdate[] = [];
 
   for (const holding of batch) {
-    const attempts = (holding.historyBackfillAttempts ?? 0) + 1;
+    const attempts = holding.historyBackfillAttempts + 1;
     const timeline = buildSharesTimeline({
       currentShares: holding.shares,
       purchaseDate: holding.purchaseDate,

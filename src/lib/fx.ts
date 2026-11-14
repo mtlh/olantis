@@ -92,18 +92,19 @@ export async function refreshFxRates() {
   if (!response.ok) throw new Error(`FX provider returned ${response.status}`);
   const payload = (await response.json()) as { date?: string; rates?: Record<string, number> };
   if (!payload.date || !payload.rates) throw new Error("FX provider returned an invalid response");
+  const date: string = payload.date;
   const db = getDb();
   const rates = Object.entries(payload.rates)
     .filter(([, value]) => Number.isFinite(value) && value > 0)
-    .map(([currency, value]) => ({ currency, date: payload.date!, rateToGbp: 1 / value }));
-  rates.push({ currency: "GBP", date: payload.date, rateToGbp: 1 });
+    .map(([currency, value]) => ({ currency, date, rateToGbp: 1 / value }));
+  rates.push({ currency: "GBP", date, rateToGbp: 1 });
   if (!rates.some((row) => row.currency === "USD") || !rates.some((row) => row.currency === "EUR")) throw new Error("FX provider omitted supported currencies");
   await db.insert(fxRates).values(rates).onConflictDoUpdate({
     target: [fxRates.currency, fxRates.date],
     set: { rateToGbp: sql`excluded.rate_to_gbp` },
   });
   invalidateLatestFxRates();
-  return { date: payload.date, rates: Object.fromEntries(rates.map((row) => [row.currency, row.rateToGbp])) as FxRates };
+  return { date: payload.date, rates: Object.fromEntries(rates.map((row) => [row.currency, row.rateToGbp])) };
 }
 
 /**

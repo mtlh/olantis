@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   const providerId = searchParams.get("providerId");
   const accountId = searchParams.get("accountId");
   const db = getDb();
-  let rows: typeof holdings.$inferSelect[] = [];
+  let rows: Array<typeof holdings.$inferSelect> = [];
   try {
     rows = await loadOwnedHoldings(db, userId, { portfolioId, providerId, accountId });
   } catch (error) {
@@ -49,13 +49,13 @@ export async function POST(req: Request) {
     let allowed = false;
     if (h.portfolioId) {
       const p = await db.select().from(portfolios).where(eq(portfolios.id, h.portfolioId));
-      if (p[0] && p[0].userId === userId) allowed = true;
+      if (p[0]?.userId === userId) allowed = true;
     } else if (h.providerId) {
       const pr = await db.select().from(providers).where(eq(providers.id, h.providerId));
-      if (pr[0] && pr[0].userId === userId) allowed = true;
+      if (pr[0]?.userId === userId) allowed = true;
     } else if (h.accountId) {
       const a = await db.select().from(accounts).where(eq(accounts.id, h.accountId));
-      if (a[0] && a[0].userId === userId) allowed = true;
+      if (a[0]?.userId === userId) allowed = true;
     } else if (h.userId === userId) allowed = true;
     if (!allowed) return Response.json({ error: "forbidden" }, { status: 403 });
     const patch: Partial<typeof holdings.$inferInsert> = {};
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     if (portfolioId !== undefined && portfolioId !== h.portfolioId) {
       if (portfolioId) {
         const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
-        if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
+        if (p[0]?.userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
         patch.portfolioId = portfolioId;
         patch.accountId = p[0].accountId;
         patch.providerId = p[0].providerId;
@@ -97,24 +97,24 @@ export async function POST(req: Request) {
   if (!Number.isFinite(sharesNum) || sharesNum <= 0) return Response.json({ error: "shares must be > 0" }, { status: 400 });
   if (!Number.isFinite(avgPriceNum) || avgPriceNum <= 0) return Response.json({ error: "avgPrice must be > 0" }, { status: 400 });
   if (!Number.isFinite(currentPriceNum)) return Response.json({ error: "currentPrice must be a finite number" }, { status: 400 });
-  const hasPortfolio = !!portfolioId;
-  const hasProvider = !!providerId;
-  const hasAccount = !!accountId;
+  const hasPortfolio = portfolioId != null;
+  const hasProvider = providerId != null;
+  const hasAccount = accountId != null;
   if (!hasPortfolio && !hasProvider && !hasAccount) return Response.json({ error: "portfolioId, providerId or accountId required" }, { status: 400 });
   if (hasPortfolio) {
-    const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId!));
-    if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
+    const p = await db.select().from(portfolios).where(eq(portfolios.id, portfolioId));
+    if (p[0]?.userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
   }
   if (hasProvider) {
-    const pr = await db.select().from(providers).where(eq(providers.id, providerId!));
-    if (!pr[0] || pr[0].userId !== userId) return Response.json({ error: "provider not found" }, { status: 404 });
+    const pr = await db.select().from(providers).where(eq(providers.id, providerId));
+    if (pr[0]?.userId !== userId) return Response.json({ error: "provider not found" }, { status: 404 });
   }
   if (hasAccount) {
-    const a = await db.select().from(accounts).where(eq(accounts.id, accountId!));
-    if (!a[0] || a[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 404 });
+    const a = await db.select().from(accounts).where(eq(accounts.id, accountId));
+    if (a[0]?.userId !== userId) return Response.json({ error: "account not found" }, { status: 404 });
   }
   const nid = crypto.randomUUID();
-  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId || null, providerId: providerId || null, accountId: accountId || null, userId, symbol: symbolStr, name: nameStr || symbolStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, sector: typeof sector === "string" ? capStr(sector, 48).trim() || null : null, purchaseDate, exchange: exchangeStr, lastRefreshedAt: null });
+  await db.insert(holdings).values({ id: nid, portfolioId: portfolioId ?? null, providerId: providerId ?? null, accountId: accountId ?? null, userId, symbol: symbolStr, name: nameStr || symbolStr, shares: sharesNum, avgPrice: avgPriceNum, currentPrice: currentPriceNum, currency: currencyStr, sector: typeof sector === "string" ? capStr(sector, 48).trim() || null : null, purchaseDate, exchange: exchangeStr, lastRefreshedAt: null });
   return Response.json({ id: nid });
 }
 
@@ -131,13 +131,13 @@ export async function DELETE(req: Request) {
   let allowed = false;
   if (row.portfolioId) {
     const p = await db.select().from(portfolios).where(eq(portfolios.id, row.portfolioId));
-    if (p[0] && p[0].userId === userId) allowed = true;
+    if (p[0]?.userId === userId) allowed = true;
   } else if (row.providerId) {
     const pr = await db.select().from(providers).where(eq(providers.id, row.providerId));
-    if (pr[0] && pr[0].userId === userId) allowed = true;
+    if (pr[0]?.userId === userId) allowed = true;
   } else if (row.accountId) {
     const a = await db.select().from(accounts).where(eq(accounts.id, row.accountId));
-    if (a[0] && a[0].userId === userId) allowed = true;
+    if (a[0]?.userId === userId) allowed = true;
   } else if (row.userId === userId) allowed = true;
   if (!allowed) return Response.json({ error: "forbidden" }, { status: 403 });
   await db.delete(holdings).where(eq(holdings.id, id));
@@ -154,17 +154,17 @@ export async function DELETE(req: Request) {
 export async function PATCH(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const { symbols, force } = (await req.json()) as { symbols: Record<string, { price: number; currency: string }>; force?: boolean };
+  const { symbols, force } = (await req.json()) as { symbols: Partial<Record<string, { price: number; currency: string }>>; force?: boolean };
   const db = getDb();
   // Both reads depend only on the user id, so one batch covers them instead of
   // two sequential Neon round trips.
-  let all: typeof holdings.$inferSelect[] = [];
-  let portfolioTypes: { id: string; type: string }[] = [];
+  let all: Array<typeof holdings.$inferSelect> = [];
+  let portfolioTypes: Array<{ id: string; type: string }> = [];
   try {
-    [all, portfolioTypes] = (await db.batch([
+    [all, portfolioTypes] = await db.batch([
       ownedHoldingsQuery(db, userId),
       db.select({ id: portfolios.id, type: portfolios.type }).from(portfolios).where(eq(portfolios.userId, userId)),
-    ])) as unknown as [typeof holdings.$inferSelect[], { id: string; type: string }[]];
+    ]);
   } catch (error) {
     return Response.json({ error: "Unable to load holdings", detail: error instanceof Error ? error.message : String(error) }, { status: 503 });
   }
@@ -175,8 +175,8 @@ export async function PATCH(req: Request) {
   let skipped = 0;
   let manualSkipped = 0;
   let nextAllowedAt: number | null = null;
-  const toUpdate: { id: string; price: number; currency: string; ts: number }[] = [];
-  const updatedRows: typeof holdings.$inferSelect[] = [];
+  const toUpdate: Array<{ id: string; price: number; currency: string; ts: number }> = [];
+  const updatedRows: Array<typeof holdings.$inferSelect> = [];
   for (const h of all) {
     const upd = symbols[h.symbol];
     if (!upd) continue;

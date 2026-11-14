@@ -69,7 +69,7 @@ async function backfillDemoSectors(userId: string) {
     .where(and(eq(holdings.userId, userId), or(isNull(holdings.sector), eq(holdings.sector, ""))));
   const updates = rows
     .map((row) => ({ id: row.id, sector: sectorForSymbol(row.symbol) }))
-    .filter((row): row is { id: string; sector: string } => !!row.sector);
+    .filter((row): row is { id: string; sector: string } => Boolean(row.sector));
   if (!updates.length) return;
   await db.execute(sql`UPDATE holdings SET sector = v.sector FROM (VALUES ${sql.join(updates.map((row) => sql`(${row.id}, ${row.sector})`), sql`, `)}) AS v(id, sector) WHERE holdings.id = v.id`);
 }
@@ -99,8 +99,8 @@ async function seedDemo(userId: string) {
       .where(eq(holdings.userId, userId)),
   ]);
   const [existing, historyCounts, existingHoldings] = batch as unknown as [
-    { id: string }[],
-    { holdingId: string; points: number }[],
+    Array<{ id: string }>,
+    Array<{ holdingId: string; points: number }>,
     DemoHistoryHolding[],
   ];
   if (existing.length > 0) {
@@ -141,7 +141,7 @@ async function seedDemo(userId: string) {
   const p3: typeof portfolios.$inferInsert = { id: crypto.randomUUID(), userId, accountId: accPersonal.id, providerId: provHL.id, name: "SIPP — Retirement", type: "live", createdAt: now };
 
   const slotFor: Record<string, string> = { [p1.id]: "p1", [p2.id]: "p2", [p3.id]: "p3" };
-  const hs: (typeof holdings.$inferInsert)[] = [];
+  const hs: Array<typeof holdings.$inferInsert> = [];
   for (const [pid, slot] of Object.entries(slotFor)) {
     for (const h of SEED_HOLDINGS[slot]) {
       hs.push({ id: crypto.randomUUID(), userId, portfolioId: pid, lastRefreshedAt: now, ...h });
@@ -154,7 +154,7 @@ async function seedDemo(userId: string) {
   const history = buildDemoHistory(
     userId,
     hs.map((h) => ({
-      id: h.id!,
+      id: h.id,
       symbol: h.symbol,
       shares: h.shares,
       currentPrice: h.currentPrice,
@@ -165,7 +165,7 @@ async function seedDemo(userId: string) {
 
   // Side rows don't depend on the account tree, so start them immediately and
   // let the four dependent waves below run in the foreground.
-  const sideWrites: Promise<unknown>[] = [];
+  const sideWrites: Array<Promise<unknown>> = [];
   if (existingGoals.length === 0) {
     // Two milestones so the demo shows how several goals share one portfolio.
     const nearDate = new Date();

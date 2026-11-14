@@ -43,7 +43,7 @@ export function portfolioTint(
   index: number,
   palette: readonly PaletteColor[] = PALETTE,
 ) {
-  if (!base) return palette[index % palette.length]?.value ?? PALETTE[0]?.value ?? "#60a5fa";
+  if (!base) return palette.at(index < 0 ? 0 : index % palette.length)?.value ?? PALETTE.at(0)?.value ?? "#60a5fa";
   return tintColor(base, TINT_STEPS[index % TINT_STEPS.length]);
 }
 
@@ -75,11 +75,12 @@ function orderedIndexInGroup<T extends ColorItem>(
     const siblings = items
       .filter((item) => groupOf(item) === groupKey)
       .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    index = new Map();
+    const created = new Map<string, number>();
     siblings.forEach((item, position) => {
-      if (!index!.has(item.id)) index!.set(item.id, position);
+      if (!created.has(item.id)) created.set(item.id, position);
     });
-    groups.set(groupKey, index);
+    groups.set(groupKey, created);
+    index = created;
   }
   return Math.max(0, index.get(id) ?? -1);
 }
@@ -94,15 +95,16 @@ export function resolveAccountColor(
   if (account.color) return account.color;
   let index = accountIndexCache.get(accounts);
   if (!index) {
-    index = new Map<string, number>();
+    const created = new Map<string, number>();
     accounts.forEach((item, position) => {
-      if (!index!.has(item.id)) index!.set(item.id, position);
+      if (!created.has(item.id)) created.set(item.id, position);
     });
-    accountIndexCache.set(accounts, index);
+    accountIndexCache.set(accounts, created);
+    index = created;
   }
   const position = index.get(account.id);
-  return palette[(position === undefined || position < 0 ? 0 : position) % palette.length]?.value
-    ?? PALETTE[0]?.value
+  return palette.at((position === undefined || position < 0 ? 0 : position) % palette.length)?.value
+    ?? PALETTE.at(0)?.value
     ?? "#60a5fa";
 }
 
@@ -116,7 +118,7 @@ export function resolveProviderColor(
   const account = accounts.find((item) => item.id === provider.accountId);
   const accountColor = account
     ? resolveAccountColor(account, accounts, palette)
-    : palette[0]?.value ?? PALETTE[0]?.value ?? "#60a5fa";
+    : palette.at(0)?.value ?? PALETTE.at(0)?.value ?? "#60a5fa";
   return portfolioTint(
     accountColor,
     orderedIndexInGroup(providers, `account:${provider.accountId}`, (item) => item.accountId, provider.id),

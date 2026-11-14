@@ -78,7 +78,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
 
   // The metric band follows the most urgent goal that is still open, so adding
   // a long-range goal never hides the next milestone.
-  const focusGoal = sortedGoals.find((goal) => currentValue < goal.targetValue) ?? sortedGoals[sortedGoals.length - 1] ?? null;
+  const focusGoal = sortedGoals.find((goal) => currentValue < goal.targetValue) ?? sortedGoals.at(-1) ?? null;
   const focusStats = focusGoal ? goalStats(focusGoal) : null;
 
   const save = async (event: React.FormEvent) => {
@@ -156,8 +156,8 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
     return Math.ceil(max / 10) * 10;
   }, [chartRows, sortedGoals]);
 
-  const startRow = chartRows[0];
-  const endRow = chartRows[chartRows.length - 1];
+  const startRow = chartRows.at(0);
+  const endRow = chartRows.at(-1);
   const periodChange = startRow && endRow && chartRows.length > 1 ? endRow.value - startRow.value : null;
   const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dateFormat, { day: "numeric", month: "short", year: "numeric" });
   const rangeLabel = range === "MAX" ? "All" : range;
@@ -281,7 +281,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
                       width={sortedGoals.length ? 48 : 64}
                     />
                     <Tooltip
-                      labelFormatter={(label) => shortDate(String(label))}
+                      labelFormatter={(label) => shortDate(label as string)}
                       formatter={(value, name) => sortedGoals.length
                         ? [`${Number(value).toFixed(1)}%`, String(name)]
                         : [fmtGBP(Number(value)), "Portfolio value"]}
@@ -338,7 +338,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
           )}
         </div>
 
-        {editingNew && draft && (
+        {editingNew && (
           <GoalEditor draft={draft} saving={saving} onChange={setDraft} onSubmit={(event) => void save(event)} onCancel={() => { setDraft(null); setError(""); }} />
         )}
 

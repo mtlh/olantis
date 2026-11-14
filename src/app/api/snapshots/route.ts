@@ -2,7 +2,7 @@ import { getDb } from "@/lib/db";
 import { snapshots, portfolioSnapshots, holdingSnapshots, portfolios, holdings, providers, accounts } from "@/lib/db/schema";
 import { eq, inArray, and, gte, sql } from "drizzle-orm";
 import { getUserId } from "@/lib/auth";
-import { DEFAULT_FX_RATES, holdingValueGBP, todayISODate, rangeCutoff, valueChangeOverRange, type FxRates } from "@/lib/format";
+import { DEFAULT_FX_RATES, holdingValueGBP, todayISODate, rangeCutoff, valueChangeOverRange } from "@/lib/format";
 import { getLatestFxRates } from "@/lib/fx";
 import { windowSeries } from "@/lib/snapshot-window";
 import type { HoldingMoverChanges } from "@/lib/store";
@@ -29,19 +29,20 @@ export async function GET(req: Request) {
       db.select({ id: holdings.id, symbol: holdings.symbol, name: holdings.name }).from(holdings).where(eq(holdings.id, holdingId)),
     ]);
 
-    const total = (totalRows as { date: string; value: number }[]).map((r) => ({ date: r.date, value: r.value }));
+    const total = (totalRows as Array<{ date: string; value: number }>).map((r) => ({ date: r.date, value: r.value }));
     const sortedTotal = total.sort((a, b) => a.date.localeCompare(b.date));
     const finalTotal = applyWindow ? windowSeries(sortedTotal) : sortedTotal;
 
-    const byHolding: Record<string, { symbol: string; name: string; data: { date: string; value: number }[] }> = {};
-    for (const r of holdingRows as { date: string; value: number; holdingId: string }[]) {
+    const byHolding: Partial<Record<string, { symbol: string; name: string; data: Array<{ date: string; value: number }> }>> = {};
+    for (const r of holdingRows as Array<{ date: string; value: number; holdingId: string }>) {
       const key = r.holdingId;
-      if (!byHolding[key]) byHolding[key] = { symbol: "", name: "", data: [] };
-      byHolding[key].data.push({ date: r.date, value: r.value });
+      const entry = byHolding[key] ?? { symbol: "", name: "", data: [] };
+      entry.data.push({ date: r.date, value: r.value });
+      byHolding[key] = entry;
     }
-    const h = (hRows as { id: string; symbol: string; name: string }[])[0];
-    for (const key of Object.keys(byHolding)) {
-      const entry = byHolding[key];
+    const h = (hRows as Array<{ id: string; symbol: string; name: string }>).at(0);
+    for (const entry of Object.values(byHolding)) {
+      if (!entry) continue;
       if (h) { entry.symbol = h.symbol; entry.name = h.name; }
       entry.data.sort((a, b) => a.date.localeCompare(b.date));
       if (applyWindow) entry.data = windowSeries(entry.data);
@@ -68,37 +69,41 @@ export async function GET(req: Request) {
       db.select({ holdingId: holdingSnapshots.holdingId, date: holdingSnapshots.date, value: holdingSnapshots.value }).from(holdingSnapshots).where(and(...holdConds)),
       db.select({ id: holdings.id, symbol: holdings.symbol, name: holdings.name, shares: holdings.shares, currentPrice: holdings.currentPrice, currency: holdings.currency, portfolioId: holdings.portfolioId }).from(holdings).where(eq(holdings.userId, userId)),
     ]),
-    getLatestFxRates().catch(() => ({ date: null, rates: {} as FxRates })),
+    getLatestFxRates().catch(() => ({ date: null, rates: {} })),
   ]);
 
-  const nameById = new Map((ps as { id: string; name: string }[]).map((p) => [p.id, p.name]));
-  const byPortfolio: Record<string, { name: string; data: { date: string; value: number }[] }> = {};
-  for (const r of perPort as { portfolioId: string; date: string; value: number }[]) {
+  const nameById = new Map((ps as Array<{ id: string; name: string }>).map((p) => [p.id, p.name]));
+  const byPortfolio: Partial<Record<string, { name: string; data: Array<{ date: string; value: number }> }>> = {};
+  for (const r of perPort as Array<{ portfolioId: string; date: string; value: number }>) {
     const key = r.portfolioId;
-    if (!byPortfolio[key]) byPortfolio[key] = { name: nameById.get(key) ?? key.slice(0, 6), data: [] };
-    byPortfolio[key].data.push({ date: r.date, value: r.value });
+    const entry = byPortfolio[key] ?? { name: nameById.get(key) ?? key.slice(0, 6), data: [] };
+    entry.data.push({ date: r.date, value: r.value });
+    byPortfolio[key] = entry;
   }
-  for (const k of Object.keys(byPortfolio)) {
-    byPortfolio[k].data.sort((a, b) => a.date.localeCompare(b.date));
-    if (applyWindow) byPortfolio[k].data = windowSeries(byPortfolio[k].data);
+  for (const entry of Object.values(byPortfolio)) {
+    if (!entry) continue;
+    entry.data.sort((a, b) => a.date.localeCompare(b.date));
+    if (applyWindow) entry.data = windowSeries(entry.data);
   }
 
   type HoldingRow = { id: string; symbol: string; name: string; shares: number; currentPrice: number; currency: string; portfolioId: string | null };
   const holdingById = new Map((hs as HoldingRow[]).map((h) => [h.id, h]));
-  const allByHolding: Record<string, { symbol: string; name: string; data: { date: string; value: number }[] }> = {};
-  for (const r of perHolding as { holdingId: string; date: string; value: number }[]) {
+  const allByHolding: Partial<Record<string, { symbol: string; name: string; data: Array<{ date: string; value: number }> }>> = {};
+  for (const r of perHolding as Array<{ holdingId: string; date: string; value: number }>) {
     const key = r.holdingId;
-    if (!allByHolding[key]) allByHolding[key] = { symbol: "", name: "", data: [] };
-    allByHolding[key].data.push({ date: r.date, value: r.value });
+    const entry = allByHolding[key] ?? { symbol: "", name: "", data: [] };
+    entry.data.push({ date: r.date, value: r.value });
+    allByHolding[key] = entry;
   }
   // Mirror lib/bootstrap.ts: only direct holdings keep a full series, and every
   // holding gets its mover changes precomputed so the client never has to scan
   // a per-holding series for the dashboard movers.
-  const fxRates = { ...DEFAULT_FX_RATES, ...fx.rates } as FxRates;
-  const byHolding: Record<string, { symbol: string; name: string; data: { date: string; value: number }[] }> = {};
+  const fxRates = { ...DEFAULT_FX_RATES, ...fx.rates };
+  const byHolding: Record<string, { symbol: string; name: string; data: Array<{ date: string; value: number }> }> = {};
   const moverChanges: Record<string, HoldingMoverChanges> = {};
   for (const key of Object.keys(allByHolding)) {
     const entry = allByHolding[key];
+    if (!entry) continue;
     const h = holdingById.get(key);
     entry.data.sort((a, b) => a.date.localeCompare(b.date));
     if (applyWindow) entry.data = windowSeries(entry.data);
@@ -115,7 +120,7 @@ export async function GET(req: Request) {
     };
   }
 
-  const totalArr = (totalRows as { date: string; value: number }[]).map((r) => ({ date: r.date, value: r.value }));
+  const totalArr = (totalRows as Array<{ date: string; value: number }>).map((r) => ({ date: r.date, value: r.value }));
   totalArr.sort((a, b) => a.date.localeCompare(b.date));
   const finalTotal = applyWindow ? windowSeries(totalArr) : totalArr;
 
@@ -140,7 +145,7 @@ export async function POST(req: Request) {
 
   // Ownership checks and the holding rows they gate are independent reads, so
   // one Neon round trip covers all four instead of four sequential ones.
-  const holdingValues = Array.isArray(body.holdings) ? body.holdings as Array<{ id?: unknown; value?: unknown }> : [];
+  const holdingValues = Array.isArray(body.holdings) ? body.holdings as Array<{ id?: unknown; value?: unknown } | null> : [];
   const holdingIds = holdingValues.map((h) => h?.id).filter((x): x is string => typeof x === "string");
 
   const [ownedPf, ownedPr, ownedAcc, holdingRows] = await db.batch([
@@ -159,9 +164,9 @@ export async function POST(req: Request) {
     writes.push(db.insert(snapshots).values({ userId, date: d, value: topValue }).onConflictDoUpdate({ target: [snapshots.userId, snapshots.date], set: { value: topValue, origin: "recorded" } }));
   }
 
-  const batch: { portfolioId: string; value: number }[] = [];
+  const batch: Array<{ portfolioId: string; value: number }> = [];
   if (Array.isArray(body.portfolios)) {
-    for (const p of body.portfolios as Array<{ id?: unknown; value?: unknown }>) {
+    for (const p of body.portfolios as Array<{ id?: unknown; value?: unknown } | null>) {
       if (!p?.id || typeof p.id !== "string" || !ownedPids.has(p.id)) continue;
       const v = finiteNumber(p.value);
       if (v == null) continue;
@@ -185,9 +190,13 @@ export async function POST(req: Request) {
       const v = finiteNumber(h.value);
       if (v != null) valueById.set(h.id, v);
     }
-    const holdingBatch: { holdingId: string; value: number }[] = [];
+    const holdingBatch: Array<{ holdingId: string; value: number }> = [];
     for (const h of holdingRows) {
-      const owned = (h.portfolioId && ownedPids.has(h.portfolioId)) || (h.providerId && ownedPrids.has(h.providerId)) || (h.accountId && ownedAids.has(h.accountId)) || h.userId === userId;
+      const owned =
+        (h.portfolioId != null && ownedPids.has(h.portfolioId)) ||
+        (h.providerId != null && ownedPrids.has(h.providerId)) ||
+        (h.accountId != null && ownedAids.has(h.accountId)) ||
+        h.userId === userId;
       if (!owned) continue;
       const v = valueById.get(h.id);
       if (v == null) continue;

@@ -1,6 +1,6 @@
 import { handleAuth } from "@workos-inc/authkit-nextjs";
 export const GET = handleAuth({
-  onError: async ({ error, request }) => {
+  onError: ({ error, request }) => {
     const url = new URL(request.url);
     const hasCode = url.searchParams.has("code");
     const hasState = url.searchParams.has("state");

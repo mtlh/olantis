@@ -115,7 +115,7 @@ function useWorkspaceOrder(): WorkspaceOrder {
 }
 
 /** Overlays a broadcast order on rows, reusing every row the order did not move. */
-function applyOrder<T extends { id: string; sortOrder?: number | null }>(rows: T[], order: Record<string, number>): T[] {
+function applyOrder<T extends { id: string; sortOrder?: number | null }>(rows: T[], order: Partial<Record<string, number>>): T[] {
   if (order === EMPTY_ORDER) return rows;
   return rows.map((row) => {
     const next = order[row.id];
@@ -165,7 +165,7 @@ function useWorkspacePatches(): WorkspacePatches {
 }
 
 /** Overlays broadcast fields on rows, reusing every row nothing patched. */
-function applyPatches<T extends { id: string }>(rows: T[], patches: Record<string, RowPatch>): T[] {
+function applyPatches<T extends { id: string }>(rows: T[], patches: Partial<Record<string, RowPatch>>): T[] {
   if (patches === EMPTY_PATCHES) return rows;
   return rows.map((row) => {
     const patch = patches[row.id];
@@ -234,7 +234,7 @@ export function useAccounts() {
   const patches = useWorkspacePatches();
   const ordered = useMemo(() => applyOrder(rows, order.accounts), [rows, order.accounts]);
   const accounts = useMemo(() => applyPatches(ordered, patches.accounts), [ordered, patches.accounts]);
-  const [ready, setReady] = useState(!!boot);
+  const [ready, setReady] = useState(Boolean(boot));
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -282,7 +282,7 @@ export function useProviders() {
   const patches = useWorkspacePatches();
   const ordered = useMemo(() => applyOrder(rows, order.providers), [rows, order.providers]);
   const providers = useMemo(() => applyPatches(ordered, patches.providers), [ordered, patches.providers]);
-  const [ready, setReady] = useState(!!boot);
+  const [ready, setReady] = useState(Boolean(boot));
   const refresh = useCallback(async () => {
     try {
       setRows(parseList<Provider>(await api("/api/providers")));
@@ -323,7 +323,7 @@ export function usePortfolios() {
   const patches = useWorkspacePatches();
   const ordered = useMemo(() => applyOrder(rows, order.portfolios), [rows, order.portfolios]);
   const portfolios = useMemo(() => applyPatches(ordered, patches.portfolios), [ordered, patches.portfolios]);
-  const [ready, setReady] = useState(!!boot);
+  const [ready, setReady] = useState(Boolean(boot));
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -339,7 +339,7 @@ export function usePortfolios() {
 
   const create = async (name: string, type: "live" | "manual", accountId?: string | null, providerId?: string | null) => {
     const r = await api("/api/portfolios", { method: "POST", body: JSON.stringify({ name, type, accountId: accountId ?? null, providerId: providerId ?? null }) }) as { id: string };
-    setRows((prev) => [...prev, { id: r.id, name, type, accountId: accountId ?? null, providerId: providerId ?? null, color: null, holdings: [], sortOrder: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) } as Portfolio]);
+    setRows((prev) => [...prev, { id: r.id, name, type, accountId: accountId ?? null, providerId: providerId ?? null, color: null, holdings: [], sortOrder: null, userId: undefined, createdAt: Math.floor(Date.now() / 1000) }]);
     return r;
   };
   const remove = async (id: string) => {
@@ -403,7 +403,7 @@ const TTI_QUIET_MS = 2000;
 /** Backfill starts just after the snapshot write window, so the two never contend. */
 const BACKFILL_DELAY_MS = 2500;
 
-type IdleWindow = Window & {
+type IdleWindow = Omit<Window, "requestIdleCallback" | "cancelIdleCallback"> & {
   requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
   cancelIdleCallback?: (handle: number) => void;
 };
@@ -451,7 +451,7 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
     if (totalValue === 0) return;
     const day = new Date().toISOString().slice(0, 10);
     const prev = lastPosted.current;
-    if (prev && prev.day === day && Math.abs(prev.value - totalValue) < 0.01) return;
+    if (prev?.day === day && Math.abs(prev.value - totalValue) < 0.01) return;
     if (!prev && boot?.snapshotsFresh) {
       // The server render already contained today's snapshot, so this page view
       // has nothing new to record. Seed the guard with the value we were given;
@@ -566,7 +566,7 @@ export function useSnapshots(portfolios: Portfolio[], directHoldings: Holding[] 
 export function useHoldings() {
   const boot = useWorkspaceBootstrap();
   const [holdings, setHoldings] = useState<Holding[]>(boot?.holdings ?? []);
-  const [ready, setReady] = useState(!!boot);
+  const [ready, setReady] = useState(Boolean(boot));
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -584,11 +584,11 @@ export function useHoldings() {
 
 export function useTransactions(portfolioId?: string | null, symbol?: string | null, holdingId?: string | null) {
   const boot = useWorkspaceBootstrap();
-  const hasFilter = !!(portfolioId || symbol || holdingId);
+  const hasFilter = [portfolioId, symbol, holdingId].some((v) => Boolean(v));
   const [transactions, setTransactions] = useState<Transaction[]>(
     boot?.transactions && !hasFilter ? boot.transactions : [],
   );
-  const [ready, setReady] = useState(!!boot?.transactions && !hasFilter);
+  const [ready, setReady] = useState(Boolean(boot?.transactions) && !hasFilter);
   const key = `${portfolioId ?? ""}:${symbol ?? ""}:${holdingId ?? ""}`;
   const refresh = useCallback(async () => {
     try {
@@ -653,7 +653,7 @@ export function useSettings() {
         fxDate: boot.fx.date,
       }
     : DEFAULT_SETTINGS);
-  const [ready, setReady] = useState(!!boot);
+  const [ready, setReady] = useState(Boolean(boot));
 
   const refresh = useCallback(async () => {
     try {

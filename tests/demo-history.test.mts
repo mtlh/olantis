@@ -63,12 +63,17 @@ test("buildDemoHistory emits a series per holding and consistent aggregates", ()
   for (const row of rows.snapshotRows) {
     // Totals are the sum of their parts on every single day, so the portfolio
     // and holding charts can never disagree.
-    assert.ok(Math.abs(holdingByDate.get(row.date)! - row.value) < 1e-6);
-    assert.ok(Math.abs(portfolioByDate.get(row.date)! - row.value) < 1e-6);
+    const holdingValue = holdingByDate.get(row.date);
+    const portfolioValue = portfolioByDate.get(row.date);
+    assert.ok(holdingValue != null);
+    assert.ok(portfolioValue != null);
+    assert.ok(Math.abs(holdingValue - row.value) < 1e-6);
+    assert.ok(Math.abs(portfolioValue - row.value) < 1e-6);
   }
 
   // The final point matches today's seeded values exactly.
-  const last = rows.snapshotRows.at(-1)!;
+  const last = rows.snapshotRows.at(-1);
+  assert.ok(last);
   const expected = HOLDINGS.reduce((sum, h) => sum + h.shares * h.currentPrice, 0);
   assert.ok(Math.abs(last.value - expected) < 1e-6);
   assert.ok(rows.holdingRows.every((row) => row.userId === "demo:s_test"));

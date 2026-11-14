@@ -28,17 +28,18 @@ export type DemoHistoryHolding = {
 };
 
 export type DemoHistoryRows = {
-  snapshotRows: { userId: string; date: string; value: number }[];
-  portfolioRows: { userId: string; portfolioId: string; date: string; value: number }[];
-  holdingRows: { userId: string; holdingId: string; date: string; value: number }[];
+  snapshotRows: Array<{ userId: string; date: string; value: number }>;
+  portfolioRows: Array<{ userId: string; portfolioId: string; date: string; value: number }>;
+  holdingRows: Array<{ userId: string; holdingId: string; date: string; value: number }>;
 };
 
 /** mulberry32 — small, fast, deterministic PRNG. */
 function mulberry32(seed: number) {
+  let state = seed;
   return function () {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    state |= 0;
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
@@ -176,7 +177,7 @@ export function buildDemoHistory(
  * interrupted).
  */
 export function demoHistoryIncomplete(
-  holdingRows: readonly { id: string }[],
+  holdingRows: ReadonlyArray<{ id: string }>,
   pointsByHolding: ReadonlyMap<string, number>,
   minPoints = DEMO_HISTORY_MIN_POINTS,
 ): boolean {

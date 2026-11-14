@@ -8,7 +8,7 @@ import type { PerformanceSeries } from "@/components/dashboard/PerformanceChart"
 import type { ValueTimeChartDot, ValueTimeChartRow, ValueTimeChartSeries } from "@/components/dashboard/ValueTimeChart";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 
-type PortfolioHistory = Record<string, { name: string; data: Snapshot[] }>;
+type PortfolioHistory = Partial<Record<string, { name: string; data: Snapshot[] }>>;
 
 type UseDashboardChartDataProps = {
   activePortfolio: Portfolio | null;
@@ -79,7 +79,7 @@ export function useDashboardChartData({
       return [{ date: chartDateLabel(dateISO), dateISO, total: totalValue }];
     }
 
-    const seriesMaps = Object.values(byPortfolio).map((info) => ({ name: info.name, values: valueByDate(info.data) }));
+    const seriesMaps = Object.values(byPortfolio).flatMap((info) => (info ? [{ name: info.name, values: valueByDate(info.data) }] : []));
 
     return filteredSnapshots.map((snapshot) => {
       const row: ValueTimeChartRow = {
@@ -114,16 +114,17 @@ export function useDashboardChartData({
 
   const overviewSeries = useMemo<ValueTimeChartSeries[]>(() => {
     if (deferSeries) return [];
-    return Object.entries(deferredByPortfolio).map(([portfolioId, info], index) => {
+    return Object.entries(deferredByPortfolio).flatMap(([portfolioId, info], index) => {
       const portfolio = deferredPortfolios.find((item) => item.id === portfolioId);
-      return {
+      if (!info) return [];
+      return [{
         key: portfolioId,
         dataKey: info.name,
         name: info.name,
         color: portfolio
           ? resolvePortfolioColor(portfolio, deferredPortfolios, deferredProviders, deferredAccounts, palette)
-          : palette[index % palette.length]?.value ?? CHART_FALLBACK_COLOR,
-      };
+          : palette.at(index % palette.length)?.value ?? CHART_FALLBACK_COLOR,
+      }];
     });
   }, [deferSeries, deferredAccounts, deferredByPortfolio, deferredPortfolios, deferredProviders, palette]);
 

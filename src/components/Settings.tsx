@@ -57,7 +57,7 @@ function Swatch({ color, active, onClick }: { color: string; active?: boolean; o
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={!!active}
+      aria-pressed={Boolean(active)}
       aria-label={`Use colour ${color}`}
       className={`h-7 w-7 rounded-full border-2 transition-all ${active ? "scale-110 border-white" : "border-white/10 hover:border-white/30"}`}
       style={{ background: color }}
@@ -125,7 +125,7 @@ function CsvFormatBlock({ label, required, sample }: { label: string; required: 
   );
 }
 
-function SegmentedToggle<T extends string | number>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
+function SegmentedToggle<T extends string | number>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string }>; onChange: (value: T) => void }) {
   return (
     <div className="flex w-fit items-center gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.03] p-0.5 md:justify-self-end">
       {options.map((option) => (
@@ -357,7 +357,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
   });
   const defaultRange: ChartRange = settings.defaultRange === "1M" || settings.defaultRange === "3M" || settings.defaultRange === "MAX" ? settings.defaultRange : "1Y";
 
-  const exportAll = async () => {
+  const exportAll = () => {
     const data = { accounts, providers, portfolios, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `olantis-export-${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(url);
@@ -391,7 +391,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 <p className={ROW_HINT}>Applied to new holdings and trades.</p>
               </div>
               <Select value={settings.currency} onValueChange={v=> saveSettings({ currency: v ?? "GBP" })}>
-                <SelectTrigger id="setting-currency" className={FIELD}><span className="flex-1 text-left truncate">{settings.currency ?? "GBP"}</span></SelectTrigger>
+                <SelectTrigger id="setting-currency" className={FIELD}><span className="flex-1 text-left truncate">{settings.currency}</span></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="GBP">GBP (£)</SelectItem>
                   <SelectItem value="USD">USD ($)</SelectItem>
@@ -405,7 +405,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 <Label htmlFor="setting-date-format">Date format</Label>
               </div>
               <Select value={settings.dateFormat} onValueChange={v=> saveSettings({ dateFormat: v ?? "en-GB" })}>
-                <SelectTrigger id="setting-date-format" className={FIELD}><span className="flex-1 text-left truncate">{settings.dateFormat ?? "en-GB"}</span></SelectTrigger>
+                <SelectTrigger id="setting-date-format" className={FIELD}><span className="flex-1 text-left truncate">{settings.dateFormat}</span></SelectTrigger>
                 <SelectContent><SelectItem value="en-GB">Day / month / year</SelectItem><SelectItem value="en-US">Month / day / year</SelectItem><SelectItem value="de-DE">Day.month.year</SelectItem><SelectItem value="fr-FR">Day / month / year (French)</SelectItem></SelectContent>
               </Select>
             </div>
@@ -486,7 +486,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
                             {palette.map(c=> <Swatch key={c.value} color={c.value} active={acc.color===c.value} onClick={()=>handleAccountColor(acc.id, c.value)} />)}
                             <div className="ml-1 hidden items-center gap-1.5 border-l border-white/[0.08] pl-2.5 sm:flex">
-                              {[0,0.18,-0.18,0.32].map((t,i)=> <span key={i} className="h-6 w-6 rounded-full border border-white/10" style={{ background: tintColor(base, t) }} title={`Tint ${t>0?"+":""}${t}`} />)}
+                              {[0,0.18,-0.18,0.32].map((t)=> <span key={t} className="h-6 w-6 rounded-full border border-white/10" style={{ background: tintColor(base, t) }} title={`Tint ${t>0?"+":""}${t}`} />)}
                             </div>
                           </div>
                           {iconPickerFor === acc.id && (

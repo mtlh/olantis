@@ -5,7 +5,7 @@ import { isListedSymbol } from "@/lib/format";
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  let body: { symbols?: Array<{ symbol?: string; exchange?: string }> };
+  let body: { symbols?: Array<{ symbol?: string; exchange?: string } | null> };
   try { body = await req.json(); } catch { return Response.json({ error: "invalid body" }, { status: 400 }); }
   const { symbols } = body;
   if (!Array.isArray(symbols) || !symbols.length) return Response.json({});

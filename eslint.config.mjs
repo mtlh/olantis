@@ -42,6 +42,74 @@ const SERVER_ONLY_IMPORT = {
     "Server-only module. Client code calls /api/* or reads the workspace bootstrap store.",
 };
 
+// Correctness rules that need the TypeScript type checker. Keep this list to
+// rules whose findings are either bugs or dead code, so a red build is always
+// a real problem rather than a style preference.
+const TYPE_AWARE_RULES = {
+  "@typescript-eslint/no-unnecessary-condition": [
+    "error",
+    { allowConstantLoopConditions: true },
+  ],
+  "@typescript-eslint/no-unnecessary-type-assertion": "error",
+  "@typescript-eslint/no-unnecessary-boolean-literal-compare": "error",
+  "@typescript-eslint/no-unnecessary-type-arguments": "error",
+  "@typescript-eslint/no-redundant-type-constituents": "error",
+  "@typescript-eslint/switch-exhaustiveness-check": "error",
+  "@typescript-eslint/prefer-optional-chain": "error",
+  "@typescript-eslint/prefer-nullish-coalescing": "error",
+  "@typescript-eslint/prefer-includes": "error",
+  // `String(value)` on an object silently produces "[object Object]".
+  "@typescript-eslint/no-base-to-string": "error",
+  "@typescript-eslint/no-meaningless-void-operator": "error",
+  "@typescript-eslint/require-await": "error",
+  "@typescript-eslint/only-throw-error": "error",
+  "@typescript-eslint/no-non-null-assertion": "error",
+};
+
+// Rules that need no type information but catch real mistakes.
+const BEST_PRACTICE_RULES = {
+  eqeqeq: ["error", "always", { null: "ignore" }],
+  "prefer-const": "error",
+  "no-var": "error",
+  "no-implicit-coercion": "error",
+  "no-param-reassign": "error",
+  "no-throw-literal": "error",
+  "no-duplicate-imports": "error",
+  "no-useless-catch": "error",
+  "no-useless-concat": "error",
+  "prefer-template": "error",
+  "object-shorthand": "error",
+  "no-lonely-if": "error",
+  "default-case-last": "error",
+  "no-sequences": "error",
+  "no-array-constructor": "error",
+  "no-object-constructor": "error",
+  "no-eval": "error",
+  "no-implied-eval": "error",
+  "no-extend-native": "error",
+  "no-debugger": "error",
+  "no-return-assign": "error",
+  "no-unneeded-ternary": "error",
+  "no-useless-rename": "error",
+  "no-useless-constructor": "error",
+  "no-constant-binary-expression": "error",
+  "no-self-compare": "error",
+  "no-unsafe-optional-chaining": "error",
+};
+
+const REACT_RULES = {
+  "react/self-closing-comp": "error",
+  "react/jsx-boolean-value": ["error", "never"],
+  "react/jsx-curly-brace-presence": ["error", { props: "never", children: "never" }],
+  "react/jsx-no-useless-fragment": "error",
+  "react/no-array-index-key": "error",
+  "react/no-children-prop": "error",
+  "react/no-danger": "error",
+  "react/no-unknown-property": "error",
+  "react/no-unstable-nested-components": ["error", { allowAsProps: true }],
+  "react/jsx-no-constructed-context-values": "error",
+};
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -84,10 +152,33 @@ const eslintConfig = defineConfig([
         "error",
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
+      "@typescript-eslint/array-type": ["error", { default: "array-simple" }],
+      "@typescript-eslint/consistent-generic-constructors": "error",
+      "@typescript-eslint/no-empty-object-type": "error",
+      "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/no-require-imports": "error",
+      "@typescript-eslint/no-unsafe-function-type": "error",
+      "@typescript-eslint/no-wrapper-object-types": "error",
+      "@typescript-eslint/no-unused-expressions": [
+        "error",
+        { allowShortCircuit: true, allowTernary: true },
+      ],
       // Repo uses the @/ alias everywhere; keep it that way.
       "no-restricted-imports": ["error", { patterns: [PARENT_IMPORT] }],
       "no-console": ["error", { allow: ["warn", "error"] }],
     },
+  },
+
+  {
+    name: "olantis/best-practices",
+    files: ["**/*.{ts,tsx,mts,mjs,cjs,js}"],
+    rules: BEST_PRACTICE_RULES,
+  },
+
+  {
+    name: "olantis/react",
+    files: ["src/**/*.tsx"],
+    rules: REACT_RULES,
   },
 
   {
@@ -130,21 +221,34 @@ const eslintConfig = defineConfig([
   },
 
   {
-    name: "olantis/async",
+    name: "olantis/type-aware",
     files: ["src/**/*.{ts,tsx}"],
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
     rules: {
-      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: true }],
+      ...TYPE_AWARE_RULES,
       "@typescript-eslint/await-thenable": "error",
+      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: true }],
       "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
     },
+  },
+
+  {
+    // Tests use `node:test` whose calls return promises by design, so the
+    // promise rules would only produce noise there.
+    name: "olantis/type-aware-tests",
+    files: ["tests/**/*.mts"],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: TYPE_AWARE_RULES,
   },
 
   // Override default ignores of eslint-config-next.
   globalIgnores([
     ".next/**",
+    ".screenshots/**",
     "out/**",
     "build/**",
     "release/**",

@@ -1,10 +1,9 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, FolderPlus, Minus, Plus, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
-import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingCostGBP, holdingCurrency, holdingValueGBP, isListedSymbol, chartDateLabel, filterByRange, type MoneyHolding } from "@/lib/format";
+import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingCostGBP, holdingCurrency, holdingValueGBP, isListedSymbol, chartDateLabel, filterByRange } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ValueTimeChart, type ValueTimeChartDot, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
@@ -89,7 +88,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
       .then(async (r) => {
         if (!r.ok) throw new Error();
         const j = await r.json();
-        const rows = (j.byHolding?.[holding.id]?.data ?? []) as { date: string; value: number }[];
+        const rows = (j.byHolding?.[holding.id]?.data ?? []) as Array<{ date: string; value: number }>;
         if (!cancel) setSnapSeries(rows.map((p) => ({ date: p.date, price: p.value })));
       })
       .catch(() => {
@@ -140,15 +139,18 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
       .filter((x): x is ValueTimeChartDot => x !== null);
   }, [chartRows, transactions]);
 
-  const val = holdingValueGBP(holding as MoneyHolding, settings.fxRates);
-  const cost = holdingCostGBP(holding as MoneyHolding, settings.fxRates);
+  const val = holdingValueGBP(holding, settings.fxRates);
+  const cost = holdingCostGBP(holding, settings.fxRates);
   const currency = holdingCurrency(holding);
   const gain = val - cost;
   const pct = cost ? (gain / cost) * 100 : 0;
   const weightPct = portfolioValue > 0 ? (val / portfolioValue) * 100 : null;
-  const latestMarketMove = prices && prices.length > 1 && prices.at(-2)!.price > 0
-    ? { amount: prices.at(-1)!.price - prices.at(-2)!.price, percent: ((prices.at(-1)!.price / prices.at(-2)!.price) - 1) * 100, date: prices.at(-1)!.date }
-    : null;
+  const latestMarketMove = (() => {
+    const last = prices?.at(-1);
+    const prev = prices?.at(-2);
+    if (!last || !prev || prev.price <= 0) return null;
+    return { amount: last.price - prev.price, percent: (last.price / prev.price - 1) * 100, date: last.date };
+  })();
   const isManual = !isListed;
   const gainTone = gain >= 0 ? "text-emerald-400" : "text-red-400";
   const moveTone = latestMarketMove ? (latestMarketMove.amount >= 0 ? "text-emerald-400" : "text-red-400") : "text-zinc-600";

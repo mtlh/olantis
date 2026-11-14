@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     if (Number.isFinite(n) && n > 0) limit = Math.min(Math.floor(n), 5000);
   }
   const db = getDb();
-  let rows: typeof transactions.$inferSelect[] = [];
+  let rows: Array<typeof transactions.$inferSelect> = [];
   try {
     const conds = [eq(transactions.userId, userId)];
     if (portfolioId) conds.push(eq(transactions.portfolioId, portfolioId));
@@ -60,8 +60,8 @@ export async function POST(req: Request) {
   let portfolioId: string | null = body.portfolioId ?? null;
 
   let holding: typeof holdings.$inferSelect | null = null;
-  let targetSymbol = symbol?.toUpperCase()?.trim();
-  let targetName = body.name?.trim() || targetSymbol;
+  let targetSymbol = symbol?.toUpperCase().trim() ?? "";
+  let targetName = body.name?.trim() ?? "";
 
   if (holdingId) {
     const hs = await db.select().from(holdings).where(eq(holdings.id, holdingId));
@@ -79,14 +79,14 @@ export async function POST(req: Request) {
       db.select().from(portfolios).where(eq(portfolios.id, portfolioId)),
       db.select().from(holdings).where(eq(holdings.portfolioId, portfolioId)),
     ]);
-    if (!p[0] || p[0].userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
+    if (p[0]?.userId !== userId) return Response.json({ error: "portfolio not found" }, { status: 404 });
     if (!targetSymbol) return Response.json({ error: "symbol required" }, { status: 400 });
     holding = all.find((h) => h.symbol === targetSymbol) ?? null;
   } else {
     return Response.json({ error: "holdingId or portfolioId required" }, { status: 400 });
   }
 
-  const d = date || new Date().toISOString().split("T")[0];
+  const d = date?.trim() ? date : new Date().toISOString().split("T")[0];
 
   if (type === "sell") {
     if (!holding) return Response.json({ error: "no holding to sell" }, { status: 400 });
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
     shares: s,
     price: pr,
     date: d,
-    note: note || null,
+    note: note?.trim() ? note.trim() : null,
     createdAt: Math.floor(Date.now() / 1000),
   };
   try {
@@ -154,10 +154,11 @@ export async function POST(req: Request) {
       updatedHolding = { ...holding, shares: newShares, avgPrice: newAvg };
     }
   } else {
-    const remaining = holding!.shares - s;
+    if (!holding) return Response.json({ error: "no holding to sell" }, { status: 400 });
+    const remaining = holding.shares - s;
     const shares = Math.max(0, remaining);
-    await db.update(holdings).set({ shares, historyBackfilledAt: null }).where(eq(holdings.id, holding!.id));
-    updatedHolding = { ...holding!, shares };
+    await db.update(holdings).set({ shares, historyBackfilledAt: null }).where(eq(holdings.id, holding.id));
+    updatedHolding = { ...holding, shares };
   }
 
   return Response.json({ id, ok: true, transaction, holding: updatedHolding });
@@ -171,8 +172,8 @@ export async function DELETE(req: Request) {
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const db = getDb();
   const rows = await db.select().from(transactions).where(eq(transactions.id, id));
-  const tx = rows[0];
-  if (!tx || tx.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+  const tx = rows.at(0);
+  if (tx?.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
   if (tx.type !== "buy" && tx.type !== "sell") return Response.json({ error: "Only buy/sell transactions affect holdings" }, { status: 400 });
 
   const candidates = (await db.select().from(holdings).where(eq(holdings.symbol, tx.symbol)))

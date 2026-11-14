@@ -45,12 +45,12 @@ export function useDesktopUpdate() {
     void bridge
       .updateStatus()
       .then((next) => {
-        if (active && next) setPayload(next);
+        if (active) setPayload(next);
       })
       .catch(() => {});
 
     const unsubscribe = bridge.onUpdateStatus?.((next) => {
-      if (active && next) setPayload(next);
+      if (active) setPayload(next);
     });
 
     return () => {

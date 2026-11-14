@@ -22,7 +22,7 @@ export function DashboardGoalCard({ currentValue, onViewGoals }: DashboardGoalCa
   const goals = serverGoals ?? fetchedGoals;
   // Mirror GoalPanel: surface the next open target, then the latest reached one.
   const sorted = [...goals].sort((a, b) => a.targetDate.localeCompare(b.targetDate));
-  const goal = sorted.find((item) => currentValue < item.targetValue) ?? sorted[sorted.length - 1] ?? null;
+  const goal = sorted.find((item) => currentValue < item.targetValue) ?? sorted.at(-1) ?? null;
   const remainingCount = goal ? goals.length - 1 : 0;
 
   useEffect(() => {

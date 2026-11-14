@@ -6,7 +6,7 @@ import { portfolioTint, resolveAccountColor, resolveProviderColor, type PaletteC
 import { combineHistories, holdingCostGBP, holdingValueGBP, type FxRates } from "@/lib/format";
 import type { Account, Holding, Portfolio, Provider, Snapshot } from "@/lib/store";
 
-type HistoryIndex = Record<string, { data: Snapshot[] }>;
+type HistoryIndex = Partial<Record<string, { data: Snapshot[] }>>;
 
 type UseAccountProviderDashboardDataProps = {
   activeAccount: Account | null;
@@ -121,7 +121,7 @@ export function useAccountProviderDashboardData({
         id: provider.id,
         name: provider.name,
         icon: provider.icon,
-        color: provider.color || portfolioTint(color, providerIndex, palette),
+        color: provider.color ?? portfolioTint(color, providerIndex, palette),
         portfoliosCount: providerPortfolios.length,
         holdingsCount: providerHoldings.length,
         value: totals.value,
@@ -134,7 +134,7 @@ export function useAccountProviderDashboardData({
       return {
         id: portfolio.id,
         name: portfolio.name,
-        color: portfolio.color || portfolioTint(color, Math.max(0, directPortfolioIndexes.get(portfolio.id) ?? -1), palette),
+        color: portfolio.color ?? portfolioTint(color, Math.max(0, directPortfolioIndexes.get(portfolio.id) ?? -1), palette),
         holdingsCount: portfolio.holdings.length,
         value: totals.value,
         gain: totals.gain,
@@ -191,7 +191,7 @@ export function useAccountProviderDashboardData({
       return {
         id: portfolio.id,
         name: portfolio.name,
-        color: portfolio.color || portfolioTint(color, Math.max(0, providerPortfolioIndexes.get(portfolio.id) ?? -1), palette),
+        color: portfolio.color ?? portfolioTint(color, Math.max(0, providerPortfolioIndexes.get(portfolio.id) ?? -1), palette),
         value: totals.value,
         gain: totals.gain,
         holdingsCount: portfolio.holdings.length,

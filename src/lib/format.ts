@@ -14,7 +14,7 @@ export type MoneyHolding = {
  * agree on one rule.
  */
 export function isCashSymbol(symbol: string | null | undefined): boolean {
-  return !!symbol && /^cash$/i.test(symbol.trim());
+  return symbol != null && /^cash$/i.test(symbol.trim());
 }
 
 const MANUAL_HOLDING_SECTORS = new Set(["cash", "property", "real estate", "manual", "other"]);
@@ -38,7 +38,8 @@ export function isLiveHolding(
 /** Currency a holding's amount is actually denominated in. */
 export function holdingCurrency(holding: { symbol?: string | null; currency?: string | null }): string {
   if (isCashSymbol(holding.symbol)) return "GBP";
-  return holding.currency?.trim() || "GBP";
+  const currency = holding.currency?.trim() ?? "";
+  return currency || "GBP";
 }
 
 /** Convert a quoted amount into GBP (GBX/GBp pence → pounds). */

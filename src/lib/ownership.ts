@@ -1,4 +1,4 @@
-import { type getDb } from "@/lib/db";
+import type { getDb } from "@/lib/db";
 import { holdings, portfolios, accounts, providers } from "@/lib/db/schema";
 import { and, eq, gt, inArray, or } from "drizzle-orm";
 
@@ -61,6 +61,6 @@ export async function loadOwnedHoldings(
   db: ReturnType<typeof getDb>,
   userId: string,
   filters?: OwnedHoldingsFilters
-): Promise<typeof holdings.$inferSelect[]> {
+): Promise<Array<typeof holdings.$inferSelect>> {
   return ownedHoldingsQuery(db, userId, filters);
 }

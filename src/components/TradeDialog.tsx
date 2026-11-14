@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { type Holding } from "@/lib/store";
+import type { Holding } from "@/lib/store";
 import { fmtPrice } from "@/lib/format";
 import { TrendingUp, Plus, Minus, Calculator, Calendar, Hash } from "lucide-react";
 
@@ -106,24 +106,24 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
             <Input type="date" value={date} max={new Date().toISOString().split("T")[0]} onChange={(e) => setDate(e.target.value)} />
           </div>
 
-          {preview?.kind === "buy" && (
+          {preview?.kind === "buy" && holding && (
             <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400"><Calculator className="w-3.5 h-3.5" /> Dollar-cost averaging preview</div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New avg cost</div><div className="font-semibold text-white">{fmtPrice(preview.newAvg, cur)}</div><div className="text-zinc-600 text-[11px]">was {fmtPrice(holding!.avgPrice, cur)}</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New avg cost</div><div className="font-semibold text-white">{fmtPrice(preview.newAvg, cur)}</div><div className="text-zinc-600 text-[11px]">was {fmtPrice(holding.avgPrice, cur)}</div></div>
                 <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New holding</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">+{s} shares • {fmtPrice(preview.costDelta, cur)} cost</div></div>
               </div>
-              {p < holding!.avgPrice && <p className="text-xs text-emerald-300">Buying below your average — your avg cost will decrease ↓</p>}
-              {p > holding!.avgPrice && <p className="text-xs text-amber-300">Buying above your average — your avg cost will increase ↑</p>}
+              {p < holding.avgPrice && <p className="text-xs text-emerald-300">Buying below your average — your avg cost will decrease ↓</p>}
+              {p > holding.avgPrice && <p className="text-xs text-amber-300">Buying above your average — your avg cost will increase ↑</p>}
             </div>
           )}
 
-          {preview?.kind === "sell" && (
+          {preview?.kind === "sell" && holding && (
             <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-red-400"><Calculator className="w-3.5 h-3.5" /> Sale preview</div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Proceeds</div><div className="font-semibold text-white">{fmtPrice(preview.proceeds, cur)}</div><div className={`text-[11px] ${preview.pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{preview.pl >= 0 ? "+" : ""}{fmtPrice(preview.pl, cur)} P/L</div></div>
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Remaining</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">{preview.newShares === 0 ? "Position closed" : `${preview.newShares} × ${fmtPrice(holding!.avgPrice, cur)} avg`}</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Remaining</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">{preview.newShares === 0 ? "Position closed" : `${preview.newShares} × ${fmtPrice(holding.avgPrice, cur)} avg`}</div></div>
               </div>
             </div>
           )}

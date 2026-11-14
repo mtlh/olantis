@@ -106,7 +106,7 @@ export function useBrandIconWarmup({ providers, portfolios, holdings }: WarmupIn
       if (!cancelled) warmBrandIcons(sources);
     };
 
-    const win = window as Window & {
+    const win = window as Omit<Window, "requestIdleCallback" | "cancelIdleCallback"> & {
       requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
       cancelIdleCallback?: (handle: number) => void;
     };

@@ -50,7 +50,7 @@ export async function earliestPortfolioDate(): Promise<string> {
         SELECT to_timestamp(MIN(created_at))::date::text AS d FROM portfolios
       ) AS starts
     `)) as unknown as { rows?: Array<{ date: string | null }> };
-    const value = rows?.rows?.[0]?.date;
+    const value = rows.rows?.[0]?.date;
     const resolved = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "2020-01-01";
     earliestCache = { at: Date.now(), value: resolved };
     return resolved;

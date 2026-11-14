@@ -24,6 +24,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **Client boundary**: `src/components/**` and `src/lib/store.ts` / `src/lib/use-chart-animation.ts` must not import `@/lib/db`, `drizzle-orm`, `@neondatabase/serverless` or `yahoo-finance2`. Call `/api/*` or read `useWorkspaceBootstrap()`.
 - **Imports**: use the `@/` alias, never `../`. **Logging**: no `console.log` (only `warn`/`error`). **Storage**: no bare `localStorage` — use `window.localStorage` inside a client-only hook so SSR stays deterministic.
 - **Async**: every promise is awaited or explicitly `void`ed; do not pass an `async` function where a `void` handler is expected unless the rejection is handled.
+- **Type honesty**: never assert non-null (`!`) or hide a nullable type. Reach for `Array.prototype.at`, `Partial<Record<...>>` or a local guard so the type matches what the runtime can actually return. `@typescript-eslint/no-unnecessary-condition` is on: a condition TypeScript proves redundant must be deleted (or the type made honest), not suppressed.
+- **Best practices**: `eqeqeq` (except `== null`), `prefer-const`, no implicit coercion (`Boolean(x)`, not `!!x`), no parameter reassignment, no duplicate imports, `??` over `||` for nullable fallbacks, exhaustive switches, and no `String(object)` stringification.
+- **React**: no array indexes as keys, no constructed context values, self-closing components, and no boolean props written as `={true}`.
 
 ## Git Control (this repo only)
 - **Remote**: `origin` = `https://github.com/mtlh/olantis.git` (private). **Branch**: `master` (not `main`) — `origin/HEAD -> origin/master`. Always `master`.

@@ -28,19 +28,19 @@ export async function POST(req: Request) {
   if (icon && !iconId) return Response.json({ error: "unknown icon" }, { status: 400 });
   const db = getDb();
   const existing = await db.select().from(providers).where(eq(providers.id, id));
-  if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+  if (existing[0]?.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
   const set: Partial<typeof providers.$inferInsert> = {};
   if (name !== undefined) {
     const n = validName(name);
     if (!n) return Response.json({ error: "name must be 2-64 characters" }, { status: 400 });
     set.name = n;
   }
-  if (color !== undefined) set.color = color || null;
+  if (color !== undefined) set.color = color ?? null;
   if (icon !== undefined) set.icon = iconId;
   if (accountId !== undefined) {
     if (!accountId) return Response.json({ error: "accountId required to move provider" }, { status: 400 });
     const acc = await db.select().from(accounts).where(eq(accounts.id, accountId));
-    if (!acc[0] || acc[0].userId !== userId) return Response.json({ error: "account not found" }, { status: 400 });
+    if (acc[0]?.userId !== userId) return Response.json({ error: "account not found" }, { status: 400 });
     set.accountId = accountId;
   }
   if (Object.keys(set).length) await db.update(providers).set(set).where(eq(providers.id, id));
@@ -55,7 +55,7 @@ export async function DELETE(req: Request) {
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const db = getDb();
   const existing = await db.select().from(providers).where(eq(providers.id, id));
-  if (!existing[0] || existing[0].userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
+  if (existing[0]?.userId !== userId) return Response.json({ error: "not found" }, { status: 404 });
   await db.delete(providers).where(eq(providers.id, id));
   return Response.json({ ok: true });
 }

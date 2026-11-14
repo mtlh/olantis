@@ -51,8 +51,8 @@ test("opening balance reconciles an imported position with later trades", () => 
     { date: "2020-01-01", shares: 10 },
     { date: "2024-01-01", shares: 15 },
   ]);
-  assert.equal(sharesOn(timeline!, "2023-12-31"), 10);
-  assert.equal(sharesOn(timeline!, "2024-01-02"), 15);
+  assert.equal(sharesOn(timeline, "2023-12-31"), 10);
+  assert.equal(sharesOn(timeline, "2024-01-02"), 15);
 });
 
 test("buys and sells replay in date order", () => {
@@ -69,7 +69,7 @@ test("buys and sells replay in date order", () => {
     { date: "2024-01-01", shares: 10 },
     { date: "2024-06-01", shares: 6 },
   ]);
-  assert.equal(sharesOn(timeline!, "2025-01-01"), 6);
+  assert.equal(sharesOn(timeline, "2025-01-01"), 6);
 });
 
 test("same-day trades are aggregated and never oversell below zero", () => {

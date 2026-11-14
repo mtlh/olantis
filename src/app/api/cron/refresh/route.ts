@@ -65,7 +65,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
     return { success: true, symbolsUpdated: 0, skipped: 0, failed: [], updatedAt: new Date().toISOString(), message: "No holdings", backfill };
   }
 
-  let quotes: Record<string, { price: number; currency: string }> = {};
+  let quotes: Record<string, { price: number; currency: string } | undefined> = {};
   try {
     quotes = await fetchQuotes(symbols, { disambiguate: true });
   } catch {}
@@ -76,7 +76,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   let skipped = 0;
   const failed = symbols.filter((s) => !lookupQuote(quotes, s.symbol, s.exchange)).map((s) => s.symbol);
 
-  const toUpdate: { id: string; price: number; currency: string; ts: number }[] = [];
+  const toUpdate: Array<{ id: string; price: number; currency: string; ts: number }> = [];
   for (const h of refreshableHoldings) {
     if (/^CASH$/i.test(h.symbol.trim())) { skipped++; continue; }
     const q = lookupQuote(quotes, h.symbol, h.exchange);
@@ -113,7 +113,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   if (missingSector.size) {
     try {
       const sectors = await fetchSectors([...missingSector.values()]);
-      const rows = Object.entries(sectors).filter(([, sector]) => !!sector);
+      const rows = Object.entries(sectors).filter(([, sector]) => Boolean(sector));
       if (rows.length) {
         await db.execute(sql`UPDATE holdings SET sector = v.sector FROM (VALUES ${sql.join(rows.map(([symbol, sector]) => sql`(${symbol}, ${sector})`), sql`, `)}) AS v(symbol, sector) WHERE upper(holdings.symbol) = v.symbol AND (holdings.sector IS NULL OR btrim(holdings.sector) = '') AND (holdings.user_id IS NULL OR holdings.user_id NOT LIKE 'demo:%')`);
         sectorsFilled = rows.length;
@@ -151,16 +151,16 @@ async function createSnapshots(allHoldings: HoldingRow[], fxRates: Record<string
 
   // Hoist a single portfolios query for all users instead of one per user.
   const allPortfolios = await db.select().from(portfolios);
-  const portfoliosByUser = new Map<string, typeof portfolios.$inferSelect[]>();
+  const portfoliosByUser = new Map<string, Array<typeof portfolios.$inferSelect>>();
   for (const p of allPortfolios) {
     const arr = portfoliosByUser.get(p.userId) ?? [];
     arr.push(p);
     portfoliosByUser.set(p.userId, arr);
   }
 
-  const snapshotRows: { userId: string; date: string; value: number }[] = [];
-  const portfolioSnapshotRows: { userId: string; portfolioId: string; date: string; value: number }[] = [];
-  const holdingSnapshotRows: { userId: string; holdingId: string; date: string; value: number }[] = [];
+  const snapshotRows: Array<{ userId: string; date: string; value: number }> = [];
+  const portfolioSnapshotRows: Array<{ userId: string; portfolioId: string; date: string; value: number }> = [];
+  const holdingSnapshotRows: Array<{ userId: string; holdingId: string; date: string; value: number }> = [];
 
   for (const [userId, hs] of userHoldings) {
     const totalValue = hs.reduce((sum, h) => sum + valGBP(h), 0);
