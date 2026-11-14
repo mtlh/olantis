@@ -1,13 +1,13 @@
 "use client";
-import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, applyWorkspaceOrder, type AppSettings, type Portfolio } from "@/lib/store";
-import { useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, type AppSettings } from "@/lib/store";
+import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ColorWheel } from "@/components/ui/color-wheel";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { Building2, Briefcase, Folder, FolderOpen, Trash2, Download, Upload, ChevronUp, ChevronDown, GripVertical, Info, Plus, RotateCcw, X } from "lucide-react";
+import { Building2, Briefcase, Folder, FolderOpen, Trash2, Download, Upload, ChevronDown, Info, Plus, RotateCcw, X } from "lucide-react";
 import { tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
 import { MAX_PALETTE_COLORS, addPaletteColor, colorLabel, isDefaultPalette, removePaletteColor, resetPalette, updatePaletteColor, usePalette } from "@/lib/palette";
 import { ENTITY_ICON_OPTIONS } from "@/lib/entity-icons";
@@ -23,9 +23,6 @@ interface SettingsState {
   defaultRange: AppSettings["defaultRange"];
   showTradeMarkers: number;
 }
-
-/** The three sortable tables behind /api/reorder. */
-type OrderTable = "accounts" | "providers" | "portfolios";
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const ROW_HINT = "mt-0.5 text-[11px] text-zinc-600";
@@ -142,48 +139,6 @@ function SegmentedToggle<T extends string | number>({ value, options, onChange }
           {option.label}
         </button>
       ))}
-    </div>
-  );
-}
-
-interface OrderRowProps {
-  name: string;
-  meta?: string;
-  color: string;
-  index: number;
-  count: number;
-  dragging: boolean;
-  dropTarget: boolean;
-  onDragStart: () => void;
-  onDragOver: (event: DragEvent<HTMLDivElement>) => void;
-  onDrop: (event: DragEvent<HTMLDivElement>) => void;
-  onDragEnd: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-}
-
-function OrderRow({ name, meta, color, index, count, dragging, dropTarget, onDragStart, onDragOver, onDrop, onDragEnd, onMoveUp, onMoveDown }: OrderRowProps) {
-  return (
-    <div
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", name);
-        onDragStart();
-      }}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      className={`group/row flex cursor-grab items-center gap-1.5 rounded-md py-1 pl-1 pr-0.5 transition-colors active:cursor-grabbing ${dragging ? "opacity-40" : "hover:bg-white/[0.04]"} ${dropTarget ? "bg-white/[0.06] ring-1 ring-inset ring-white/20" : ""}`}
-    >
-      <GripVertical aria-hidden className="h-3.5 w-3.5 shrink-0 text-zinc-700 transition-colors group-hover/row:text-zinc-500" />
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
-      <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-zinc-200">{name}</span>
-      {meta && <span className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-zinc-600">{meta}</span>}
-      <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100">
-        <Button variant="ghost" size="icon-xs" className="h-5 w-5 text-zinc-500 hover:text-white" aria-label={`Move ${name} up`} disabled={index === 0} onClick={onMoveUp}><ChevronUp className="h-3 w-3" /></Button>
-        <Button variant="ghost" size="icon-xs" className="h-5 w-5 text-zinc-500 hover:text-white" aria-label={`Move ${name} down`} disabled={index === count - 1} onClick={onMoveDown}><ChevronDown className="h-3 w-3" /></Button>
-      </div>
     </div>
   );
 }
@@ -380,104 +335,15 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     try { await setProviderIcon(id, icon); toast({ title: icon ? "Provider icon updated" : "Brand icon restored", variant: "success" }); } catch (e: unknown){ toast({title:"Failed", description: e instanceof Error ? e.message : String(e), variant:"error"});} finally{ setSaving(null); }
   };
 
-  const handleReorder = async (table: OrderTable, ids: string[], previousIds: string[]) => {
-    // Paint the accepted order everywhere — the sidebar keeps its own copy of
-    // these rows — then persist it in the background. A failed save puts the
-    // previous order back so the sidebar never disagrees with the server.
-    applyWorkspaceOrder(table, ids);
-    try {
-      const res = await fetch("/api/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table, ids }) });
-      if (!res.ok) throw new Error((await res.text()) || `Reorder failed (${res.status})`);
-      toast({ title: "Order updated", variant: "success" });
-    } catch (e: unknown) {
-      applyWorkspaceOrder(table, previousIds);
-      toast({ title: "Reorder failed", description: e instanceof Error ? e.message : String(e), variant: "error" });
-    }
-  };
-
-  const moveItem = (table: OrderTable, list: { id: string }[], from: number, to: number) => {
-    if (from === to || to < 0 || to >= list.length) return;
-    const ids = list.map(x => x.id);
-    const [moved] = ids.splice(from, 1);
-    ids.splice(to, 0, moved);
-    void handleReorder(table, ids, list.map(x => x.id));
-  };
-
-  const [drag, setDrag] = useState<{ group: string; index: number } | null>(null);
-  const [dragOver, setDragOver] = useState<{ group: string; index: number } | null>(null);
-
-  // Rows are only droppable inside their own group, so dragging never mixes
-  // accounts, providers of different accounts, or portfolios of different accounts.
-  const orderProps = (table: OrderTable, group: string, list: { id: string }[], index: number) => ({
-    index,
-    count: list.length,
-    dragging: drag?.group === group && drag.index === index,
-    dropTarget: drag?.group === group && drag.index !== index && dragOver?.group === group && dragOver.index === index,
-    onDragStart: () => { setDrag({ group, index }); setDragOver(null); },
-    onDragOver: (event: DragEvent<HTMLDivElement>) => {
-      if (drag?.group !== group) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      if (dragOver?.group !== group || dragOver.index !== index) setDragOver({ group, index });
-    },
-    onDrop: (event: DragEvent<HTMLDivElement>) => {
-      if (drag?.group !== group) return;
-      event.preventDefault();
-      moveItem(table, list, drag.index, index);
-      setDrag(null);
-      setDragOver(null);
-    },
-    onDragEnd: () => { setDrag(null); setDragOver(null); },
-    onMoveUp: () => moveItem(table, list, index, index - 1),
-    onMoveDown: () => moveItem(table, list, index, index + 1),
-  });
-
   const sortedAccounts = useMemo(() => [...accounts].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [accounts]);
   const sortedProviders = useMemo(() => [...providers].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [providers]);
   const sortedPortfolios = useMemo(() => [...portfolios].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [portfolios]);
-  const providersByAccount = useMemo(() => {
-    const m = new Map<string, typeof providers>();
-    for (const pr of providers) { const arr = m.get(pr.accountId) ?? []; arr.push(pr); m.set(pr.accountId, arr); }
-    for (const [, arr] of m) arr.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-    return m;
-  }, [providers]);
 
   const directHoldings = useMemo(() => allHoldings.filter((holding) => !holding.portfolioId), [allHoldings]);
   const holdingCount = useMemo(
     () => portfolios.reduce((sum, portfolio) => sum + portfolio.holdings.length, 0) + directHoldings.length,
     [portfolios, directHoldings],
   );
-  // Only siblings inside the same group can trade places, so a group with a
-  // single row is not a candidate for swapping and is left out entirely.
-  const providerGroups = useMemo(
-    () => sortedAccounts
-      .map((account) => ({ account, items: providersByAccount.get(account.id) ?? [] }))
-      .filter((group) => group.items.length > 1),
-    [providersByAccount, sortedAccounts],
-  );
-  const portfolioGroups = useMemo(() => {
-    // The sidebar lists portfolios inside their account card (provider is only a
-    // subtitle), so an account is the unit whose portfolios can swap places.
-    const accountIdByProvider = new Map(providers.map((provider) => [provider.id, provider.accountId]));
-    const byAccount = new Map<string, Portfolio[]>();
-    const unassigned: Portfolio[] = [];
-    for (const portfolio of sortedPortfolios) {
-      const accountId = portfolio.providerId ? accountIdByProvider.get(portfolio.providerId) ?? portfolio.accountId : portfolio.accountId;
-      if (!accountId) { unassigned.push(portfolio); continue; }
-      const items = byAccount.get(accountId) ?? [];
-      items.push(portfolio);
-      byAccount.set(accountId, items);
-    }
-    const groups: { key: string; label: string; items: Portfolio[] }[] = [];
-    for (const account of sortedAccounts) {
-      const items = byAccount.get(account.id) ?? [];
-      if (items.length > 1) groups.push({ key: `account:${account.id}`, label: account.name, items });
-    }
-    if (unassigned.length > 1) groups.push({ key: "unassigned", label: "Unassigned", items: unassigned });
-    return groups;
-  }, [providers, sortedAccounts, sortedPortfolios]);
-  const hasAccountSwaps = sortedAccounts.length > 1;
-  const hasSwaps = hasAccountSwaps || providerGroups.length > 0 || portfolioGroups.length > 0;
   const allocation = usePortfolioAllocation({
     activePortfolio: null,
     portfolios,
@@ -714,81 +580,6 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 emptyMessage="Add holdings to preview account colours"
               />
             </div>
-          </div>
-        </details>
-
-        <details className="group py-6">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
-            <span className="text-sm font-medium text-white">Sidebar order</span>
-            <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="pt-3">
-            {!hasSwaps ? (
-              <p className="text-sm text-zinc-500">Nothing to reorder yet.</p>
-            ) : (
-              <div className={`grid max-w-3xl items-start gap-x-10 gap-y-4 ${hasAccountSwaps && providerGroups.length ? "lg:grid-cols-2" : ""}`}>
-                <p className="text-[11px] text-zinc-600">Drag a row to move it; the arrows appear on hover.</p>
-
-                {hasAccountSwaps && (
-                  <div>
-                    <p className={LABEL}>Accounts</p>
-                    <div className="mt-1">
-                      {sortedAccounts.map((acc, i) => (
-                        <OrderRow
-                          key={acc.id}
-                          name={acc.name}
-                          color={resolveAccountColor(acc, accounts, palette)}
-                          {...orderProps("accounts", "accounts", sortedAccounts, i)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {providerGroups.length > 0 && (
-                  <div>
-                    <p className={LABEL}>Providers</p>
-                    <div className="mt-1 space-y-2">
-                      {providerGroups.map(({ account, items }) => (
-                        <div key={account.id}>
-                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{account.name}</p>
-                          {items.map((pr, i) => (
-                            <OrderRow
-                              key={pr.id}
-                              name={pr.name}
-                              color={resolveProviderColor(pr, providers, accounts, palette)}
-                              {...orderProps("providers", `providers:${account.id}`, items, i)}
-                            />
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {portfolioGroups.length > 0 && (
-                  <div>
-                    <p className={LABEL}>Portfolios</p>
-                    <div className="mt-1 space-y-2">
-                      {portfolioGroups.map((group) => (
-                        <div key={group.key}>
-                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{group.label}</p>
-                          {group.items.map((p, i) => (
-                            <OrderRow
-                              key={p.id}
-                              name={p.name}
-                              meta={p.type}
-                              color={resolvePortfolioColor(p, portfolios, providers, accounts, palette)}
-                              {...orderProps("portfolios", group.key, group.items, i)}
-                            />
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </details>
 
