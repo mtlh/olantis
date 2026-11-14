@@ -75,3 +75,9 @@ npm run lint
 npm run typecheck
 npm run build
 ```
+
+## Pull requests
+
+Work lands through PRs against `master`; CI in `.github/workflows/ci.yml` must be green before merging. Start from `.github/pull_request_template.md`.
+
+UI changes ship with screenshots in the PR body — before/after for a changed screen, after-only for something new, captured at 1440×900 (plus 390×844 when small screens change) with the demo workspace loaded. It is the fastest way for a reviewer to see the change actually renders.
