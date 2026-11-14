@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { FolderPlus, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { FolderPlus } from "lucide-react";
+import { DialogActions } from "@/components/shared/DialogActions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -151,13 +151,14 @@ export function AssignHoldingDialog({
           )}
           {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</p>}
         </div>
-        <div className="flex justify-end gap-2 mt-6">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button type="button" onClick={() => void assign()} disabled={saving || target === "__pick__"}>
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderPlus className="w-4 h-4" />}
-            {target === "__new__" ? "Create & add" : "Add to portfolio"}
-          </Button>
-        </div>
+        <DialogActions
+          onCancel={() => onOpenChange(false)}
+          onSubmit={() => void assign()}
+          submitLabel={target === "__new__" ? "Create & add" : "Add to portfolio"}
+          submitIcon={<FolderPlus className="w-4 h-4" />}
+          disabled={target === "__pick__"}
+          saving={saving}
+        />
       </DialogContent>
     </Dialog>
   );

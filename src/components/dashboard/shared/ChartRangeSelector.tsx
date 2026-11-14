@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { SegmentedControl } from "@/components/shared/SegmentedControl";
 
 export type ChartRange = "1M" | "3M" | "1Y" | "MAX";
 
@@ -27,23 +27,14 @@ export function ChartRangeSelector({
 }: ChartRangeSelectorProps) {
   if (segmented) {
     return (
-      <div className={cn("flex items-center gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.03] p-0.5", className === "contents" ? undefined : className)}>
-        {CHART_RANGES.map((item) => (
-          <button
-            key={item}
-            type="button"
-            aria-pressed={range === item}
-            onClick={() => onRangeChange(item)}
-            className={cn(
-              "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
-              range === item ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300",
-              buttonClassName,
-            )}
-          >
-            {item === "MAX" ? maxLabel : item}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        value={range}
+        ariaLabel="Chart range"
+        onChange={onRangeChange}
+        options={CHART_RANGES.map((item) => ({ value: item, label: item === "MAX" ? maxLabel : item }))}
+        className={className === "contents" ? undefined : className}
+        buttonClassName={buttonClassName}
+      />
     );
   }
 

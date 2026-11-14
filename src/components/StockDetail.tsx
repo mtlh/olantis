@@ -1,18 +1,20 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDownRight, ArrowUpRight, FolderPlus, Minus, Plus, Wallet } from "lucide-react";
+import { FolderPlus, Minus, Plus, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTransactions, useSettings, type Holding, type Transaction } from "@/lib/store";
-import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingCostGBP, holdingCurrency, holdingValueGBP, isListedSymbol, chartDateLabel, filterByRange, type MoneyHolding } from "@/lib/format";
+import { fmtGBP, fmtPrice, fmtPct, fmtRelative, holdingCostGBP, holdingCurrency, holdingValueGBP, isListedSymbol, chartDateLabel, filterByRange, plural, type MoneyHolding } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ValueTimeChart, type ValueTimeChartDot, type ValueTimeChartRow } from "@/components/dashboard/ValueTimeChart";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { Metric, MetricStrip } from "@/components/shared/MetricStrip";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { SectionHeading } from "@/components/shared/SectionHeading";
+import { TradeRow } from "@/components/shared/TradeRow";
 
 type PriceRow = { date: string; price: number };
-
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
-const SUB = "mt-2 text-[11px] text-zinc-600";
 
 function shortDate(iso: string, locale: string) {
   const date = new Date(`${iso}T00:00:00`);
@@ -156,14 +158,12 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
 
   return (
     <>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={32} shape="circle" />
-            <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">{holding.symbol}</h1>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <p className="text-xs text-zinc-500">{holding.name}</p>
+      <PageHeader
+        icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={32} shape="circle" />}
+        title={holding.symbol}
+        description={
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <span>{holding.name}</span>
             {holding.exchange && (
               <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">{holding.exchange}</span>
             )}
@@ -171,55 +171,67 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
               <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">{portfolioName}</span>
             )}
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {onBuy && onSell && (
+        }
+        actions={
+          <>
+            {onBuy && onSell && (
+              <>
+                <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onBuy}><Plus className="h-3.5 w-3.5" /> Buy</Button>
+                <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onSell}><Minus className="h-3.5 w-3.5" /> Sell</Button>
+              </>
+            )}
+            {!portfolioId && onAddToPortfolio && (
+              <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onAddToPortfolio} title="Move this holding into a portfolio"><FolderPlus className="h-3.5 w-3.5" /> Add to portfolio</Button>
+            )}
+          </>
+        }
+      />
+
+      <MetricStrip variant="holding">
+        <Metric
+          wide
+          size="hero"
+          position="tight-first"
+          label="Value"
+          value={fmtGBP(val)}
+          sub={<>Cost basis {fmtGBP(cost)}{weightPct == null ? "" : ` · ${weightPct.toFixed(1)}% weight`}</>}
+        />
+
+        <Metric
+          position="tight-middle"
+          label="Unrealized gain"
+          tone={gainTone}
+          value={
             <>
-              <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onBuy}><Plus className="h-3.5 w-3.5" /> Buy</Button>
-              <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onSell}><Minus className="h-3.5 w-3.5" /> Sell</Button>
+              <span className="whitespace-nowrap">{gain >= 0 ? "+" : ""}{fmtGBP(gain)}</span>
+              <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(pct)}</span>
             </>
-          )}
-          {!portfolioId && onAddToPortfolio && (
-            <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={onAddToPortfolio} title="Move this holding into a portfolio"><FolderPlus className="h-3.5 w-3.5" /> Add to portfolio</Button>
-          )}
-        </div>
-      </div>
+          }
+        />
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] lg:gap-0 lg:py-7">
-        <div className="col-span-2 lg:col-span-1 lg:pr-6">
-          <p className={LABEL}>Value</p>
-          <p className="mt-2 text-[38px] font-semibold leading-none tracking-tight tabular-nums text-white sm:text-[42px]">{fmtGBP(val)}</p>
-          <p className={SUB}>Cost basis {fmtGBP(cost)}{weightPct == null ? "" : ` · ${weightPct.toFixed(1)}% weight`}</p>
-        </div>
+        <Metric
+          position="tight-middle"
+          label="Price"
+          value={fmtPrice(holding.currentPrice, currency)}
+          sub={`${currency} · updated ${fmtRelative(holding.lastRefreshedAt, settings.dateFormat)}`}
+        />
 
-        <div className="lg:border-l lg:border-white/[0.06] lg:px-6">
-          <p className={LABEL}>Unrealized gain</p>
-          <p className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${gainTone}`}>
-            <span className="whitespace-nowrap">{gain >= 0 ? "+" : ""}{fmtGBP(gain)}</span>
-            <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(pct)}</span>
-          </p>
-        </div>
+        <Metric
+          position="tight-middle"
+          label="Shares"
+          value={holding.shares}
+          sub={`Avg ${fmtPrice(holding.avgPrice, currency)}`}
+        />
 
-        <div className="lg:border-l lg:border-white/[0.06] lg:px-6">
-          <p className={LABEL}>Price</p>
-          <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{fmtPrice(holding.currentPrice, currency)}</p>
-          <p className={SUB}>{currency} · updated {fmtRelative(holding.lastRefreshedAt, settings.dateFormat)}</p>
-        </div>
-
-        <div className="lg:border-l lg:border-white/[0.06] lg:px-6">
-          <p className={LABEL}>Shares</p>
-          <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-white sm:text-2xl">{holding.shares}</p>
-          <p className={SUB}>Avg {fmtPrice(holding.avgPrice, currency)}</p>
-        </div>
-
-        <div className="lg:border-l lg:border-white/[0.06] lg:pl-6">
-          <p className={LABEL}>Latest move</p>
-          <p className={`mt-2 whitespace-nowrap text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${moveTone}`}>
-            {latestMarketMove ? `${latestMarketMove.amount >= 0 ? "+" : "−"}${fmtPrice(Math.abs(latestMarketMove.amount), currency)}` : "—"}
-          </p>
-          <p className={SUB}>{latestMarketMove ? `${fmtPct(latestMarketMove.percent)} · ${shortDate(latestMarketMove.date, settings.dateFormat)}` : "No recent quote history"}</p>
-        </div>
-      </div>
+        <Metric
+          position="tight-last"
+          label="Latest move"
+          tone={moveTone}
+          valueClassName="whitespace-nowrap"
+          value={latestMarketMove ? `${latestMarketMove.amount >= 0 ? "+" : "−"}${fmtPrice(Math.abs(latestMarketMove.amount), currency)}` : "—"}
+          sub={latestMarketMove ? `${fmtPct(latestMarketMove.percent)} · ${shortDate(latestMarketMove.date, settings.dateFormat)}` : "No recent quote history"}
+        />
+      </MetricStrip>
 
       <div className="flex flex-col gap-6">
         {isManual && !hasValueSeries ? (
@@ -252,26 +264,28 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
         )}
 
         <section aria-labelledby="holding-trades-heading" className="min-w-0">
-          <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
-            <h2 id="holding-trades-heading" className="text-sm font-medium text-white">Trades</h2>
-            <span className="text-[11px] text-zinc-600">{transactions.length ? `${transactions.length} recorded` : "None yet"}</span>
-          </div>
+          <SectionHeading
+            id="holding-trades-heading"
+            title="Trades"
+            meta={transactions.length ? `${plural(transactions.length, "trade")} recorded` : "None yet"}
+            divider
+            spacing="tight"
+          />
           {transactions.length === 0 ? (
-            <p className="border-b border-white/[0.06] py-6 text-sm text-zinc-500">Buy or sell this holding to start a trade history.</p>
+            <EmptyState bordered="top" size="sm" className="border-b border-white/[0.06]" title="Buy or sell this holding to start a trade history." />
           ) : (
             <div className="max-h-[360px] divide-y divide-white/[0.05] overflow-auto">
               {transactions.slice(0, 50).map((t) => (
-                <div key={t.id} className="flex items-center gap-3 px-1 py-3 transition-colors hover:bg-white/[0.025]">
-                  <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${t.type === "buy" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>{t.type === "buy" ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
-                      <span className={t.type === "buy" ? "text-emerald-400" : "text-red-400"}>{t.type === "buy" ? "Buy" : "Sell"}</span>
-                      <span className="tabular-nums text-zinc-500">{t.shares} @ {fmtPrice(t.price, currency)}</span>
-                    </div>
-                  </div>
-                  <span className="hidden shrink-0 text-xs tabular-nums text-zinc-500 sm:block">{fmtPrice(t.shares * Number(t.price), currency)}</span>
-                  <span className="w-14 shrink-0 text-right text-xs tabular-nums text-zinc-600">{new Date(t.date).toLocaleDateString(settings.dateFormat, { month: "short", day: "numeric" })}</span>
-                </div>
+                <TradeRow
+                  key={t.id}
+                  type={t.type}
+                  shares={t.shares}
+                  price={Number(t.price)}
+                  date={t.date}
+                  dateFormat={settings.dateFormat}
+                  currency={currency}
+                  showSymbol={false}
+                />
               ))}
             </div>
           )}

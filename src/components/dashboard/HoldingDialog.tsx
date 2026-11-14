@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Loader2, Pencil, Plus, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BrandIcon } from "@/components/BrandIcon";
+import { DialogActions } from "@/components/shared/DialogActions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -402,13 +403,14 @@ export function HoldingDialog({
           )}
         </div>
 
-        <div className="flex justify-end gap-2 mt-6">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button type="button" onClick={() => void submit()} disabled={saving || !portfolio}>
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </div>
+        <DialogActions
+          onCancel={() => onOpenChange(false)}
+          onSubmit={() => void submit()}
+          submitLabel="Save"
+          submitIcon={<Check className="w-4 h-4" />}
+          disabled={!portfolio}
+          saving={saving}
+        />
       </DialogContent>
     </Dialog>
   );
