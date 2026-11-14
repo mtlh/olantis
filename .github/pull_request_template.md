@@ -10,8 +10,8 @@ Screenshots are the proof a UI change renders correctly. A reviewer should be ab
 - **After only** when adding something new.
 - Capture at a real viewport: **1440×900** desktop, plus **390×844** when the change affects small screens.
 - Load the demo workspace (`/api/demo`, or the demo button on `/`) so shots show populated data, not empty states.
-- Drag the PNGs into this section — GitHub hosts them, so there is nothing to commit here.
-- Only put screenshots in `docs/screenshots/` when they are useful long-term (design references, release notes).
+- **Attach the PNGs to this section — never commit them.** Capture to `.screenshots/` (gitignored) and attach with `gh pr create|edit --attach .screenshots/before.png`, or drag them into this body in the browser; GitHub hosts them as `user-attachments`, so the repo stays clean.
+- `docs/screenshots/` is only for curated references that a document links to — not PR proof.
 
 | Before | After |
 | --- | --- |

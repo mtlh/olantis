@@ -25,6 +25,9 @@
 # local startup benchmarks
 /.bench
 
+# local UI proof captures (never commit screenshots; see .agents/skills/ui-proof)
+/.screenshots
+
 # misc
 .DS_Store
 *.pem

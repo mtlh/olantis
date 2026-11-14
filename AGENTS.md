@@ -27,7 +27,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Git Control (this repo only)
 - **Remote**: `origin` = `https://github.com/mtlh/olantis.git` (private). **Branch**: `master` (not `main`) — `origin/HEAD -> origin/master`. Always `master`.
-- **GitHub CLI on Windows**: `gh` is NOT in PATH for PowerShell. Use full path: `& "C:\Program Files\GitHub CLI\gh.exe" ...` (version 2.98.0). Auth: `mtlh` logged in via keyring, scopes `repo workflow gist read:org`.
+- **GitHub CLI on Windows**: `gh` is NOT in PATH for PowerShell. Use full path: `& "C:\Program Files\GitHub CLI\gh.exe" ...` (version 2.98.0 installed; `--attach` needs 2.99.0+ — upgrade from <https://github.com/cli/cli/releases> before attaching screenshots from the CLI). Auth: `mtlh` logged in via keyring, scopes `repo workflow gist read:org`.
 - **Create/check repo**: `& "C:\Program Files\GitHub CLI\gh.exe" repo view mtlh/olantis --json name,visibility,url` → `PRIVATE`. If creating fresh: `& "C:\Program Files\GitHub CLI\gh.exe" repo create olantis --private --source=. --remote=origin` — expect "Name already exists" if linked.
 - **Workflow**: `git status`; `git diff --stat`; `git add <files>` (e.g. `src/app/page.tsx src/app/dashboard/page.tsx`); `git commit -m "type: message"`; `git push origin master`. Never force push to `master` without explicit ask. Never amend after push. Keep commits concise (e.g. `feat: split routes / and /dashboard, demo -> /dashboard`).
 - **Check before push**: `git log --oneline -3` — latest `d52a6d6 feat: split routes / and /dashboard, demo -> /dashboard`.
@@ -37,7 +37,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Work lands as a PR against `master`; the template is `.github/pull_request_template.md`. Merge once CI (`.github/workflows/ci.yml`) is green — a plain merge commit, then delete the branch.
 - **Every PR that changes anything visible must embed screenshots in the body.** Before/after images for a changed screen, after-only for something new, cropped to the changed area. A description alone is not evidence the UI renders.
 - Capture at **1440×900** desktop, and add **390×844** when small-screen layout changes. Load the demo workspace (`/api/demo`, or the demo button on `/`) so screenshots show populated data, not an empty dashboard.
-- Drag PNGs into the PR body (GitHub hosts them). Commit to `docs/screenshots/` only when the image is a lasting reference; never commit throwaway captures.
+- **Screenshots never enter the repo.** Capture to `.screenshots/` (gitignored) or the OS temp dir, then attach to the PR body with GitHub CLI: `gh pr create --body-file body.md --attach ".screenshots/before.png#Before" --attach ".screenshots/after.png#After"` (`gh` 2.99.0+; body paths are rewritten to GitHub-hosted URLs). On older `gh`, drag the PNGs into the PR body in the browser — GitHub uploads them to `user-attachments`, nothing is committed. Show a capture in chat by embedding its absolute path: `![After](C:/path/to/after.png)`.
+- `docs/screenshots/` is only for curated references that a document links to (see `docs/screenshots/README.md`). Never commit before/after proof or work-in-progress captures; delete `.screenshots/` after the PR merges. Full workflow: `.agents/skills/ui-proof/SKILL.md`.
 - Pure refactor / DB / CI / docs PRs skip screenshots but must say so in **What changed**. Agents: run `npm run check` before pushing; if a UI PR arrives without screenshots, ask for them instead of merging.
 
 ## Vercel Deployment (project-specific)
