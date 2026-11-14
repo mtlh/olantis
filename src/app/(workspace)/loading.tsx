@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { MetricStripSkeleton } from "@/components/shared/MetricStrip";
 
 // Lightweight chrome for the workspace group. Having a loading file also lets
 // Next prefetch these dynamic routes, so a cold navigation paints this shell
@@ -55,20 +56,7 @@ export default function WorkspaceLoading() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:grid-cols-[1.3fr_1fr_1fr_0.75fr] lg:gap-0 lg:py-7">
-            <div className="col-span-2 lg:col-span-1 lg:pr-8">
-              <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
-              <Skeleton className="mt-2 h-[38px] w-28 bg-white/[0.09] sm:h-[42px]" />
-              <Skeleton className="mt-2 h-2.5 w-24 bg-white/[0.04]" />
-            </div>
-            {[1, 2, 3].map((index) => (
-              <div key={index} className={index === 3 ? "hidden lg:block lg:border-l lg:border-white/[0.06] lg:pl-8" : "lg:border-l lg:border-white/[0.06] lg:px-8"}>
-                <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
-                <Skeleton className="mt-2 h-7 w-20 bg-white/[0.09] sm:h-8" />
-                <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.04]" />
-              </div>
-            ))}
-          </div>
+          <MetricStripSkeleton />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Skeleton className="h-[440px] rounded-[1.25rem] bg-white/[0.03] lg:col-span-2" />

@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fmtGBP, filterByRange, todayISODate, chartDateLabel } from "@/lib/format";
+import { fmtGBP, filterByRange, todayISODate, chartDateLabel, plural } from "@/lib/format";
 import { usePalette } from "@/lib/palette";
 import { useWorkspaceBootstrap, type Goal, type Snapshot } from "@/lib/store";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
+import { Metric, MetricStrip, METRIC_LABEL } from "@/components/shared/MetricStrip";
+import { ProgressBar } from "@/components/shared/ProgressBar";
+import { SectionHeading } from "@/components/shared/SectionHeading";
 
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
-const SUB = "mt-2 text-[11px] text-zinc-600";
 const EMPTY_GOALS: Goal[] = [];
 const FALLBACK_COLOR = "#34d399";
 
@@ -167,48 +168,55 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
 
   return (
     <div className="space-y-8">
-      <div className={`grid grid-cols-2 gap-x-6 gap-y-8 border-y border-white/[0.06] py-6 sm:gap-x-10 lg:gap-0 lg:py-7 ${focusGoal ? "sm:grid-cols-3 lg:grid-cols-[1.3fr_1fr_1fr_1fr]" : "sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr]"}`}>
-        <div className={`col-span-2 min-w-0 lg:col-span-1 lg:pr-8 ${focusGoal ? "sm:col-span-3" : "sm:col-span-2"}`}>
-          <p className={`${LABEL} truncate`} title={focusGoal ? focusGoal.name : undefined}>{focusGoal ? focusGoal.name : "Portfolio value"}</p>
-          <p className="mt-2 truncate text-[38px] font-semibold leading-none tracking-tight tabular-nums text-white sm:text-[42px]">
-            {focusGoal && focusStats ? `${Math.min(focusStats.progress, 999).toFixed(1)}%` : fmtGBP(currentValue)}
-          </p>
-          {focusGoal && focusStats && (
-            <div
-              className="mt-3 h-1 w-full max-w-[220px] overflow-hidden rounded-full bg-white/[0.07]"
-              role="progressbar"
-              aria-label={`${focusGoal.name} progress`}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.min(focusStats.progress, 100)}
-            >
-              <div className="h-full rounded-full bg-emerald-400/80 transition-all" style={{ width: `${Math.min(focusStats.progress, 100)}%` }} />
-            </div>
-          )}
-          <p className={SUB}>
-            {focusGoal
+      <MetricStrip variant={focusGoal ? "goals" : "goals-empty"}>
+        <Metric
+          wide
+          size="hero"
+          position="first"
+          className={focusGoal ? "sm:col-span-3" : "sm:col-span-2"}
+          labelClassName="truncate"
+          valueClassName="truncate"
+          label={focusGoal ? focusGoal.name : "Portfolio value"}
+          title={focusGoal ? focusGoal.name : undefined}
+          value={
+            <>
+              <span className="block truncate">
+                {focusGoal && focusStats ? `${Math.min(focusStats.progress, 999).toFixed(1)}%` : fmtGBP(currentValue)}
+              </span>
+              {focusGoal && focusStats && (
+                <ProgressBar
+                  value={focusStats.progress}
+                  label={`${focusGoal.name} progress`}
+                  className="mt-3 max-w-[220px]"
+                />
+              )}
+            </>
+          }
+          sub={
+            focusGoal
               ? <>{fmtGBP(currentValue)} of {fmtGBP(focusGoal.targetValue)}{goals.length > 1 ? ` · ${goals.length} goals` : ""}</>
-              : "As of today"}
-          </p>
-        </div>
+              : "As of today"
+          }
+        />
 
         {focusGoal && focusStats ? (
           <>
             <Metric
-              className="lg:border-l lg:border-white/[0.06] lg:px-8"
+              position="middle"
               label="Portfolio value"
               value={fmtGBP(currentValue)}
               sub={periodChange === null ? "No period change yet" : `${changeLabel} over ${rangeLabel}`}
             />
             <Metric
-              className="lg:border-l lg:border-white/[0.06] lg:px-8"
+              position="middle"
               label="Still to go"
               value={focusStats.reached ? "Reached" : fmtGBP(focusStats.remaining)}
               tone={focusStats.reached ? "text-emerald-400" : "text-white"}
               sub={focusStats.reached ? "Target met" : `By ${shortDate(focusGoal.targetDate)}`}
             />
             <Metric
-              className="col-span-2 sm:col-span-1 lg:border-l lg:border-white/[0.06] lg:pl-8"
+              position="last"
+              className="col-span-2 sm:col-span-1"
               label="Monthly pace"
               value={focusStats.reached || focusStats.daysLeft === 0 ? "—" : fmtGBP(focusStats.monthlyPace)}
               tone={focusStats.reached || focusStats.daysLeft === 0 ? "text-zinc-600" : "text-white"}
@@ -222,21 +230,21 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
         ) : (
           <>
             <Metric
-              className="lg:border-l lg:border-white/[0.06] lg:px-8"
+              position="middle"
               label={`Change · ${rangeLabel}`}
               value={changeLabel}
               tone={changeTone}
               sub={periodChange === null || !startRow ? "More history needed" : `Since ${shortDate(startRow.date)}`}
             />
             <Metric
-              className="lg:border-l lg:border-white/[0.06] lg:pl-8"
+              position="last"
               label="Snapshots"
               value={String(history.length)}
               sub={history[0] ? `Since ${shortDate(history[0].date)}` : "No history yet"}
             />
           </>
         )}
-      </div>
+      </MetricStrip>
 
       <Card className="panel">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
@@ -324,19 +332,18 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
       </Card>
 
       <section aria-labelledby="goals-heading" className="space-y-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
-          <div className="flex items-baseline gap-2.5">
-            <h2 id="goals-heading" className="text-sm font-medium text-white">Goal targets</h2>
-            <span className="text-[11px] text-zinc-600">
-              {sortedGoals.length ? `${sortedGoals.length} ${sortedGoals.length === 1 ? "goal" : "goals"}` : "None set"}
-            </span>
-          </div>
-          {!draft && sortedGoals.length > 0 && (
+        <SectionHeading
+          id="goals-heading"
+          title="Goal targets"
+          meta={sortedGoals.length ? plural(sortedGoals.length, "goal") : "None set"}
+          divider
+          spacing="tight"
+          action={!draft && sortedGoals.length > 0 && (
             <Button variant="ghost" size="sm" className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={startAdd}>
               <Plus className="h-3.5 w-3.5" /> Add goal
             </Button>
           )}
-        </div>
+        />
 
         {editingNew && draft && (
           <GoalEditor draft={draft} saving={saving} onChange={setDraft} onSubmit={(event) => void save(event)} onCancel={() => { setDraft(null); setError(""); }} />
@@ -372,31 +379,22 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
                       <p className="truncate text-sm text-white" title={goal.name}>{goal.name}</p>
                       <span className={`ml-auto shrink-0 text-xs tabular-nums ${stats.reached ? "text-emerald-400" : "text-zinc-500"}`}>{Math.min(stats.progress, 999).toFixed(1)}%</span>
                     </div>
-                    <div
-                      className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/[0.07]"
-                      role="progressbar"
-                      aria-label={`${goal.name} progress`}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={Math.min(stats.progress, 100)}
-                    >
-                      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(stats.progress, 100)}%`, backgroundColor: color, opacity: 0.8 }} />
-                    </div>
+                    <ProgressBar value={stats.progress} label={`${goal.name} progress`} color={color} className="mt-2" />
                     <p className="mt-2 text-[11px] tabular-nums text-zinc-600">
                       {fmtGBP(currentValue)} of {fmtGBP(goal.targetValue)}
                       {stats.reached ? " · Reached" : stats.daysLeft === 0 ? " · Target date passed" : ` · ${stats.daysLeft} days left`}
                     </p>
                   </div>
                   <div className="hidden lg:block">
-                    <p className={LABEL}>Target</p>
+                    <p className={METRIC_LABEL}>Target</p>
                     <p className="mt-1 text-sm tabular-nums text-zinc-300">{fmtGBP(goal.targetValue)}</p>
                   </div>
                   <div>
-                    <p className={LABEL}>By</p>
+                    <p className={METRIC_LABEL}>By</p>
                     <p className="mt-1 text-sm text-zinc-300">{shortDate(goal.targetDate)}</p>
                   </div>
                   <div className="hidden lg:block">
-                    <p className={LABEL}>Pace</p>
+                    <p className={METRIC_LABEL}>Pace</p>
                     <p className={`mt-1 text-sm tabular-nums ${stats.reached ? "text-emerald-400" : "text-zinc-300"}`}>{stats.reached ? "Reached" : stats.daysLeft === 0 ? "—" : `${fmtGBP(stats.monthlyPace)}/mo`}</p>
                   </div>
                   <div className="flex items-center gap-1 lg:justify-end">
@@ -449,15 +447,5 @@ function GoalEditor({ draft, saving, onChange, onSubmit, onCancel }: {
         </div>
       </div>
     </form>
-  );
-}
-
-function Metric({ label, value, sub, tone = "text-white", className = "" }: { label: string; value: React.ReactNode; sub: React.ReactNode; tone?: string; className?: string }) {
-  return (
-    <div className={`min-w-0 ${className}`}>
-      <p className={LABEL}>{label}</p>
-      <p className={`mt-2 truncate text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${tone}`}>{value}</p>
-      <p className={`${SUB} truncate`} title={typeof sub === "string" ? sub : undefined}>{sub}</p>
-    </div>
   );
 }

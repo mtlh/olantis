@@ -15,6 +15,8 @@ import {
   holdingCostGBP,
   holdingCurrency,
   holdingValueGBP,
+  percentOf,
+  plural,
   seriesCursor,
   toGBP,
   todayISODate,
@@ -249,4 +251,14 @@ test("cached date formatters match the uncached Intl output", () => {
   const ts = 1767225600;
   assert.equal(fmtTimestamp(ts, "en-GB"), new Date(ts * 1000).toLocaleString("en-GB"));
   assert.equal(fmtTimestamp(ts, "en-US"), new Date(ts * 1000).toLocaleString("en-US"));
+});
+
+test("count labels and shares use one pluralisation and percent rule", () => {
+  assert.equal(plural(0, "provider"), "0 providers");
+  assert.equal(plural(1, "provider"), "1 provider");
+  assert.equal(plural(2, "provider"), "2 providers");
+  assert.equal(plural(1, "goal"), "1 goal");
+  assert.equal(percentOf(25, 100), "25.0%");
+  assert.equal(percentOf(1, 3), "33.3%");
+  assert.equal(percentOf(10, 0), "0.0%");
 });

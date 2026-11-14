@@ -16,6 +16,10 @@ import { BrandIcon } from "@/components/BrandIcon";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { AllocationCard } from "@/components/dashboard/shared/AllocationCard";
 import { usePortfolioAllocation } from "@/components/dashboard/usePortfolioAllocation";
+import { Metric, MetricStrip } from "@/components/shared/MetricStrip";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { SectionHeading } from "@/components/shared/SectionHeading";
+import { SegmentedControl } from "@/components/shared/SegmentedControl";
 
 interface SettingsState {
   currency: string;
@@ -24,7 +28,6 @@ interface SettingsState {
   showTradeMarkers: number;
 }
 
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const ROW_HINT = "mt-0.5 text-[11px] text-zinc-600";
 const FIELD = "w-full border-white/[0.08] bg-white/[0.03]";
 const ACTION = "justify-start rounded-full text-zinc-300 sm:justify-center";
@@ -127,19 +130,13 @@ function CsvFormatBlock({ label, required, sample }: { label: string; required: 
 
 function SegmentedToggle<T extends string | number>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
   return (
-    <div className="flex w-fit items-center gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.03] p-0.5 md:justify-self-end">
-      {options.map((option) => (
-        <button
-          key={String(option.value)}
-          type="button"
-          aria-pressed={value === option.value}
-          onClick={() => onChange(option.value)}
-          className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${value === option.value ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300"}`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      value={value}
+      ariaLabel="Toggle"
+      onChange={onChange}
+      options={options}
+      className="md:justify-self-end"
+    />
   );
 }
 
@@ -176,21 +173,23 @@ function PaletteEditor() {
 
   return (
     <section aria-labelledby="palette-heading" className="py-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <div className="flex items-baseline gap-2">
-          <h2 id="palette-heading" className="text-sm font-medium text-white">Palette</h2>
-          <span className="text-[11px] text-zinc-600">{palette.length} data {palette.length === 1 ? "colour" : "colours"}</span>
-        </div>
-        <Button
-          variant="ghost"
-          size="xs"
-          className="rounded-full text-zinc-500 hover:text-white"
-          disabled={isDefaultPalette(palette)}
-          onClick={() => { resetPalette(); setNotice(null); }}
-        >
-          <RotateCcw className="h-3 w-3" /> Reset to default
-        </Button>
-      </div>
+      <SectionHeading
+        id="palette-heading"
+        title="Palette"
+        meta={`${palette.length} data ${palette.length === 1 ? "colour" : "colours"}`}
+        spacing="none"
+        action={
+          <Button
+            variant="ghost"
+            size="xs"
+            className="rounded-full text-zinc-500 hover:text-white"
+            disabled={isDefaultPalette(palette)}
+            onClick={() => { resetPalette(); setNotice(null); }}
+          >
+            <RotateCcw className="h-3 w-3" /> Reset to default
+          </Button>
+        }
+      />
       <p className="mt-1 text-[11px] text-zinc-600">Auto-tints cycle through this list. Click a swatch to recolour it; remove the ones you never use.</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -365,25 +364,28 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
 
   return (
     <section className="space-y-6 pb-16 xl:pb-0">
-      <h1 className="text-[28px] font-semibold leading-none tracking-tight text-white">Settings</h1>
+      <PageHeader title="Settings" />
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-6 border-y border-white/[0.06] py-6 sm:grid-cols-4 sm:gap-x-0">
+      <MetricStrip variant="settings">
         {[
           { label: "Accounts", value: accounts.length },
           { label: "Providers", value: providers.length },
           { label: "Portfolios", value: portfolios.length },
           { label: "Holdings", value: holdingCount },
         ].map((item, index) => (
-          <div key={item.label} className={index === 0 ? "sm:pr-8" : "sm:border-l sm:border-white/[0.06] sm:pl-8"}>
-            <p className={LABEL}>{item.label}</p>
-            <p className="mt-2 text-2xl font-semibold leading-none tracking-tight tabular-nums text-white">{item.value}</p>
-          </div>
+          <Metric
+            key={item.label}
+            label={item.label}
+            value={item.value}
+            size="compact"
+            className={index === 0 ? "sm:pr-8" : "sm:border-l sm:border-white/[0.06] sm:pl-8"}
+          />
         ))}
-      </div>
+      </MetricStrip>
 
       <div className="divide-y divide-white/[0.06] border-b border-white/[0.06]">
         <section aria-labelledby="preferences-heading" className="py-6">
-          <h2 id="preferences-heading" className="text-sm font-medium text-white">Preferences</h2>
+          <SectionHeading id="preferences-heading" title="Preferences" spacing="none" />
           <div className="mt-4 divide-y divide-white/[0.05]">
             <div className="grid gap-2 py-3.5 first:pt-0 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
               <div>
@@ -439,23 +441,18 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
           </summary>
           <div className="grid gap-6 pt-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-10">
             <div className="min-w-0">
-              <div className="grid w-full grid-cols-3 gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.03] p-0.5 sm:inline-flex sm:w-fit sm:items-center">
-                {([
-                  { key: "accounts" as const, label: "Accounts", icon: Building2 },
-                  { key: "providers" as const, label: "Providers", icon: Briefcase },
-                  { key: "portfolios" as const, label: "Portfolios", icon: Folder },
-                ]).map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={colorTab === key}
-                    onClick={() => setColorTab(key)}
-                    className={`flex items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-medium transition-colors ${colorTab === key ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300"}`}
-                  >
-                    <Icon className="h-3.5 w-3.5" /> {label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                value={colorTab}
+                ariaLabel="Colour and icon entity"
+                onChange={setColorTab}
+                className="grid w-full grid-cols-3 sm:inline-flex sm:w-fit"
+                buttonClassName="px-2 py-1.5"
+                options={[
+                  { value: "accounts" as const, label: "Accounts", icon: <Building2 className="h-3.5 w-3.5" /> },
+                  { value: "providers" as const, label: "Providers", icon: <Briefcase className="h-3.5 w-3.5" /> },
+                  { value: "portfolios" as const, label: "Portfolios", icon: <Folder className="h-3.5 w-3.5" /> },
+                ]}
+              />
               <p className="mt-3 text-[11px] text-zinc-600">
                 {colorTab === "accounts"
                   ? "Base colour and folder icon for each account; providers and portfolios tint from these."
@@ -584,7 +581,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
         </details>
 
         <section aria-labelledby="data-heading" className="py-6">
-          <h2 id="data-heading" className="text-sm font-medium text-white">Data &amp; privacy</h2>
+          <SectionHeading id="data-heading" title="Data & privacy" spacing="none" />
           <div className="mt-4 divide-y divide-white/[0.05]">
             <div className="flex flex-col gap-3 py-3.5 first:pt-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
               <div>
