@@ -42,6 +42,20 @@ test("the window opens on the startup state, never on an unpainted client area",
   assert.match(main, /"did-fail-load", revealWindow/);
 });
 
+test("the window stays transparent until the shell has produced frames", () => {
+  // The window is revealed on did-finish-load as well as ready-to-show, and a
+  // top-level window that has just been shown can be presented before its first
+  // composited frame — Windows paints its own backdrop (#202020) in the
+  // meantime. Creating the window at opacity 0 and making it opaque only after
+  // the shell renderer has produced animation frames removes that gap.
+  assert.match(main, /\bopacity: 0,/);
+  assert.match(main, /setOpacity\(1\)/);
+  assert.match(main, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
+  // A renderer stuck before its first frame must not leave the app invisible.
+  assert.match(main, /WINDOW_OPACITY_FALLBACK_MS/);
+  assert.match(main, /setTimeout\(showOpaque, WINDOW_OPACITY_FALLBACK_MS\)/);
+});
+
 test("the startup mark can never swallow clicks meant for the app", () => {
   const splashRule = shellCss.match(/\.splash\s*\{([^}]*)\}/s);
   const cssRules = shellCss.replace(/\/\*[\s\S]*?\*\//g, "");
