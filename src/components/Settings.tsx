@@ -1,11 +1,11 @@
 "use client";
 import { useAccounts, useProviders, usePortfolios, useHoldings, useSettings, type AppSettings } from "@/lib/store";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type DragEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { Building2, Briefcase, Folder, Trash2, Download, Upload, ChevronUp, ChevronDown, Info } from "lucide-react";
+import { Building2, Briefcase, Folder, Trash2, Download, Upload, ChevronUp, ChevronDown, GripVertical, Info } from "lucide-react";
 import { PALETTE, tintColor, resolveAccountColor, resolvePortfolioColor, resolveProviderColor } from "@/lib/colors";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { AllocationCard } from "@/components/dashboard/shared/AllocationCard";
@@ -87,15 +87,43 @@ function SegmentedToggle<T extends string | number>({ value, options, onChange }
   );
 }
 
-function OrderRow({ name, meta, color, onUp, onDown, upDisabled, downDisabled }: { name: string; meta?: string; color: string; onUp: () => void; onDown: () => void; upDisabled: boolean; downDisabled: boolean }) {
+interface OrderRowProps {
+  name: string;
+  meta?: string;
+  color: string;
+  index: number;
+  count: number;
+  dragging: boolean;
+  dropTarget: boolean;
+  onDragStart: () => void;
+  onDragOver: (event: DragEvent<HTMLDivElement>) => void;
+  onDrop: (event: DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}
+
+function OrderRow({ name, meta, color, index, count, dragging, dropTarget, onDragStart, onDragOver, onDrop, onDragEnd, onMoveUp, onMoveDown }: OrderRowProps) {
   return (
-    <div className="flex items-center gap-2 py-2">
+    <div
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", name);
+        onDragStart();
+      }}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`group/row flex cursor-grab items-center gap-1.5 rounded-md py-1 pl-1 pr-0.5 transition-colors active:cursor-grabbing ${dragging ? "opacity-40" : "hover:bg-white/[0.04]"} ${dropTarget ? "bg-white/[0.06] ring-1 ring-inset ring-white/20" : ""}`}
+    >
+      <GripVertical aria-hidden className="h-3.5 w-3.5 shrink-0 text-zinc-700 transition-colors group-hover/row:text-zinc-500" />
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
-      <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{name}</span>
+      <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-zinc-200">{name}</span>
       {meta && <span className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-zinc-600">{meta}</span>}
-      <div className="flex shrink-0 gap-0.5">
-        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${name} up`} disabled={upDisabled} onClick={onUp}><ChevronUp className="h-3.5 w-3.5" /></Button>
-        <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Move ${name} down`} disabled={downDisabled} onClick={onDown}><ChevronDown className="h-3.5 w-3.5" /></Button>
+      <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100">
+        <Button variant="ghost" size="icon-xs" className="h-5 w-5 text-zinc-500 hover:text-white" aria-label={`Move ${name} up`} disabled={index === 0} onClick={onMoveUp}><ChevronUp className="h-3 w-3" /></Button>
+        <Button variant="ghost" size="icon-xs" className="h-5 w-5 text-zinc-500 hover:text-white" aria-label={`Move ${name} down`} disabled={index === count - 1} onClick={onMoveDown}><ChevronDown className="h-3 w-3" /></Button>
       </div>
     </div>
   );
@@ -164,13 +192,42 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     } catch (e: unknown) { toast({ title: "Reorder failed", description: e instanceof Error ? e.message : String(e), variant: "error" }); }
   };
 
-  const moveItem = (table: string, list: { id: string }[], index: number, dir: -1 | 1) => {
+  const moveItem = (table: string, list: { id: string }[], from: number, to: number) => {
+    if (from === to || to < 0 || to >= list.length) return;
     const ids = list.map(x => x.id);
-    const newIdx = index + dir;
-    if (newIdx < 0 || newIdx >= ids.length) return;
-    [ids[index], ids[newIdx]] = [ids[newIdx], ids[index]];
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
     void handleReorder(table, ids);
   };
+
+  const [drag, setDrag] = useState<{ group: string; index: number } | null>(null);
+  const [dragOver, setDragOver] = useState<{ group: string; index: number } | null>(null);
+
+  // Rows are only droppable inside their own group, so dragging never reorders
+  // a provider across accounts (or a portfolio across providers).
+  const orderProps = (table: string, group: string, list: { id: string }[], index: number) => ({
+    index,
+    count: list.length,
+    dragging: drag?.group === group && drag.index === index,
+    dropTarget: drag?.group === group && drag.index !== index && dragOver?.group === group && dragOver.index === index,
+    onDragStart: () => { setDrag({ group, index }); setDragOver(null); },
+    onDragOver: (event: DragEvent<HTMLDivElement>) => {
+      if (drag?.group !== group) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      if (dragOver?.group !== group || dragOver.index !== index) setDragOver({ group, index });
+    },
+    onDrop: (event: DragEvent<HTMLDivElement>) => {
+      if (drag?.group !== group) return;
+      event.preventDefault();
+      moveItem(table, list, drag.index, index);
+      setDrag(null);
+      setDragOver(null);
+    },
+    onDragEnd: () => { setDrag(null); setDragOver(null); },
+    onMoveUp: () => moveItem(table, list, index, index - 1),
+    onMoveDown: () => moveItem(table, list, index, index + 1),
+  });
 
   const sortedAccounts = useMemo(() => [...accounts].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [accounts]);
   const sortedProviders = useMemo(() => [...providers].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)), [providers]);
@@ -413,60 +470,58 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             <span className="text-sm font-medium text-white">Sidebar order</span>
             <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
           </summary>
-          <div className="pt-4">
+          <div className="pt-3">
             {ordered ? (
               <p className="text-sm text-zinc-500">Nothing to reorder yet.</p>
             ) : (
-              <>
+              <div className="grid max-w-3xl items-start gap-x-10 gap-y-4 lg:grid-cols-2">
+                <p className="text-[11px] text-zinc-600 lg:col-span-2">Drag a row to move it; the arrows appear on hover.</p>
+
                 <div>
                   <p className={LABEL}>Accounts</p>
-                  {sortedAccounts.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No accounts</p> : (
-                    <div className="mt-2 divide-y divide-white/[0.05]">
+                  {sortedAccounts.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No accounts</p> : (
+                    <div className="mt-1">
                       {sortedAccounts.map((acc, i) => (
                         <OrderRow
                           key={acc.id}
                           name={acc.name}
                           color={resolveAccountColor(acc, accounts)}
-                          upDisabled={i === 0}
-                          downDisabled={i === sortedAccounts.length - 1}
-                          onUp={() => moveItem("accounts", sortedAccounts, i, -1)}
-                          onDown={() => moveItem("accounts", sortedAccounts, i, 1)}
+                          {...orderProps("accounts", "accounts", sortedAccounts, i)}
                         />
                       ))}
                     </div>
                   )}
                 </div>
 
-                <div className="mt-5 border-t border-white/[0.05] pt-5">
+                <div>
                   <p className={LABEL}>Providers</p>
-                  {providers.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No providers</p> : sortedAccounts.map(acc => {
-                    const provs = providersByAccount.get(acc.id) ?? [];
-                    if (provs.length === 0) return null;
-                    return (
-                      <div key={acc.id} className="mt-3 first:mt-2">
-                        <p className="text-[11px] text-zinc-500">{acc.name}</p>
-                        <div className="divide-y divide-white/[0.05]">
-                          {provs.map((pr, i) => (
-                            <OrderRow
-                              key={pr.id}
-                              name={pr.name}
-                              color={resolveProviderColor(pr, providers, accounts)}
-                              upDisabled={i === 0}
-                              downDisabled={i === provs.length - 1}
-                              onUp={() => moveItem("providers", provs, i, -1)}
-                              onDown={() => moveItem("providers", provs, i, 1)}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {providers.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No providers</p> : (
+                    <div className="mt-1 space-y-2">
+                      {sortedAccounts.map(acc => {
+                        const provs = providersByAccount.get(acc.id) ?? [];
+                        if (provs.length === 0) return null;
+                        return (
+                          <div key={acc.id}>
+                            <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{acc.name}</p>
+                            {provs.map((pr, i) => (
+                              <OrderRow
+                                key={pr.id}
+                                name={pr.name}
+                                color={resolveProviderColor(pr, providers, accounts)}
+                                {...orderProps("providers", `providers:${acc.id}`, provs, i)}
+                              />
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                <div className="mt-5 border-t border-white/[0.05] pt-5">
+                <div className="lg:col-span-2">
                   <p className={LABEL}>Portfolios</p>
-                  {portfolios.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No portfolios</p> : (
-                    <div className="mt-2 space-y-4">
+                  {portfolios.length === 0 ? <p className="mt-1 text-xs text-zinc-500">No portfolios</p> : (
+                    <div className="mt-1 space-y-2">
                       {sortedAccounts.map(acc => {
                         const provs = providersByAccount.get(acc.id) ?? [];
                         const directPfs = portfoliosByAccount.get(acc.id) ?? [];
@@ -474,47 +529,37 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                         if (!hasContent) return null;
                         return (
                           <div key={acc.id}>
-                            <p className="text-[11px] text-zinc-500">{acc.name}</p>
+                            <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{acc.name}</p>
                             {provs.map(pr => {
                               const pfs = portfoliosByProvider.get(pr.id) ?? [];
                               if (pfs.length === 0) return null;
                               return (
-                                <div key={pr.id} className="pl-3">
-                                  <p className="text-[11px] text-zinc-600">{pr.name}</p>
-                                  <div className="divide-y divide-white/[0.05]">
-                                    {pfs.map((p, i) => (
-                                      <OrderRow
-                                        key={p.id}
-                                        name={p.name}
-                                        meta={p.type}
-                                        color={resolvePortfolioColor(p, portfolios, providers, accounts)}
-                                        upDisabled={i === 0}
-                                        downDisabled={i === pfs.length - 1}
-                                        onUp={() => moveItem("portfolios", pfs, i, -1)}
-                                        onDown={() => moveItem("portfolios", pfs, i, 1)}
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                            {directPfs.length > 0 && (
-                              <div className="pl-3">
-                                <p className="text-[11px] text-zinc-600">Direct</p>
-                                <div className="divide-y divide-white/[0.05]">
-                                  {directPfs.map((p, i) => (
+                                <div key={pr.id} className="pl-2">
+                                  <p className="px-1 text-[10px] text-zinc-600">{pr.name}</p>
+                                  {pfs.map((p, i) => (
                                     <OrderRow
                                       key={p.id}
                                       name={p.name}
                                       meta={p.type}
                                       color={resolvePortfolioColor(p, portfolios, providers, accounts)}
-                                      upDisabled={i === 0}
-                                      downDisabled={i === directPfs.length - 1}
-                                      onUp={() => moveItem("portfolios", directPfs, i, -1)}
-                                      onDown={() => moveItem("portfolios", directPfs, i, 1)}
+                                      {...orderProps("portfolios", `portfolios:${pr.id}`, pfs, i)}
                                     />
                                   ))}
                                 </div>
+                              );
+                            })}
+                            {directPfs.length > 0 && (
+                              <div className="pl-2">
+                                <p className="px-1 text-[10px] text-zinc-600">Direct</p>
+                                {directPfs.map((p, i) => (
+                                  <OrderRow
+                                    key={p.id}
+                                    name={p.name}
+                                    meta={p.type}
+                                    color={resolvePortfolioColor(p, portfolios, providers, accounts)}
+                                    {...orderProps("portfolios", `direct:${acc.id}`, directPfs, i)}
+                                  />
+                                ))}
                               </div>
                             )}
                           </div>
@@ -522,27 +567,22 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                       })}
                       {unassignedPortfolios.length > 0 && (
                         <div>
-                          <p className="text-[11px] text-zinc-500">Unassigned</p>
-                          <div className="divide-y divide-white/[0.05]">
-                            {unassignedPortfolios.map((p, i) => (
-                              <OrderRow
-                                key={p.id}
-                                name={p.name}
-                                meta={p.type}
-                                color={resolvePortfolioColor(p, portfolios, providers, accounts)}
-                                upDisabled={i === 0}
-                                downDisabled={i === unassignedPortfolios.length - 1}
-                                onUp={() => moveItem("portfolios", unassignedPortfolios, i, -1)}
-                                onDown={() => moveItem("portfolios", unassignedPortfolios, i, 1)}
-                              />
-                            ))}
-                          </div>
+                          <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600">Unassigned</p>
+                          {unassignedPortfolios.map((p, i) => (
+                            <OrderRow
+                              key={p.id}
+                              name={p.name}
+                              meta={p.type}
+                              color={resolvePortfolioColor(p, portfolios, providers, accounts)}
+                              {...orderProps("portfolios", "unassigned", unassignedPortfolios, i)}
+                            />
+                          ))}
                         </div>
                       )}
                     </div>
                   )}
                 </div>
-              </>
+              </div>
             )}
           </div>
         </details>
