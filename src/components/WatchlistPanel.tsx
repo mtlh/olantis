@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { Maximize2, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { chartDateLabel, fmtPct, fmtPrice } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
@@ -21,6 +22,7 @@ type SearchResult = {
   currency?: string | null;
 };
 type PricePoint = { date: string; price: number };
+type ChartPoint = PricePoint & { label: string };
 function apiError(data: unknown, fallback: string) {
   return data && typeof data === "object" && "error" in data && typeof data.error === "string"
     ? data.error
@@ -29,6 +31,47 @@ function apiError(data: unknown, fallback: string) {
 
 const LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
 const SUB = "mt-2 text-[11px] text-zinc-600";
+
+type PriceChartProps = {
+  data: ChartPoint[];
+  loading: boolean;
+  symbol: string;
+  currency: string | null | undefined;
+  change: number | null;
+  heightClassName: string;
+};
+
+// Shared by the inline card and the expanded dialog so both plots stay identical.
+function PriceChart({ data, loading, symbol, currency, change, heightClassName }: PriceChartProps) {
+  const gradientId = useId();
+  const stroke = change == null || change >= 0 ? "#34d399" : "#f87171";
+
+  return (
+    <div className={`${heightClassName} w-full`} role="img" aria-label={`${symbol} price chart`}>
+      {loading ? (
+        <div className="grid h-full place-items-center text-xs text-zinc-500">Loading price history…</div>
+      ) : data.length > 0 ? (
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={stroke} stopOpacity={0.24} />
+                <stop offset="95%" stopColor={stroke} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#71717a" }} axisLine={false} tickLine={false} minTickGap={24} />
+            <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#71717a" }} axisLine={false} tickLine={false} tickFormatter={(value: number) => fmtPrice(value, currency)} width={64} />
+            <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff", fontSize: 12 }} labelStyle={{ color: "#a1a1aa", marginBottom: 4 }} formatter={(value) => fmtPrice(Number(value), currency)} />
+            <Area type="monotone" dataKey="price" name={symbol} stroke={stroke} fill={`url(#${gradientId})`} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="grid h-full place-items-center px-6 text-center text-xs text-zinc-500">No price history is available for {symbol}.</div>
+      )}
+    </div>
+  );
+}
 
 export function WatchlistPanel() {
   const [items, setItems] = useState<WatchItem[]>([]);
@@ -44,6 +87,7 @@ export function WatchlistPanel() {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [removingId, setRemovingId] = useState("");
+  const [expanded, setExpanded] = useState(false);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/watchlist");
@@ -278,7 +322,7 @@ export function WatchlistPanel() {
         </div>
       ) : null}
 
-      <div className={`grid grid-cols-1 gap-8 ${activeItem ? "xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] xl:gap-0" : ""}`}>
+      <div className={`grid grid-cols-1 gap-8 ${activeItem ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] xl:gap-0" : ""}`}>
         <section className="min-w-0 xl:pr-8" aria-labelledby="watchlist-symbols-heading">
           <div className="flex items-baseline justify-between gap-3 pb-3">
             <h2 id="watchlist-symbols-heading" className="text-sm font-medium text-white">Symbols</h2>
@@ -376,32 +420,54 @@ export function WatchlistPanel() {
                   <CardTitle className="truncate text-sm font-medium text-white">{activeItem.name || activeItem.symbol}</CardTitle>
                   <p className="mt-1 truncate text-[11px] text-zinc-600">{activeItem.symbol}{activeItem.exchange ? ` · ${activeItem.exchange}` : ""}</p>
                 </div>
-                <ChartRangeSelector range={range} onRangeChange={setRange} segmented />
+                <div className="flex items-center gap-2">
+                  <ChartRangeSelector range={range} onRangeChange={setRange} segmented />
+                  <button type="button" onClick={() => setExpanded(true)} aria-label="Expand chart" className="rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-white">
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="h-[240px] w-full sm:h-[300px] xl:h-[260px]">
-                  {chartLoading ? (
-                    <div className="grid h-full place-items-center text-xs text-zinc-500">Loading price history…</div>
-                  ) : chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                        <defs><linearGradient id="watchlist-price-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={chartChange == null || chartChange >= 0 ? "#34d399" : "#f87171"} stopOpacity={0.24} /><stop offset="95%" stopColor={chartChange == null || chartChange >= 0 ? "#34d399" : "#f87171"} stopOpacity={0} /></linearGradient></defs>
-                        <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#71717a" }} axisLine={false} tickLine={false} minTickGap={24} />
-                        <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#71717a" }} axisLine={false} tickLine={false} tickFormatter={(value: number) => fmtPrice(value, activeQuote?.currency ?? activeItem.currency)} width={64} />
-                        <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff", fontSize: 12 }} labelStyle={{ color: "#a1a1aa", marginBottom: 4 }} formatter={(value) => fmtPrice(Number(value), activeQuote?.currency ?? activeItem.currency)} />
-                        <Area type="monotone" dataKey="price" name={activeItem.symbol} stroke={chartChange == null || chartChange >= 0 ? "#34d399" : "#f87171"} fill="url(#watchlist-price-fill)" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="grid h-full place-items-center px-6 text-center text-xs text-zinc-500">No price history is available for {activeItem.symbol}.</div>
-                  )}
-                </div>
+                <PriceChart
+                  data={chartData}
+                  loading={chartLoading}
+                  symbol={activeItem.symbol}
+                  currency={activeQuote?.currency ?? activeItem.currency}
+                  change={chartChange}
+                  heightClassName="h-[280px] sm:h-[340px] xl:h-[360px]"
+                />
               </CardContent>
             </Card>
           </section>
         )}
       </div>
+
+      {activeItem && (
+        <Dialog open={expanded} onOpenChange={setExpanded}>
+          {/* Same focus treatment as the dashboard chart: a pointer-opened
+              dialog skips focus so the plot does not show a focus ring. */}
+          <DialogContent
+            className="max-w-[95vw] sm:max-w-[95vw]"
+            initialFocus={(openType) => openType === "keyboard"}
+          >
+            <DialogHeader className="flex-row items-center justify-between gap-3 pr-10">
+              <div className="min-w-0">
+                <DialogTitle className="truncate">{activeItem.name || activeItem.symbol}</DialogTitle>
+                <p className="mt-1 truncate text-[11px] text-zinc-600">{activeItem.symbol}{activeItem.exchange ? ` · ${activeItem.exchange}` : ""}</p>
+              </div>
+              <ChartRangeSelector range={range} onRangeChange={setRange} segmented />
+            </DialogHeader>
+            <PriceChart
+              data={chartData}
+              loading={chartLoading}
+              symbol={activeItem.symbol}
+              currency={activeQuote?.currency ?? activeItem.currency}
+              change={chartChange}
+              heightClassName="h-[70vh]"
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

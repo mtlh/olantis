@@ -7,6 +7,7 @@ type DesktopUpdatePayload = { state: string; version: string | null };
 
 type DesktopBridge = {
   updateStatus?: () => Promise<DesktopUpdatePayload>;
+  checkForUpdates?: () => Promise<DesktopUpdatePayload>;
   restartToUpdate?: () => void;
   onUpdateStatus?: (callback: (payload: DesktopUpdatePayload) => void) => (() => void) | void;
 };
@@ -51,6 +52,14 @@ export function useDesktopUpdate() {
   return {
     ready: payload.state === "ready",
     version: payload.version,
+    /** Ask the desktop shell to check now. False when there is no updater (web). */
+    check: async () => {
+      const bridge = desktopBridge();
+      if (!bridge?.checkForUpdates) return false;
+      const next = await bridge.checkForUpdates().catch(() => null);
+      if (next) setPayload(next);
+      return true;
+    },
     restart: () => desktopBridge()?.restartToUpdate?.(),
   };
 }

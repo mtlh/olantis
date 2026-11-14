@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Plus, RefreshCw, Loader2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { DashboardLevel } from "@/components/dashboard/shared/DashboardLevel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,9 +18,6 @@ type MainDashboardProps = {
   periodChange: ValueChange | null;
   range: "1M" | "3M" | "1Y" | "MAX";
   isLoading: boolean;
-  refreshing: boolean;
-  canRefresh: boolean;
-  onRefresh: () => void;
   onNewPortfolio: () => void;
   onCreateFirstPortfolio: () => void;
   children: ReactNode;
@@ -42,9 +39,6 @@ export function MainDashboard({
   periodChange,
   range,
   isLoading,
-  refreshing,
-  canRefresh,
-  onRefresh,
   onNewPortfolio,
   onCreateFirstPortfolio,
   children,
@@ -67,16 +61,6 @@ export function MainDashboard({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="rounded-full px-3 text-zinc-400 hover:bg-white/[0.05] hover:text-white"
-            onClick={onRefresh}
-            disabled={refreshing || !canRefresh}
-          >
-            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Refresh prices
-          </Button>
           <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onNewPortfolio}>
             <Plus className="h-3.5 w-3.5" /> New portfolio
           </Button>

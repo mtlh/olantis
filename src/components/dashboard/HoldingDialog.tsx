@@ -397,7 +397,7 @@ export function HoldingDialog({
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               {effectiveIsManual
                 ? "Manual holdings are excluded from price refresh and count toward portfolio value and charts."
-                : "Live prices refresh daily at 06:00 UTC. Use 'Refresh prices' on dashboard for manual update (24h limit)."}
+                : "Live prices refresh automatically once a day at 06:00 UTC."}
             </div>
           )}
         </div>
