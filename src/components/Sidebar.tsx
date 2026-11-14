@@ -451,11 +451,6 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
 
   return (
     <div className="border-t p-2" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-      <p className="truncate px-1 pb-1.5 text-right text-[11px] text-zinc-600">
-        {lastRefreshLabel
-          ? <>Tickers updated <span className="tabular-nums text-zinc-400">{lastRefreshLabel}</span></>
-          : "Tickers not updated yet"}
-      </p>
       <div className="flex items-center gap-1">
         {page === "dashboard" ? (
           dashboardButton
@@ -465,7 +460,15 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
         {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />, "Savings targets")}
         {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
 
-        <div className="ml-auto flex items-center gap-1">
+        <span
+          className="ml-auto min-w-0 truncate pl-1 text-right text-[11px] text-zinc-600"
+          title={lastRefreshLabel ? `Tickers updated ${lastRefreshLabel}` : "Tickers not updated yet"}
+        >
+          {lastRefreshLabel
+            ? <>Updated <span className="tabular-nums text-zinc-400">{lastRefreshLabel}</span></>
+            : "Not updated yet"}
+        </span>
+        <div className="flex shrink-0 items-center gap-1">
           {updateButton}
           {signOutLink}
         </div>
