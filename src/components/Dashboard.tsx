@@ -1045,14 +1045,6 @@ range={range}
               portfolioValue={holdingScopeValue}
               portfolioName={viewPortfolio?.name ?? providers.find((provider) => provider.id === viewHolding.providerId)?.name ?? accounts.find((account) => account.id === viewHolding.accountId)?.name}
               color={viewColor}
-              onBack={() => {
-                const parentProviderId = viewPortfolio?.providerId ?? viewHolding.providerId;
-                const parentProvider = providers.find((provider) => provider.id === parentProviderId);
-                const parentAccountId = viewPortfolio?.accountId ?? viewHolding.accountId;
-                if (parentProvider) selectProvider(parentProvider.id);
-                else if (parentAccountId) selectAccount(parentAccountId);
-                else clearSelection();
-              }}
               onBuy={() => openTrade(viewHolding, "buy")}
               onSell={() => openTrade(viewHolding, "sell")}
               onAddToPortfolio={() => openAssign(viewHolding)}
