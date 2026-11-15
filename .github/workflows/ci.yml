@@ -50,16 +50,25 @@ jobs:
       - name: Install dependencies
         if: steps.node_modules.outputs.cache-hit != 'true'
         run: npm ci --prefer-offline --no-audit --no-fund
-      # One entry for both caches the tool chain keeps in .next/cache:
-      # ESLint's per-file results (`npm run lint` is configured to cache there)
-      # and the modules Next.js reuses instead of recompiling.
-      - name: Restore build caches
+      # Compiled modules that `next build` reuses instead of recompiling.
+      - name: Restore Next.js build cache
         uses: actions/cache@v4
         with:
           path: .next/cache
           key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts', 'postcss.config.mjs', 'public/**') }}
           restore-keys: |
             nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      # `npm run lint` caches per-file results under .next/cache/eslint, so a hit
+      # leaves only changed files for the type-aware rules to analyse. It gets its
+      # own entry keyed on the lint config alone: the Next.js one below is keyed on
+      # a source hash, which means it hits exactly and is never rewritten with the
+      # cache lint has just produced.
+      - name: Restore ESLint cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache/eslint
+          key: eslint-${{ runner.os }}-${{ hashFiles('eslint.config.mjs', 'tsconfig.json', 'package-lock.json') }}
+          restore-keys: eslint-${{ runner.os }}-
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
