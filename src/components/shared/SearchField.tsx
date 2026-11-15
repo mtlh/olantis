@@ -57,7 +57,7 @@ export function SearchField({
       <Search
         aria-hidden="true"
         className={cn(
-          "pointer-events-none absolute top-1/2 -translate-y-1/2 text-zinc-500",
+          "pointer-events-none absolute top-1/2 -translate-y-1/2 text-zinc-400",
           compact ? "left-2.5 h-3.5 w-3.5" : "left-3 h-4 w-4",
         )}
       />
@@ -81,8 +81,8 @@ export function SearchField({
           onClick={clear}
           aria-label={`Clear ${label}`}
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-white",
-            compact ? "right-2" : "right-3",
+            "absolute top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-zinc-400 transition-colors hover:text-white",
+            compact ? "right-1" : "right-1.5",
           )}
         >
           <X className={compact ? "h-3 w-3" : "h-4 w-4"} />

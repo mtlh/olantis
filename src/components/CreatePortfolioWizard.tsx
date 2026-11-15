@@ -32,7 +32,7 @@ function StepHeading({ icon: Icon, title, description }: { icon: LucideIcon; tit
       </div>
       <div className="min-w-0 pt-0.5">
         <h2 className="text-base font-semibold tracking-tight text-white">{title}</h2>
-        <p className="mt-1 text-sm leading-relaxed text-zinc-500">{description}</p>
+        <p className="mt-1 text-sm leading-relaxed text-zinc-400">{description}</p>
       </div>
     </div>
   );
@@ -123,9 +123,9 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
             placeholder="e.g. Growth, Income, ISA Wrapper"
             autoFocus
             maxLength={32}
-            className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600 focus-visible:border-white/25 focus-visible:ring-white/10"
+            className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-400 focus-visible:border-white/25 focus-visible:ring-white/10"
           />
-          <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+          <div className="flex items-center justify-between gap-3 text-xs text-zinc-400">
             <span>2–32 characters.</span>
             <span aria-live="polite" className="tabular-nums">{name.length}/32</span>
           </div>
@@ -144,7 +144,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
                     onKeyDown={(e) => { if (e.key === "Enter") void createAccount(); }}
                     placeholder="e.g. Household"
                     maxLength={64}
-                    className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600 focus-visible:border-white/25 focus-visible:ring-white/10"
+                    className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-400 focus-visible:border-white/25 focus-visible:ring-white/10"
                   />
                   <Button
                     type="button"
@@ -156,21 +156,21 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
                     {creatingAccount ? "Creating…" : "Create"}
                   </Button>
                 </div>
-                <p className="text-xs leading-relaxed text-zinc-500">Create the top-level folder first, like Household or Personal.</p>
+                <p className="text-xs leading-relaxed text-zinc-400">Create the top-level folder first, like Household or Personal.</p>
               </>
             ) : (
               <>
                 <Select value={accountId ?? ""} onValueChange={(v) => selectAccount(v ?? "")} disabled={accounts.length === 0}>
                   <SelectTrigger id="portfolio-account" className="h-11 w-full rounded-xl border-white/[.12] bg-black/20 px-3.5">
                     <span className="flex flex-1 items-center gap-2 truncate text-left">
-                      {accountId ? accounts.find((a) => a.id === accountId)?.name ?? "—" : <span className="text-zinc-600">{accounts.length === 0 ? "No accounts yet" : "Select an account"}</span>}
+                      {accountId ? accounts.find((a) => a.id === accountId)?.name ?? "—" : <span className="text-zinc-400">{accounts.length === 0 ? "No accounts yet" : "Select an account"}</span>}
                     </span>
                   </SelectTrigger>
                   <SelectContent>
                     {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <p className="text-xs leading-relaxed text-zinc-500">
+                <p className="text-xs leading-relaxed text-zinc-400">
                   {accounts.length === 0 ? "Create an account from the sidebar first." : "The top-level folder, like Personal or Joint."}
                 </p>
               </>
@@ -178,7 +178,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="portfolio-provider" className="flex items-center gap-1.5"><Briefcase className="size-3.5" /> Provider <span className="font-normal text-zinc-500">(optional)</span></Label>
+            <Label htmlFor="portfolio-provider" className="flex items-center gap-1.5"><Briefcase className="size-3.5" /> Provider <span className="font-normal text-zinc-400">(optional)</span></Label>
             <ProviderPicker
               id="portfolio-provider"
               value={provider}
@@ -186,7 +186,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
               providers={accountProviders}
               disabled={!accountId}
             />
-            <p className="text-xs leading-relaxed text-zinc-500">
+            <p className="text-xs leading-relaxed text-zinc-400">
               {!accountId
                 ? "Choose an account to see its providers."
                 : accountProviders.length === 0
@@ -217,7 +217,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-white">{option.title}</span>
-                    <span className="mt-1 block text-xs leading-relaxed text-zinc-500">{option.desc}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-zinc-400">{option.desc}</span>
                   </span>
                   <span className={`grid size-[18px] shrink-0 place-items-center rounded-full border ${selected ? "border-white bg-white text-zinc-950" : "border-white/20 text-transparent"}`}>
                     {selected && <Check className="size-3" aria-hidden="true" />}
@@ -237,12 +237,12 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
       <div className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="holding-symbol">Symbol <span className="font-normal text-zinc-500">(optional)</span></Label>
-            <Input id="holding-symbol" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="e.g. AAPL, VWRP" className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600" />
+            <Label htmlFor="holding-symbol">Symbol <span className="font-normal text-zinc-400">(optional)</span></Label>
+            <Input id="holding-symbol" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="e.g. AAPL, VWRP" className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-400" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="holding-shares">Shares</Label>
-            <Input id="holding-shares" type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} placeholder="e.g. 10" className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-600" />
+            <Input id="holding-shares" type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} placeholder="e.g. 10" className="h-11 rounded-xl border-white/[.12] bg-black/20 px-3.5 text-sm placeholder:text-zinc-400" />
           </div>
         </div>
         <div className="flex items-start gap-3 rounded-xl border border-white/[.08] bg-white/[.025] p-4">
@@ -265,7 +265,7 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
           { label: "First holding", value: symbol ? `${symbol.toUpperCase()} · ${shares || 0} shares` : "None — add later" },
         ].map((item, index) => (
           <div key={item.label} className={`min-w-0 rounded-xl border border-white/[.08] bg-white/[.025] px-4 py-3.5 ${index === 4 ? "sm:col-span-2" : ""}`}>
-            <dt className="text-xs text-zinc-500">{item.label}</dt>
+            <dt className="text-xs text-zinc-400">{item.label}</dt>
             <dd className="mt-1.5 truncate text-sm font-medium text-zinc-100">{item.value}</dd>
           </div>
         ))}
@@ -282,8 +282,8 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
         return (
           <div key={label} role="listitem" aria-current={current ? "step" : undefined}>
             <div className={`h-1 rounded-full ${current || complete ? "bg-white" : "bg-white/[.08]"}`} />
-            <div className={`mt-2.5 flex items-center gap-2 text-xs font-medium ${current || complete ? "text-zinc-100" : "text-zinc-600"}`}>
-              <span className={`grid size-5 shrink-0 place-items-center rounded-full border text-[10px] ${current ? "border-white bg-white text-zinc-950" : complete ? "border-white/20 bg-white/[.08] text-white" : "border-white/10 text-zinc-600"}`}>
+            <div className={`mt-2.5 flex items-center gap-2 text-xs font-medium ${current || complete ? "text-zinc-100" : "text-zinc-400"}`}>
+              <span className={`grid size-5 shrink-0 place-items-center rounded-full border text-[10px] ${current ? "border-white bg-white text-zinc-950" : complete ? "border-white/20 bg-white/[.08] text-white" : "border-white/10 text-zinc-400"}`}>
                 {complete ? <Check className="size-3" aria-hidden="true" /> : itemStep}
               </span>
               <span>{label}</span>
@@ -315,13 +315,13 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
               <ArrowLeft className="size-4" /> Back
             </Button>
           ) : (
-            <p className="hidden text-xs text-zinc-600 sm:block">Your details can be changed later.</p>
+            <p className="hidden text-xs text-zinc-400 sm:block">Your details can be changed later.</p>
           )}
         </div>
         <Button
           onClick={() => step < 3 ? setStep(step + 1) : void handleCreate()}
           disabled={!canNext || (step === 3 && creating)}
-          className="h-10 gap-2 rounded-xl bg-white px-4 font-medium text-black shadow-[0_4px_18px_rgba(255,255,255,.08)] hover:bg-zinc-200 disabled:bg-white/10 disabled:text-zinc-500"
+          className="h-10 gap-2 rounded-xl bg-white px-4 font-medium text-black shadow-[0_4px_18px_rgba(255,255,255,.08)] hover:bg-zinc-200 disabled:bg-white/10 disabled:text-zinc-400"
         >
           {step === 3 ? (creating ? "Creating…" : "Create portfolio") : "Continue"}
           {step === 3 ? <Check className="size-4" /> : <ArrowRight className="size-4" />}
@@ -335,9 +335,9 @@ export function CreatePortfolioWizard({ open, onOpenChange, accounts, providers 
       <div className="pointer-events-none absolute -top-16 left-1/3 -z-10 h-48 w-2/3 rounded-full bg-white/[.025] blur-3xl" />
       <header className="mb-5 flex items-end justify-between gap-4 sm:mb-6">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-zinc-500">Portfolio setup</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-zinc-400">Portfolio setup</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-[28px]">Create a portfolio</h1>
-          <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-zinc-500">Set up a home for your investments, savings, or pension.</p>
+          <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-zinc-400">Set up a home for your investments, savings, or pension.</p>
         </div>
         <Button variant="ghost" size="sm" onClick={close} className="mb-0.5 shrink-0 text-zinc-400 hover:text-white">Cancel</Button>
       </header>

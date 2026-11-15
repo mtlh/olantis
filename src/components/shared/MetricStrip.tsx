@@ -3,9 +3,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 /** Shared type rhythm for the label above a metric value. */
-export const METRIC_LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600";
+export const METRIC_LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-400";
 /** Shared type rhythm for the supporting line under a metric value. */
-export const METRIC_SUB = "mt-2 text-[11px] text-zinc-600";
+export const METRIC_SUB = "mt-2 text-[11px] text-zinc-400";
 
 export type MetricStripVariant =
   | "overview"

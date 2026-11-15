@@ -25,9 +25,9 @@ type EditPortfolioDialogProps = {
   onSave: (id: string, update: PortfolioUpdate) => Promise<void>;
 };
 
-const FIELD = "h-10 w-full rounded-lg border-white/10 bg-black/20 px-3 text-sm text-white placeholder:text-zinc-600 focus-visible:border-white/25 focus-visible:ring-white/10";
-const SECTION_LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500";
-const HINT = "text-xs leading-relaxed text-zinc-500";
+const FIELD = "h-10 w-full rounded-lg border-white/10 bg-black/20 px-3 text-sm text-white placeholder:text-zinc-400 focus-visible:border-white/25 focus-visible:ring-white/10";
+const SECTION_LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-400";
+const HINT = "text-xs leading-relaxed text-zinc-400";
 
 export function EditPortfolioDialog({ portfolio, accounts, providers, onOpenChange, onSave }: EditPortfolioDialogProps) {
   const { toast } = useToast();
@@ -77,7 +77,7 @@ export function EditPortfolioDialog({ portfolio, accounts, providers, onOpenChan
             </span>
             <div className="min-w-0 pt-0.5">
               <DialogTitle>Move portfolio</DialogTitle>
-              <DialogDescription className="mt-1 text-xs leading-relaxed text-zinc-500">
+              <DialogDescription className="mt-1 text-xs leading-relaxed text-zinc-400">
                 Move “{portfolio.name}” to another account or provider, or update its details.
               </DialogDescription>
             </div>
@@ -104,8 +104,8 @@ export function EditPortfolioDialog({ portfolio, accounts, providers, onOpenChan
             </div>
 
             <div className="space-y-2">
-              <Label>Type</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <p id="portfolio-type-label" className="text-sm leading-none font-medium text-white">Type</p>
+              <div role="group" aria-labelledby="portfolio-type-label" className="grid grid-cols-2 gap-2">
                 {[
                   { id: "live" as const, title: "Live", desc: "Automatic market prices" },
                   { id: "manual" as const, title: "Manual", desc: "Pensions, cash, custom" },
@@ -125,7 +125,7 @@ export function EditPortfolioDialog({ portfolio, accounts, providers, onOpenChan
                     >
                       <span className="min-w-0">
                         <span className="block text-sm font-medium text-white">{option.title}</span>
-                        <span className="mt-0.5 block truncate text-[11px] text-zinc-500">{option.desc}</span>
+                        <span className="mt-0.5 block truncate text-[11px] text-zinc-400">{option.desc}</span>
                       </span>
                       <span className={`grid size-4 shrink-0 place-items-center rounded-full border ${selected ? "border-white bg-white text-zinc-950" : "border-white/20 text-transparent"}`}>
                         {selected && <Check className="size-3" aria-hidden="true" />}

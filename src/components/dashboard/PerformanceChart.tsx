@@ -272,7 +272,7 @@ export const PerformanceChart = memo(function PerformanceChart({
           <CardTitle className="text-sm font-medium text-white">Change over time</CardTitle>
           <div className="flex flex-wrap items-center gap-1">
             <Select items={BENCHMARK_OPTIONS} value={benchmark} onValueChange={(value) => onBenchmarkChange(value ?? "__none__")}>
-              <SelectTrigger className="h-8 w-28 border-white/[0.08] bg-transparent text-[11px] text-zinc-300"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Benchmark" className="h-8 w-28 border-white/[0.08] bg-transparent text-[11px] text-zinc-300"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {BENCHMARK_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
@@ -288,7 +288,7 @@ export const PerformanceChart = memo(function PerformanceChart({
             <div className="grid flex-1 place-items-center py-16 text-center">
               <div>
                 <p className="text-sm text-zinc-400">{hasHistory ? `No snapshots in the last ${range === "MAX" ? "period" : range}` : "No snapshots yet"}</p>
-                <p className="mt-1 text-xs text-zinc-600">
+                <p className="mt-1 text-xs text-zinc-400">
                   {hasHistory
                     ? "Choose a wider range to see earlier performance."
                     : "Performance will appear here after your first portfolio snapshot."}
@@ -302,8 +302,8 @@ export const PerformanceChart = memo(function PerformanceChart({
                   <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" syncWithTicks />
                     <ZoomSelectionArea labels={chartZoom.selectionLabels} />
-                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} minTickGap={24} />
-                    <YAxis domain={yDomain ?? ["auto", "auto"]} ticks={axis?.ticks} tickFormatter={(value: number) => `${value > 0 ? "+" : ""}${value.toFixed(0)}%`} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={56} />
+                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#a1a1aa" }} axisLine={false} tickLine={false} minTickGap={24} />
+                    <YAxis domain={yDomain ?? ["auto", "auto"]} ticks={axis?.ticks} tickFormatter={(value: number) => `${value > 0 ? "+" : ""}${value.toFixed(0)}%`} tick={{ fontSize: 12, fill: "#a1a1aa" }} axisLine={false} tickLine={false} width={56} />
                     <Tooltip
                       contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }}
                       formatter={(value) => fmtPct(Number(value))}
@@ -322,12 +322,12 @@ export const PerformanceChart = memo(function PerformanceChart({
                 {[{ key: "total", name: "Total", color: "#ffffff" }, ...series, ...(benchmarkName ? [{ key: "benchmark", name: benchmarkName, color: "#fbbf24" }] : [])].map((item) => {
                   const hidden = hiddenSeries.has(item.key);
                   return (
-                    <button key={item.key} type="button" onClick={() => toggleSeries(item.key)} title={`${hidden ? "Show" : "Hide"} ${item.name}`} className={`flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors ${hidden ? "text-zinc-600 hover:text-zinc-400" : "text-zinc-300 hover:text-white"}`}>
+                    <button key={item.key} type="button" onClick={() => toggleSeries(item.key)} title={`${hidden ? "Show" : "Hide"} ${item.name}`} className={`flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors ${hidden ? "text-zinc-400 hover:text-zinc-400" : "text-zinc-300 hover:text-white"}`}>
                       <span className="h-1.5 w-1.5 rounded-full" style={{ background: item.color, opacity: hidden ? 0.3 : 1 }} /> {item.name}
                     </button>
                   );
                 })}
-                {hiddenSeries.size > 0 && <button type="button" onClick={() => setHiddenSeries(new Set())} className="px-2 py-1 text-zinc-500 underline underline-offset-2 transition-colors hover:text-white">Show all</button>}
+                {hiddenSeries.size > 0 && <button type="button" onClick={() => setHiddenSeries(new Set())} className="px-2 py-1 text-zinc-400 underline underline-offset-2 transition-colors hover:text-white">Show all</button>}
               </div>
             </>
           )}
@@ -342,7 +342,7 @@ export const PerformanceChart = memo(function PerformanceChart({
             meta={`Indexed · ${range}`}
             spacing="tight"
           />
-          <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600 sm:grid-cols-[minmax(0,1fr)_6rem_6rem]">
+          <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-400 sm:grid-cols-[minmax(0,1fr)_6rem_6rem]">
             <span>Series</span>
             <span className="text-right">Change</span>
             <span className="text-right">Pullback</span>
@@ -362,7 +362,7 @@ export const PerformanceChart = memo(function PerformanceChart({
         </section>
       )}
 
-      <p className="text-xs leading-relaxed text-zinc-600">Figures show value movement, not a flow-adjusted investment return. “Largest pullback” is based on saved observations; benchmarks use price data and may exclude dividends.</p>
+      <p className="text-xs leading-relaxed text-zinc-400">Figures show value movement, not a flow-adjusted investment return. “Largest pullback” is based on saved observations; benchmarks use price data and may exclude dividends.</p>
     </section>
   );
 });

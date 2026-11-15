@@ -122,7 +122,7 @@ export function ProviderDashboard({
             <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={onNewPortfolio}>
               <Plus className="h-3.5 w-3.5" /> New portfolio
             </Button>
-            <Button variant="ghost" size="sm" aria-label="Delete provider" className="rounded-full px-2.5 text-zinc-500 hover:bg-red-500/10 hover:text-red-400 sm:px-3" onClick={onDelete}>
+            <Button variant="ghost" size="sm" aria-label="Delete provider" className="rounded-full px-2.5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 sm:px-3" onClick={onDelete}>
               <Trash2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Delete</span>
             </Button>
           </>
@@ -154,7 +154,7 @@ export function ProviderDashboard({
         <Metric
           position="middle"
           label={`Change · ${range}`}
-          tone={periodChange ? changeTone : "text-zinc-600"}
+          tone={periodChange ? changeTone : "text-zinc-400"}
           value={periodChange ? (
             <>
               {periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))}
@@ -201,7 +201,7 @@ export function ProviderDashboard({
               {portfolios.map((portfolio) => (
                 <BreakdownRow
                   key={portfolio.id}
-                  icon={<Layers className="h-3.5 w-3.5 shrink-0 text-zinc-600" />}
+                  icon={<Layers className="h-3.5 w-3.5 shrink-0 text-zinc-400" />}
                   title={portfolio.name}
                   subtitle={
                     <>

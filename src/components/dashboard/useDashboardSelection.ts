@@ -1,12 +1,18 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // The dashboard is rendered by the (workspace) layout, so the page below it
-// never re-renders. Selection therefore lives in client state and the URL is
-// only a shareable mirror: writing it with the History API keeps deep links,
-// the browser's arrows and the desktop window's arrows intact without ever
-// waiting on an RSC response.
+// never re-renders. The URL is the single source of truth for what is open:
+// Next.js patches pushState/replaceState and feeds usePathname/useSearchParams
+// from the new URL, so writing it with the History API keeps deep links, the
+// browser's arrows and the desktop window's arrows intact without ever waiting
+// on an RSC response.
+//
+// Deriving the selection from the URL (rather than holding a copy in state) is
+// what clears it when the user leaves: /watchlist and /settings carry no
+// selection params, so no portfolio, provider or holding stays highlighted
+// after switching sections, and coming back to /dashboard opens the overview.
 export type DashboardSelection = {
   portfolioId: string | null;
   providerId: string | null;
@@ -46,10 +52,9 @@ export function selectionUrl({ portfolioId, providerId, accountId, holdingId }: 
 export function useDashboardSelection() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [selection, setSelection] = useState<DashboardSelection>(() => selectionFromSearchParams(searchParams));
+  const selection = useMemo(() => selectionFromSearchParams(searchParams), [searchParams]);
 
   const apply = useCallback((next: DashboardSelection, mode: "push" | "replace") => {
-    setSelection(next);
     const url = selectionUrl(next);
     // Selection normally only mirrors the URL. From another workspace section
     // (settings, watchlist, …) it has to open the dashboard as well, otherwise
@@ -78,14 +83,6 @@ export function useDashboardSelection() {
   // Deleting the item the URL points at is not a navigation the user made, so
   // it rewrites the current entry instead of leaving a dead one behind.
   const reset = useCallback(() => apply(EMPTY_SELECTION, "replace"), [apply]);
-
-  useEffect(() => {
-    const syncFromLocation = () => {
-      setSelection(selectionFromSearchParams(new URLSearchParams(window.location.search)));
-    };
-    window.addEventListener("popstate", syncFromLocation);
-    return () => window.removeEventListener("popstate", syncFromLocation);
-  }, []);
 
   return { selection, select, clear, reset };
 }
