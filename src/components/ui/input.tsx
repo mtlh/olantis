@@ -1,11 +1,13 @@
 import * as React from "react"
-import { Input as InputPrimitive } from "@base-ui/react/input"
 
 import { cn } from "@/lib/utils"
 
+// A plain <input>: Base UI's Input primitive exists to join a Field/Form tree,
+// and this app never uses one, so importing it only pulled the field, labelable
+// and validity contexts into every route that renders a search box.
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
-    <InputPrimitive
+    <input
       type={type}
       data-slot="input"
       className={cn(
