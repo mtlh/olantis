@@ -5,8 +5,10 @@
  * stays a thin writer and the node test runner can load this module directly.
  *
  * The demo dataset has to look like a real account: a three-year curve that
- * ends exactly at today's seeded price, with the same two market drawdowns in
- * every series so the portfolio, provider and holding charts agree.
+ * ends exactly at today's seeded price, with every series sharing one market
+ * trend so the portfolio, holding, provider and benchmark lines agree. The
+ * caller supplies that trend as real benchmark closes (`marketPath`); without
+ * them the module falls back to two fabricated drawdowns.
  */
 
 /** How far back the predefined demo history goes. */
@@ -76,19 +78,38 @@ export function weeklyDates(years = DEMO_HISTORY_YEARS, now = new Date()): strin
   return out;
 }
 
+/** Entry price band, as a fraction of today's price, when nothing else sets the trend. */
+export const DEFAULT_ENTRY_RANGE = [0.8, 0.94] as const;
+
+/**
+ * Entry price band used when a real market path supplies the trend: the holding
+ * only needs a small deterministic edge (or lag) on top of the market, because
+ * the market itself explains almost all of the three-year move.
+ */
+export const MARKET_ENTRY_RANGE = [0.97, 1.03] as const;
+
 /**
  * Build a predefined weekly price series for a symbol. Deterministic: the same
  * symbol always yields the same curve, starting at a derived entry price and
  * ending exactly at `currentPrice` with no discontinuity.
+ *
+ * `entryRange` sets the first point as a fraction of today's price, so a caller
+ * that layers a real market path on top can swap the fabricated trend for a
+ * small idiosyncratic one.
  */
-export function predefinedSeries(holding: { symbol: string; currentPrice: number }, dates: readonly string[]): number[] {
+export function predefinedSeries(
+  holding: { symbol: string; currentPrice: number },
+  dates: readonly string[],
+  entryRange: readonly [number, number] = DEFAULT_ENTRY_RANGE,
+): number[] {
   const rnd = mulberry32(hashString(holding.symbol));
   const n = dates.length;
   const target = holding.currentPrice;
   if (n <= 1) return [target];
 
-  // Deterministic entry price, a little below today's price.
-  const start = target * (0.8 + rnd() * 0.14);
+  // Deterministic entry price, inside the requested band around today's price.
+  const [low, high] = entryRange;
+  const start = target * (low + rnd() * (high - low));
 
   // Cumulative random walk, then detrended so it ends at exactly 0.
   const walk = new Array<number>(n).fill(0);
@@ -105,6 +126,43 @@ export function predefinedSeries(holding: { symbol: string; currentPrice: number
   path[0] = start;
   path[n - 1] = target;
   return path;
+}
+
+/** A real daily close series the demo uses as its market trend. */
+export type DemoMarketPoint = { date: string; value: number };
+
+/**
+ * Resample a real market series onto the demo's weekly dates and normalise it so
+ * the last point is 1.
+ *
+ * The demo portfolio has to move like a real portfolio: a fabricated curve made
+ * the performance chart contradict the market benchmark it is compared against
+ * (the fabricated series gained ~14% over three years while the index gained
+ * ~53%, which read as "the benchmark is wrong"). Resampling a stored benchmark
+ * keeps the demo offline and deterministic — same database, same curve — while
+ * making the comparison meaningful.
+ *
+ * Returns null when the series cannot cover the window, so the caller falls back
+ * to the synthetic `marketFactor` drawdowns.
+ */
+export function marketPathFactor(path: readonly DemoMarketPoint[], dates: readonly string[]): number[] | null {
+  if (dates.length < 2) return null;
+  const ordered = path
+    .filter((point) => Number.isFinite(point.value) && point.value > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (ordered.length < 2) return null;
+
+  const factors: number[] = [];
+  let index = -1;
+  for (const date of dates) {
+    while (index + 1 < ordered.length && ordered[index + 1].date <= date) index++;
+    // A date before the series starts has no market value to carry forward.
+    if (index < 0) return null;
+    factors.push(ordered[index].value);
+  }
+  const last = factors[factors.length - 1];
+  if (!(last > 0)) return null;
+  return factors.map((value) => value / last);
 }
 
 /** Two deterministic drawdowns so the demo chart looks like a real market. */
@@ -140,18 +198,28 @@ function toGbp(value: number, currency: string | null | undefined, rates: Record
  * Every snapshot row a demo tenant needs: one series per holding plus the
  * portfolio and total aggregates derived from those series (never computed
  * separately, so the charts always agree).
+ *
+ * `marketPath` is a real benchmark series. When it covers the window the demo
+ * follows the market (so the performance chart and its benchmark agree) and each
+ * holding only carries a small deterministic edge; without it the fabricated
+ * `marketFactor` drawdowns are used instead.
  */
 export function buildDemoHistory(
   userId: string,
   holdingRows: readonly DemoHistoryHolding[],
   dates: readonly string[],
   rates: Record<string, number> = {},
+  marketPath: readonly DemoMarketPoint[] = [],
 ): DemoHistoryRows {
   const n = dates.length;
+  const factor = marketPathFactor(marketPath, dates);
   const seriesById = new Map<string, number[]>();
   for (const holding of holdingRows) {
-    const raw = predefinedSeries(holding, dates);
-    seriesById.set(holding.id, raw.map((value, i) => value * marketFactor(i, n)));
+    const raw = predefinedSeries(holding, dates, factor ? MARKET_ENTRY_RANGE : DEFAULT_ENTRY_RANGE);
+    seriesById.set(
+      holding.id,
+      factor ? raw.map((value, i) => value * factor[i]) : raw.map((value, i) => value * marketFactor(i, n)),
+    );
   }
   const valueOn = (holding: DemoHistoryHolding, i: number) =>
     toGbp((seriesById.get(holding.id)?.[i] ?? holding.currentPrice) * holding.shares, holding.currency, rates);
@@ -197,4 +265,46 @@ export function demoHistoryIncomplete(
   minPoints = DEMO_HISTORY_MIN_POINTS,
 ): boolean {
   return holdingRows.some((holding) => (pointsByHolding.get(holding.id) ?? 0) < minPoints);
+}
+
+/** A single week never legitimately moves the demo total by this much. */
+const REBASE_STEP_THRESHOLD = 0.1;
+
+/**
+ * How far the demo series may drift from the market path before it is treated
+ * as stale. The per-holding deterministic edge is a few percent, so anything
+ * wider than this is a series built by an older, market-agnostic seed.
+ */
+const MARKET_DRIFT_TOLERANCE = 0.2;
+
+/**
+ * True when a stored demo total series has to be rebuilt:
+ *
+ *  - its last step is a rebase gap (the daily price refresh moved the seeded
+ *    prices, so the synthetic seed day no longer lines up with today), or
+ *  - it does not follow the market path the current seed is built from, i.e. it
+ *    was written by a build whose demo history was a fabricated curve. Such a
+ *    series makes the performance chart contradict its own benchmark, so the
+ *    tenant re-seeds itself instead of keeping the misleading chart.
+ */
+export function demoHistoryNeedsRebuild(
+  totalSnapshots: ReadonlyArray<{ date: string; value: number }>,
+  marketPath: readonly DemoMarketPoint[] = [],
+): boolean {
+  const ordered = totalSnapshots
+    .filter((row) => Number.isFinite(row.value))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (ordered.length < 2) return false;
+
+  const latest = ordered[ordered.length - 1];
+  const previous = ordered[ordered.length - 2];
+  if (previous.value > 0 && Math.abs(latest.value / previous.value - 1) > REBASE_STEP_THRESHOLD) return true;
+
+  const first = ordered[0];
+  if (!(first.value > 0)) return true;
+  const market = marketPathFactor(marketPath, [first.date, latest.date]);
+  if (!market) return false;
+  const marketRatio = 1 / market[0];
+  if (!(marketRatio > 0)) return false;
+  return Math.abs((latest.value / first.value) / marketRatio - 1) > MARKET_DRIFT_TOLERANCE;
 }

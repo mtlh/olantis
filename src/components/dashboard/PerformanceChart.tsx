@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useChartZoom, ZoomResetButton, ZoomSelectionArea } from "@/components/ChartZoom";
 import { useChartAnimation } from "@/lib/use-chart-animation";
-import { chartDateLabel, carryForward, rangeCutoff, paddedDomain, fmtPct, seriesCursor, type SeriesCursor } from "@/lib/format";
+import { chartDateLabel, carryForward, evenAxisTicks, rangeCutoff, paddedDomain, fmtPct, seriesCursor, type SeriesCursor } from "@/lib/format";
 import { ChartRangeSelector, type ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
 import { Metric, MetricStrip } from "@/components/shared/MetricStrip";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -102,33 +102,34 @@ export const PerformanceChart = memo(function PerformanceChart({
     }));
     const dates = new Set<string>(totalHistory.map((snapshot) => snapshot.date));
     for (const { history } of portfolioHistories) for (const snapshot of history) dates.add(snapshot.date);
-    const orderedDates = [...dates].sort((a, b) => a.localeCompare(b));
+    const cutoff = rangeCutoff(range);
+    const orderedDates = [...dates].filter((date) => cutoff == null || date >= cutoff).sort((a, b) => a.localeCompare(b));
     if (!orderedDates.length) return [];
 
     // One forward cursor per series: each history is walked once across the
-    // merged date axis instead of rescanned for every date.
-    type PercentCurve = { cursor: SeriesCursor; base: number; valid: boolean };
-    const curveFor = (history: Snapshot[]): PercentCurve => ({
-      cursor: seriesCursor(history),
-      base: history[0]?.value ?? 0,
-      valid: history.length > 0 && !(history[0].value <= 0),
-    });
-    const totalCurve = curveFor(totalHistory);
-    const portfolioCurves = portfolioHistories.map(({ id, history }) => ({ id, curve: curveFor(history) }));
-
+    // merged date axis instead of rescanned for every date. Every series is
+    // indexed to its own first observation *inside the selected range*, so each
+    // line starts at 0% for the same window the metrics above describe —
+    // otherwise the chart sat at 1M/3M/1Y with the benchmark still near its
+    // three-year level and read as if the benchmark were wrong.
+    type PercentCurve = { cursor: SeriesCursor; base: number | null };
+    const curveFor = (history: Snapshot[]): PercentCurve => ({ cursor: seriesCursor(history), base: null });
     const percentAt = (curve: PercentCurve, date: string): number | null => {
-      if (!curve.valid) return null;
       const value = carryForward(curve.cursor, date);
-      return value == null ? null : ((value / curve.base) - 1) * 100;
+      if (value == null || !(value > 0)) return null;
+      curve.base ??= value;
+      return ((value / curve.base) - 1) * 100;
     };
 
+    const totalCurve = curveFor(totalHistory);
+    const portfolioCurves = portfolioHistories.map(({ id, history }) => ({ id, curve: curveFor(history) }));
     const benchmarkHistory = benchmarkPrices?.key === `${benchmark}:${dataStart}`
-      ? [...benchmarkPrices.rows].filter((point) => Number.isFinite(point.price) && point.price > 0).sort((a, b) => a.date.localeCompare(b.date))
+      ? [...benchmarkPrices.rows]
+        .filter((point) => Number.isFinite(point.price) && point.price > 0)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((point) => ({ date: point.date, value: point.price }))
       : [];
-    const userDataStart = orderedDates[0];
-    const benchmarkBase = [...benchmarkHistory].reverse().find((point) => point.date <= userDataStart)
-      ?? benchmarkHistory.find((point) => point.date >= userDataStart);
-    const benchmarkCursor = seriesCursor(benchmarkHistory.map((point) => ({ date: point.date, value: point.price })));
+    const benchmarkCurve = curveFor(benchmarkHistory);
 
     return orderedDates.map((date) => {
       const row: PerformanceChartRow = { date: chartDateLabel(date), dateISO: date };
@@ -138,21 +139,13 @@ export const PerformanceChart = memo(function PerformanceChart({
         const value = percentAt(curve, date);
         if (value != null) row[id] = value;
       }
-      if (benchmarkBase && date >= userDataStart && date >= benchmarkBase.date) {
-        const latestPrice = carryForward(benchmarkCursor, date);
-        if (latestPrice != null) row.benchmark = ((latestPrice / benchmarkBase.price) - 1) * 100;
-      }
+      const benchmarkPct = percentAt(benchmarkCurve, date);
+      if (benchmarkPct != null) row.benchmark = benchmarkPct;
       return row;
     });
-  }, [snapshots, byPortfolio, benchmarkPrices, benchmark, dataStart]);
-  // Rows carry a formatted `date` label for the axis, so the range cut has to
-  // compare against `dateISO` — comparing labels against an ISO cutoff never matches.
-  const rangedData = useMemo(() => {
-    const cutoff = rangeCutoff(range);
-    if (cutoff == null) return data;
-    return data.filter((row) => row.dateISO >= cutoff);
-  }, [data, range]);
-  const chartZoom = useChartZoom(rangedData);
+  }, [snapshots, byPortfolio, benchmarkPrices, benchmark, dataStart, range]);
+  const hasHistory = snapshots.length > 0 || Object.values(byPortfolio).some((info) => info.data.length > 0);
+  const chartZoom = useChartZoom(data);
   const animateSeries = useChartAnimation(chartZoom.visible.length);
   const benchmarkName = useMemo(() => {
     if (benchmark === "__none__") return null;
@@ -172,7 +165,7 @@ export const PerformanceChart = memo(function PerformanceChart({
       ...(benchmarkName ? [{ key: "benchmark", name: benchmarkName }] : []),
     ];
     return candidates.map(({ key, name }) => {
-      const points = rangedData.flatMap((row) => typeof row[key] === "number" && Number.isFinite(row[key]) ? [{ value: row[key] }] : []);
+      const points = data.flatMap((row) => typeof row[key] === "number" && Number.isFinite(row[key]) ? [{ value: row[key] }] : []);
       if (points.length < 2) return { key, name, periodChange: null as number | null, maxDrawdown: null as number | null };
       const baseline = 100 + points[0].value;
       const periodChange = baseline > 0 ? ((100 + points[points.length - 1].value) / baseline - 1) * 100 : null;
@@ -185,7 +178,7 @@ export const PerformanceChart = memo(function PerformanceChart({
       }
       return { key, name, periodChange, maxDrawdown };
     });
-  }, [benchmarkName, rangedData, series]);
+  }, [benchmarkName, data, series]);
   const totalSummary = periodSummary.find((item) => item.key === "total");
   const benchmarkSummary = periodSummary.find((item) => item.key === "benchmark");
   const seriesRows = periodSummary.filter((item) => item.key !== "total");
@@ -206,7 +199,12 @@ export const PerformanceChart = memo(function PerformanceChart({
     }
     return values;
   }, [chartZoom.visible, visibleKeys]);
-  const yDomain = useMemo(() => paddedDomain(axisValues), [axisValues]);
+  // Evenly spaced ticks with round labels. Recharts' own ticks against a padded
+  // domain gave one short band at the top whose label was the raw padded
+  // maximum (`+1 / +26 / +51 / +65`), so every value read off the grid — the
+  // benchmark's included — was off by up to half a step.
+  const axis = useMemo(() => evenAxisTicks(axisValues), [axisValues]);
+  const yDomain = axis?.domain ?? paddedDomain(axisValues);
   const toggleSeries = (key: string) => {
     setHiddenSeries((previous) => {
       const next = new Set(previous);
@@ -217,7 +215,7 @@ export const PerformanceChart = memo(function PerformanceChart({
   };
   const colorFor = (key: string) =>
     key === "total" ? "#ffffff" : key === "benchmark" ? "#fbbf24" : (series.find((item) => item.key === key)?.color ?? "#71717a");
-  const hasData = rangedData.length > 0;
+  const hasData = data.length > 0;
 
   return (
     <section aria-label="Portfolio performance" className="flex min-h-[calc(100vh-7rem)] flex-col gap-6">
@@ -237,7 +235,7 @@ export const PerformanceChart = memo(function PerformanceChart({
             tone={signedTone(totalSummary?.periodChange)}
             valueClassName="text-[34px] sm:text-[38px]"
             value={totalSummary?.periodChange == null ? "—" : fmtPct(totalSummary.periodChange)}
-            sub={`Since ${chartDateLabel(rangedData[0].dateISO)}`}
+            sub={`Since ${chartDateLabel(data[0].dateISO)}`}
           />
 
           <Metric
@@ -289,11 +287,11 @@ export const PerformanceChart = memo(function PerformanceChart({
           {!hasData ? (
             <div className="grid flex-1 place-items-center py-16 text-center">
               <div>
-                <p className="text-sm text-zinc-400">{data.length === 0 ? "No snapshots yet" : `No snapshots in the last ${range === "MAX" ? "period" : range}`}</p>
+                <p className="text-sm text-zinc-400">{hasHistory ? `No snapshots in the last ${range === "MAX" ? "period" : range}` : "No snapshots yet"}</p>
                 <p className="mt-1 text-xs text-zinc-600">
-                  {data.length === 0
-                    ? "Performance will appear here after your first portfolio snapshot."
-                    : "Choose a wider range to see earlier performance."}
+                  {hasHistory
+                    ? "Choose a wider range to see earlier performance."
+                    : "Performance will appear here after your first portfolio snapshot."}
                 </p>
               </div>
             </div>
@@ -302,10 +300,10 @@ export const PerformanceChart = memo(function PerformanceChart({
               <div className="h-[340px] w-full shrink-0 select-none sm:h-[420px] lg:h-[480px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartZoom.visible} style={{ cursor: chartZoom.selectionLabels ? "col-resize" : "crosshair" }} {...chartZoom.chartProps}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" syncWithTicks />
                     <ZoomSelectionArea labels={chartZoom.selectionLabels} />
                     <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} minTickGap={24} />
-                    <YAxis domain={yDomain ?? ["auto", "auto"]} tickFormatter={(value: number) => `${value > 0 ? "+" : ""}${value.toFixed(0)}%`} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={56} />
+                    <YAxis domain={yDomain ?? ["auto", "auto"]} ticks={axis?.ticks} tickFormatter={(value: number) => `${value > 0 ? "+" : ""}${value.toFixed(0)}%`} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={56} />
                     <Tooltip
                       contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }}
                       formatter={(value) => fmtPct(Number(value))}
