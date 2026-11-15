@@ -52,17 +52,17 @@ export function TradeRow({
         <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
           {showSymbol && symbol && <span className="font-medium text-white">{symbol}</span>}
           <span className={isBuy ? "text-emerald-400" : "text-red-400"}>{isBuy ? "Buy" : "Sell"}</span>
-          <span className="tabular-nums text-zinc-500">{shares} @ {fmtPrice(price, currency)}</span>
+          <span className="tabular-nums text-zinc-400">{shares} @ {fmtPrice(price, currency)}</span>
         </div>
-        <div className="mt-0.5 text-[11px] tabular-nums text-zinc-600 sm:hidden">
+        <div className="mt-0.5 text-[11px] tabular-nums text-zinc-400 sm:hidden">
           {fmtDayMonth(date, dateFormat)}
           {showTotal ? ` · ${fmtPrice(total, currency)}` : ""}
         </div>
       </div>
       {showTotal && (
-        <span className="hidden shrink-0 text-xs tabular-nums text-zinc-500 sm:block">{fmtPrice(total, currency)}</span>
+        <span className="hidden shrink-0 text-xs tabular-nums text-zinc-400 sm:block">{fmtPrice(total, currency)}</span>
       )}
-      <span className="hidden shrink-0 text-[11px] tabular-nums text-zinc-600 sm:block">
+      <span className="hidden shrink-0 text-[11px] tabular-nums text-zinc-400 sm:block">
         {fmtDayMonth(date, dateFormat)}
       </span>
       {onDelete && (
@@ -70,7 +70,7 @@ export function TradeRow({
           type="button"
           variant="ghost"
           size="icon-xs"
-          className="text-zinc-600 hover:text-red-400"
+          className="text-zinc-400 hover:text-red-400"
           title="Delete trade and reverse its position impact"
           aria-label={`Delete ${isBuy ? "buy" : "sell"} of ${symbol ?? "this trade"}`}
           onClick={onDelete}

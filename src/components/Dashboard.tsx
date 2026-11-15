@@ -910,8 +910,8 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   // because the dashboard re-rendered.
   const emptyAllocationContent = useMemo(() => (
     <div>
-      <p className="text-sm text-zinc-500">No holdings</p>
-      <p className="mt-1 text-xs text-zinc-600">Create a portfolio and add holdings</p>
+      <p className="text-sm text-zinc-400">No holdings</p>
+      <p className="mt-1 text-xs text-zinc-400">Create a portfolio and add holdings</p>
       <Button size="sm" className="mt-3" onClick={() => openWizard(null)}><Plus className="h-3.5 w-3.5" />New portfolio</Button>
     </div>
   ), [openWizard]);

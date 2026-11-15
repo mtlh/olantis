@@ -107,12 +107,12 @@ export function AssignHoldingDialog({
           <DialogTitle className="flex items-center gap-2"><FolderPlus className="w-4 h-4" /> Add {holding.symbol} to a portfolio</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-xs text-zinc-500 bg-white/[0.04] border border-white/10 rounded-lg p-2.5 leading-relaxed">Group this holding with others in a portfolio. Its trades move with it either way.</p>
+          <p className="text-xs text-zinc-400 bg-white/[0.04] border border-white/10 rounded-lg p-2.5 leading-relaxed">Group this holding with others in a portfolio. Its trades move with it either way.</p>
           {portfolios.length > 0 && (
             <div className="space-y-1.5">
-              <Label>Portfolio</Label>
+              <Label htmlFor="assign-portfolio">Portfolio</Label>
               <Select value={target} onValueChange={(value) => { setTarget(value ?? "__pick__"); setError(""); }}>
-                <SelectTrigger className="h-10 bg-white/5 border-white/10">
+                <SelectTrigger id="assign-portfolio" className="h-10 bg-white/5 border-white/10">
                   <span className="flex-1 text-left truncate text-sm">
                     {target === "__new__" ? "Create a new portfolio…" : target === "__pick__" ? "Choose a portfolio…" : portfolios.find((portfolio) => portfolio.id === target)?.name ?? "—"}
                   </span>
@@ -128,13 +128,13 @@ export function AssignHoldingDialog({
           {target === "__new__" && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label>Name *</Label>
-                <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. ISA — Growth" autoFocus />
+                <Label htmlFor="assign-name">Name *</Label>
+                <Input id="assign-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. ISA — Growth" autoFocus />
               </div>
               <div className="space-y-1.5">
-                <Label>Account</Label>
+                <Label htmlFor="assign-account">Account</Label>
                 <Select value={accountId} onValueChange={(value) => setAccountId(value ?? "__none")}>
-                  <SelectTrigger className="h-10 bg-white/5 border-white/10">
+                  <SelectTrigger id="assign-account" className="h-10 bg-white/5 border-white/10">
                     <span className="flex-1 text-left truncate text-sm">{accountId === "__none" ? "No account" : selectedAccountName ?? "—"}</span>
                   </SelectTrigger>
                   <SelectContent>
@@ -142,7 +142,7 @@ export function AssignHoldingDialog({
                     {accounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-zinc-600">
+                <p className="text-xs text-zinc-400">
                   Creates a {isListedSymbol(holding.symbol) ? "live" : "manual"} portfolio
                   {accountId === "__none" ? "" : ` under ${selectedAccountName ?? ""}`}.
                 </p>

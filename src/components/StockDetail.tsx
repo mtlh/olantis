@@ -47,7 +47,7 @@ function ChartPlaceholder({
         <div>
           {icon}
           <p className="text-sm text-zinc-400">{message}</p>
-          {detail && <p className="mt-1 text-xs text-zinc-600">{detail}</p>}
+          {detail && <p className="mt-1 text-xs text-zinc-400">{detail}</p>}
         </div>
       </div>
     </section>
@@ -155,7 +155,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
   })();
   const isManual = !isListed;
   const gainTone = gain >= 0 ? "text-emerald-400" : "text-red-400";
-  const moveTone = latestMarketMove ? (latestMarketMove.amount >= 0 ? "text-emerald-400" : "text-red-400") : "text-zinc-600";
+  const moveTone = latestMarketMove ? (latestMarketMove.amount >= 0 ? "text-emerald-400" : "text-red-400") : "text-zinc-400";
   const chartTitle = hasValueSeries ? "Value over time" : "Market price";
 
   return (
@@ -167,10 +167,10 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <span>{holding.name}</span>
             {holding.exchange && (
-              <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">{holding.exchange}</span>
+              <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-400">{holding.exchange}</span>
             )}
             {portfolioName && (
-              <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">{portfolioName}</span>
+              <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-400">{portfolioName}</span>
             )}
           </div>
         }
@@ -241,7 +241,7 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
             title={chartTitle}
             range={range}
             onRangeChange={pickRange}
-            icon={<Wallet className="mx-auto mb-2 h-7 w-7 text-zinc-600" />}
+            icon={<Wallet className="mx-auto mb-2 h-7 w-7 text-zinc-400" />}
             message="Manual holding — no market price history"
             detail="Value is tracked on the portfolio chart."
           />

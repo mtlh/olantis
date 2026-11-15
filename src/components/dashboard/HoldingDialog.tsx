@@ -266,24 +266,25 @@ export function HoldingDialog({
           {effectiveIsManual ? (
             <>
               <div className="space-y-1.5">
-                <Label>Holding name *</Label>
-                <Input placeholder="e.g. Cash, Workplace Pension, Property" value={form.symbol} onChange={(event) => updateForm("symbol", event.target.value)} className={formErrors.symbol ? "border-red-500/50" : ""} />
+                <Label htmlFor="holding-name">Holding name *</Label>
+                <Input id="holding-name" placeholder="e.g. Cash, Workplace Pension, Property" value={form.symbol} onChange={(event) => updateForm("symbol", event.target.value)} className={formErrors.symbol ? "border-red-500/50" : ""} />
                 {fieldError("symbol")}
-                <p className="text-xs text-zinc-600">Manual — free-form, counts toward totals &amp; charts. No ticker lookup.</p>
+                <p className="text-xs text-zinc-400">Manual — free-form, counts toward totals &amp; charts. No ticker lookup.</p>
               </div>
               <div className="space-y-1.5">
-                <Label>Description (optional)</Label>
-                <Input placeholder="e.g. Uninvested cash, Barclays savings" value={form.name} onChange={(event) => updateForm("name", event.target.value)} />
+                <Label htmlFor="holding-description">Description (optional)</Label>
+                <Input id="holding-description" placeholder="e.g. Uninvested cash, Barclays savings" value={form.name} onChange={(event) => updateForm("name", event.target.value)} />
               </div>
             </>
           ) : (
             <>
               <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
                 <div className="space-y-1.5 relative">
-                  <Label>Symbol *</Label>
+                  <Label htmlFor="holding-symbol">Symbol *</Label>
                   <div className="flex gap-1.5">
                     <div className="relative flex-1">
                       <Input
+                        id="holding-symbol"
                         placeholder="AAPL or Apple"
                         value={form.symbol}
                         onChange={(event) => {
@@ -305,15 +306,15 @@ export function HoldingDialog({
                               <span className="min-w-0">
                                 <span className="text-sm font-medium text-white flex items-center gap-2">
                                   {result.symbol}
-                                  <Badge variant="outline" className="border-white/10 text-[10px] text-zinc-500">{result.exchange || (result.exchDisp ?? "—")}</Badge>
+                                  <Badge variant="outline" className="border-white/10 text-[10px] text-zinc-400">{result.exchange || (result.exchDisp ?? "—")}</Badge>
                                   {result.price != null && <span className="text-xs text-emerald-400">{fmtPrice(result.price, result.currency)}</span>}
                                 </span>
-                                <span className="block text-xs text-zinc-500 truncate">{result.name}</span>
+                                <span className="block text-xs text-zinc-400 truncate">{result.name}</span>
                               </span>
-                              <Plus className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                              <Plus className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                             </button>
                           ))}
-                          {symbolSearching && <div className="px-3 py-2 text-xs text-zinc-500 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin" /> Searching Yahoo…</div>}
+                          {symbolSearching && <div className="px-3 py-2 text-xs text-zinc-400 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin" /> Searching Yahoo…</div>}
                         </div>
                       )}
                     </div>
@@ -322,13 +323,13 @@ export function HoldingDialog({
                     </Button>
                   </div>
                   {fieldError("symbol")}
-                  {quoteInfo && <p className="text-xs text-zinc-500">{quoteInfo}</p>}
-                  {!holding && <p className="text-xs text-zinc-600">Type symbol or company name — Yahoo search</p>}
+                  {quoteInfo && <p className="text-xs text-zinc-400">{quoteInfo}</p>}
+                  {!holding && <p className="text-xs text-zinc-400">Type symbol or company name — Yahoo search</p>}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Exchange</Label>
+                  <Label htmlFor="holding-exchange">Exchange</Label>
                   <Select value={form.exchange || "__auto"} onValueChange={(value) => updateForm("exchange", value === "__auto" ? "" : value ?? "")}>
-                    <SelectTrigger className="h-10 bg-white/5 border-white/10"><span className="flex-1 text-left truncate text-sm">{form.exchange || "Auto"}</span></SelectTrigger>
+                    <SelectTrigger id="holding-exchange" className="h-10 bg-white/5 border-white/10"><span className="flex-1 text-left truncate text-sm">{form.exchange || "Auto"}</span></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__auto">Auto — from symbol/search</SelectItem>
                       <SelectItem value="NASDAQ">NASDAQ</SelectItem>
@@ -342,53 +343,55 @@ export function HoldingDialog({
                       <SelectItem value="TSE">TSE (Tokyo)</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-zinc-600">Mapped to Yahoo: LSE → .L</p>
+                  <p className="text-xs text-zinc-400">Mapped to Yahoo: LSE → .L</p>
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Name</Label>
-                <Input placeholder="Apple Inc — auto-filled from Yahoo" value={form.name} onChange={(event) => updateForm("name", event.target.value)} />
+                <Label htmlFor="holding-display-name">Name</Label>
+                <Input id="holding-display-name" placeholder="Apple Inc — auto-filled from Yahoo" value={form.name} onChange={(event) => updateForm("name", event.target.value)} />
               </div>
             </>
           )}
 
           <div className="space-y-1.5">
-            <Label>Sector / asset class</Label>
-            <Input placeholder="e.g. Technology, Cash, Bonds, Property" maxLength={48} value={form.sector} onChange={(event) => updateForm("sector", event.target.value)} />
-            <p className="text-xs text-zinc-600">Used to group this position in sector allocation.</p>
+            <Label htmlFor="holding-sector">Sector / asset class</Label>
+            <Input id="holding-sector" placeholder="e.g. Technology, Cash, Bonds, Property" maxLength={48} value={form.sector} onChange={(event) => updateForm("sector", event.target.value)} />
+            <p className="text-xs text-zinc-400">Used to group this position in sector allocation.</p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>{effectiveIsManual ? "Amount (£) *" : "Shares *"}</Label>
-              <Input type="number" min="0" step="any" placeholder={effectiveIsManual ? "5000" : "10"} value={form.shares} onChange={(event) => updateForm("shares", event.target.value)} className={formErrors.shares ? "border-red-500/50" : ""} />
+              <Label htmlFor="holding-shares">{effectiveIsManual ? "Amount (£) *" : "Shares *"}</Label>
+              <Input id="holding-shares" type="number" min="0" step="any" placeholder={effectiveIsManual ? "5000" : "10"} value={form.shares} onChange={(event) => updateForm("shares", event.target.value)} className={formErrors.shares ? "border-red-500/50" : ""} />
               {fieldError("shares")}
-              {effectiveIsManual && <p className="text-xs text-zinc-600">Tip: use 1 share × price = total for cash</p>}
+              {effectiveIsManual && <p className="text-xs text-zinc-400">Tip: use 1 share × price = total for cash</p>}
             </div>
             <div className="space-y-1.5">
-              <Label>{effectiveIsManual ? "Price (per unit) *" : "Avg price (cost) *"}</Label>
-              <Input type="number" min="0" step="any" placeholder={effectiveIsManual ? "1.00" : "150.00"} value={form.avgPrice} onChange={(event) => updateForm("avgPrice", event.target.value)} className={formErrors.avgPrice ? "border-red-500/50" : ""} />
+              <Label htmlFor="holding-avg-price">{effectiveIsManual ? "Price (per unit) *" : "Avg price (cost) *"}</Label>
+              <Input id="holding-avg-price" type="number" min="0" step="any" placeholder={effectiveIsManual ? "1.00" : "150.00"} value={form.avgPrice} onChange={(event) => updateForm("avgPrice", event.target.value)} className={formErrors.avgPrice ? "border-red-500/50" : ""} />
               {fieldError("avgPrice")}
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Current price {effectiveIsManual ? "" : <span className="text-zinc-500 font-normal">(live)</span>}</Label>
+              {effectiveIsManual
+                ? <Label htmlFor="holding-current-price">Current price *</Label>
+                : <p className="text-sm leading-none font-medium text-white">Current price <span className="text-zinc-400 font-normal">(live)</span></p>}
               {effectiveIsManual ? (
-                <Input type="number" min="0" step="any" placeholder="1.00" value={form.currentPrice} onChange={(event) => updateForm("currentPrice", event.target.value)} className={formErrors.currentPrice ? "border-red-500/50" : ""} />
+                <Input id="holding-current-price" type="number" min="0" step="any" placeholder="1.00" value={form.currentPrice} onChange={(event) => updateForm("currentPrice", event.target.value)} className={formErrors.currentPrice ? "border-red-500/50" : ""} />
               ) : (
                 <div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">
                   {form.currentPrice ? fmtPrice(Number(form.currentPrice), form.currency) : "—"}
-                  <span className="ml-auto text-xs text-zinc-600">read-only</span>
+                  <span className="ml-auto text-xs text-zinc-400">read-only</span>
                 </div>
               )}
               {fieldError("currentPrice")}
-              <p className="text-xs text-zinc-600">{effectiveIsManual ? "Keep equal to avg for cash" : "Auto-filled from Yahoo; avg cost is what you paid"}</p>
+              <p className="text-xs text-zinc-400">{effectiveIsManual ? "Keep equal to avg for cash" : "Auto-filled from Yahoo; avg cost is what you paid"}</p>
             </div>
             <div className="space-y-1.5">
-              <Label>Purchase date</Label>
-              <Input type="date" value={form.purchaseDate} max={todayISODate()} onChange={(event) => updateForm("purchaseDate", event.target.value)} className={formErrors.purchaseDate ? "border-red-500/50" : ""} />
+              <Label htmlFor="holding-purchase-date">Purchase date</Label>
+              <Input id="holding-purchase-date" type="date" value={form.purchaseDate} max={todayISODate()} onChange={(event) => updateForm("purchaseDate", event.target.value)} className={formErrors.purchaseDate ? "border-red-500/50" : ""} />
               {fieldError("purchaseDate")}
             </div>
           </div>

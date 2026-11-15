@@ -73,21 +73,23 @@ export default async function Home() {
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip lg:h-screen lg:min-h-0 lg:overflow-hidden">
-      <Link
-        href="/"
-        aria-label="Olantis — home"
-        className="absolute top-0 left-0 z-10 p-6 transition-opacity hover:opacity-80 md:p-8"
-      >
-        <Logo size={28} />
-      </Link>
+      <header className="absolute top-0 left-0 z-10 p-6 md:p-8">
+        <Link
+          href="/"
+          className="block transition-opacity hover:opacity-80"
+        >
+          <Logo size={28} />
+          <span className="sr-only">— home</span>
+        </Link>
+      </header>
 
-      <main className="relative flex flex-1 flex-col">
+      <main id="main-content" className="relative flex flex-1 flex-col">
         <section className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 pt-24 pb-16 md:px-8 lg:grid-cols-2 lg:gap-20 lg:py-24">
           <div>
             <h1 className="rise text-[34px] font-semibold leading-[1.04] tracking-[-0.03em] text-white sm:text-[44px] lg:text-[54px]">
               Your portfolios,
               <br />
-              <span className="text-zinc-500">beautifully simple.</span>
+              <span className="text-zinc-400">beautifully simple.</span>
             </h1>
 
             <p className="rise mt-5 max-w-[25rem] text-[15px] leading-relaxed text-zinc-400" style={{ animationDelay: "90ms" }}>
@@ -167,7 +169,7 @@ export default async function Home() {
                     vectorEffect="non-scaling-stroke"
                   />
                 </svg>
-                <span className="absolute top-6 left-7 text-[11px] text-zinc-500 sm:left-8">Demo</span>
+                <span className="absolute top-6 left-7 text-[11px] text-zinc-400 sm:left-8">Demo</span>
                 <span className="absolute top-[8px] right-[2.75%] h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400 shadow-[0_0_10px_2px_rgba(52,211,153,0.55)]" />
               </div>
 
@@ -182,7 +184,7 @@ export default async function Home() {
                     +7.6%
                   </span>
                 </div>
-                <p className="mt-2 text-[11px] text-zinc-500">+£4,820 over 12 months</p>
+                <p className="mt-2 text-[11px] text-zinc-400">+£4,820 over 12 months</p>
 
                 <div className="mt-5 border-t border-white/[0.06]">
                   {ACCOUNTS.map((a, i) => (
@@ -194,7 +196,7 @@ export default async function Home() {
                       <div className="flex items-center gap-2.5">
                         <span className="h-6 w-[3px] rounded-full" style={{ backgroundColor: a.color }} />
                         <span className="text-[13px] text-zinc-200">{a.name}</span>
-                        <span className="text-[11px] text-zinc-500">{a.detail}</span>
+                        <span className="text-[11px] text-zinc-400">{a.detail}</span>
                       </div>
                       <span className="text-[13px] text-zinc-300 tabular-nums">{a.value}</span>
                     </div>

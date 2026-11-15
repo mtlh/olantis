@@ -50,7 +50,7 @@ function PriceChart({ data, loading, symbol, currency, change, heightClassName }
   return (
     <div className={`${heightClassName} w-full`} role="img" aria-label={`${symbol} price chart`}>
       {loading ? (
-        <div className="grid h-full place-items-center text-xs text-zinc-500">Loading price history…</div>
+        <div className="grid h-full place-items-center text-xs text-zinc-400">Loading price history…</div>
       ) : data.length > 0 ? (
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
@@ -61,14 +61,14 @@ function PriceChart({ data, loading, symbol, currency, change, heightClassName }
               </linearGradient>
             </defs>
             <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#71717a" }} axisLine={false} tickLine={false} minTickGap={24} />
-            <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#71717a" }} axisLine={false} tickLine={false} tickFormatter={(value: number) => fmtPrice(value, currency)} width={64} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#a1a1aa" }} axisLine={false} tickLine={false} minTickGap={24} />
+            <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#a1a1aa" }} axisLine={false} tickLine={false} tickFormatter={(value: number) => fmtPrice(value, currency)} width={64} />
             <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff", fontSize: 12 }} labelStyle={{ color: "#a1a1aa", marginBottom: 4 }} formatter={(value) => fmtPrice(Number(value), currency)} />
             <Area type="monotone" dataKey="price" name={symbol} stroke={stroke} fill={`url(#${gradientId})`} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
           </AreaChart>
         </ResponsiveContainer>
       ) : (
-        <div className="grid h-full place-items-center px-6 text-center text-xs text-zinc-500">No price history is available for {symbol}.</div>
+        <div className="grid h-full place-items-center px-6 text-center text-xs text-zinc-400">No price history is available for {symbol}.</div>
       )}
     </div>
   );
@@ -314,7 +314,7 @@ export function WatchlistPanel() {
             value={
               <>
                 {pricedCount}
-                <span className="ml-1.5 text-[11px] font-normal text-zinc-500 sm:text-xs">of {items.length}</span>
+                <span className="ml-1.5 text-[11px] font-normal text-zinc-400 sm:text-xs">of {items.length}</span>
               </>
             }
             sub={pricedCount === items.length ? "All up to date" : "Awaiting quotes"}
@@ -332,7 +332,7 @@ export function WatchlistPanel() {
                 type="button"
                 onClick={() => void handleRefresh()}
                 disabled={refreshing}
-                className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-500 transition-colors hover:text-white disabled:opacity-50"
+                className="flex min-h-6 shrink-0 items-center gap-1 text-[11px] text-zinc-400 transition-colors hover:text-white disabled:opacity-50"
               >
                 <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
                 Refresh
@@ -357,9 +357,9 @@ export function WatchlistPanel() {
                   {suggestions.slice(0, 5).map((result) => (
                     <button key={`${result.symbol}:${result.exchange ?? ""}`} type="button" onClick={() => void add(result)} disabled={saving} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.06] disabled:opacity-50">
                       <BrandIcon symbol={result.symbol} name={result.name} exchange={result.exchange} currency={result.currency} size={36} />
-                      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-white">{result.name}</span><span className="block truncate text-xs text-zinc-500">{result.symbol}{result.exchange ? ` · ${result.exchange}` : ""}{result.type ? ` · ${result.type}` : ""}</span></span>
+                      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-white">{result.name}</span><span className="block truncate text-xs text-zinc-400">{result.symbol}{result.exchange ? ` · ${result.exchange}` : ""}{result.type ? ` · ${result.type}` : ""}</span></span>
                       {result.price != null && <span className="text-sm tabular-nums text-zinc-300">{fmtPrice(result.price, result.currency)}</span>}
-                      <Plus className="size-4 text-zinc-500" />
+                      <Plus className="size-4 text-zinc-400" />
                     </button>
                   ))}
                 </div>
@@ -392,7 +392,7 @@ export function WatchlistPanel() {
             />
           ) : (
             <div className="mt-4">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_24px] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_24px] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-400">
                 <span>Company</span><span className="text-right">Price</span><span />
               </div>
               <div className="divide-y divide-white/[0.05]">
@@ -403,10 +403,10 @@ export function WatchlistPanel() {
                     <div key={item.id} className={`group grid grid-cols-[minmax(0,1fr)_auto_24px] items-center gap-3 px-1 py-3 transition-colors ${isActive ? "bg-white/[0.045]" : "hover:bg-white/[0.025]"}`}>
                       <button type="button" onClick={() => setSelectedId(item.id)} className="flex min-w-0 items-center gap-3 text-left" aria-pressed={isActive}>
                         <BrandIcon symbol={item.symbol} name={item.name} exchange={item.exchange} currency={item.currency ?? quote?.currency} size={36} />
-                        <span className="min-w-0"><span className="block truncate text-sm font-medium text-white">{item.name || item.symbol}</span><span className="mt-0.5 block truncate text-[11px] text-zinc-600">{item.symbol}{item.exchange ? ` · ${item.exchange}` : ""}</span></span>
+                        <span className="min-w-0"><span className="block truncate text-sm font-medium text-white">{item.name || item.symbol}</span><span className="mt-0.5 block truncate text-[11px] text-zinc-400">{item.symbol}{item.exchange ? ` · ${item.exchange}` : ""}</span></span>
                       </button>
-                      <span className="text-right text-sm tabular-nums text-zinc-200">{quote?.price != null ? fmtPrice(quote.price, quote.currency ?? item.currency) : <span className="text-zinc-600">—</span>}</span>
-                      <Button type="button" variant="ghost" size="icon-xs" className="text-zinc-600 opacity-70 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100" onClick={() => void remove(item.id)} disabled={removingId === item.id} aria-label={`Remove ${item.symbol}`}><Trash2 className="size-3.5" /></Button>
+                      <span className="text-right text-sm tabular-nums text-zinc-200">{quote?.price != null ? fmtPrice(quote.price, quote.currency ?? item.currency) : <span className="text-zinc-400">—</span>}</span>
+                      <Button type="button" variant="ghost" size="icon-xs" className="text-zinc-400 opacity-70 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100" onClick={() => void remove(item.id)} disabled={removingId === item.id} aria-label={`Remove ${item.symbol}`}><Trash2 className="size-3.5" /></Button>
                     </div>
                   );
                 })}
@@ -421,7 +421,7 @@ export function WatchlistPanel() {
               <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <CardTitle className="truncate text-sm font-medium text-white">{activeItem.name || activeItem.symbol}</CardTitle>
-                  <p className="mt-1 truncate text-[11px] text-zinc-600">{activeItem.symbol}{activeItem.exchange ? ` · ${activeItem.exchange}` : ""}</p>
+                  <p className="mt-1 truncate text-[11px] text-zinc-400">{activeItem.symbol}{activeItem.exchange ? ` · ${activeItem.exchange}` : ""}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <ChartRangeSelector range={range} onRangeChange={setRange} segmented />
@@ -456,7 +456,7 @@ export function WatchlistPanel() {
             <DialogHeader className="flex-row items-center justify-between gap-3 pr-10">
               <div className="min-w-0">
                 <DialogTitle className="truncate">{activeItem.name || activeItem.symbol}</DialogTitle>
-                <p className="mt-1 truncate text-[11px] text-zinc-600">{activeItem.symbol}{activeItem.exchange ? ` · ${activeItem.exchange}` : ""}</p>
+                <p className="mt-1 truncate text-[11px] text-zinc-400">{activeItem.symbol}{activeItem.exchange ? ` · ${activeItem.exchange}` : ""}</p>
               </div>
               <ChartRangeSelector range={range} onRangeChange={setRange} segmented />
             </DialogHeader>

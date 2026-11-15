@@ -39,7 +39,7 @@ export function EmptyState({
     >
       {icon}
       <p className="text-sm text-zinc-400">{title}</p>
-      {description != null && <p className="mt-1 text-[11px] text-zinc-600">{description}</p>}
+      {description != null && <p className="mt-1 text-[11px] text-zinc-400">{description}</p>}
       {action != null && (
         <div className={cn("mt-4 flex flex-wrap items-center gap-2", align === "center" && "justify-center")}>
           {action}

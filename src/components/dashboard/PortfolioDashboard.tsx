@@ -59,7 +59,7 @@ export function PortfolioDashboard({
         icon={provider && <ProviderIcon provider={provider} size={28} />}
         title={portfolio.name}
         titleAdornment={portfolio.accountId && (
-          <span className="text-[11px] text-zinc-600">
+          <span className="text-[11px] text-zinc-400">
             {accounts.find((account) => account.id === portfolio.accountId)?.name ?? ""}
           </span>
         )}
@@ -83,7 +83,7 @@ export function PortfolioDashboard({
               variant="ghost"
               size="sm"
               aria-label="Delete portfolio"
-              className="rounded-full px-2.5 text-zinc-500 hover:bg-red-500/10 hover:text-red-400 sm:px-3"
+              className="rounded-full px-2.5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 sm:px-3"
               onClick={onDelete}
             >
               <Trash2 className="h-3.5 w-3.5" />

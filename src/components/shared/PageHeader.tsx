@@ -14,7 +14,7 @@ export function BackLink({
     <button
       type="button"
       onClick={onClick}
-      className={cn("text-[11px] text-zinc-500 transition-colors hover:text-white", className)}
+      className={cn("inline-flex min-h-6 items-center text-[11px] text-zinc-400 transition-colors hover:text-white", className)}
     >
       ← {label}
     </button>
@@ -76,9 +76,9 @@ export function PageHeader({
         {actions != null && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
       {description != null && (
-        <div className={cn("mt-2 text-xs text-zinc-500", descriptionClassName)}>{description}</div>
+        <div className={cn("mt-2 text-xs text-zinc-400", descriptionClassName)}>{description}</div>
       )}
-      {mobileDescription != null && <div className="mt-1 text-[11px] text-zinc-600 lg:hidden">{mobileDescription}</div>}
+      {mobileDescription != null && <div className="mt-1 text-[11px] text-zinc-400 lg:hidden">{mobileDescription}</div>}
       {below}
     </header>
   );

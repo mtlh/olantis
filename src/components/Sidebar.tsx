@@ -58,7 +58,7 @@ function TreeToggle({ open, onToggle, label, className = "" }: {
       onClick={onToggle}
       aria-expanded={open}
       aria-label={label}
-      className={`grid h-6 w-5 shrink-0 place-items-center rounded text-zinc-500 transition-colors hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${className}`}
+      className={`grid h-6 w-6 shrink-0 place-items-center rounded text-zinc-400 transition-colors hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${className}`}
     >
       <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} strokeWidth={2.25} />
     </button>
@@ -271,12 +271,12 @@ function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto b
         >
           <span aria-hidden className="absolute left-[-5px] top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-white/10 bg-zinc-900" />
           <p className="truncate text-xs font-semibold text-zinc-100">{title}</p>
-          {subtitle && <p className="mt-0.5 truncate text-[10px] uppercase tracking-[0.12em] text-zinc-500">{subtitle}</p>}
+          {subtitle && <p className="mt-0.5 truncate text-[10px] uppercase tracking-[0.12em] text-zinc-400">{subtitle}</p>}
           {rows && rows.length > 0 && (
             <div className="mt-2 space-y-1 border-t border-white/[0.06] pt-2">
               {rows.map((row) => (
                 <div key={row.label} className="flex items-center justify-between gap-3 text-[11px]">
-                  <span className="text-zinc-500">{row.label}</span>
+                  <span className="text-zinc-400">{row.label}</span>
                   <span className="tabular-nums text-zinc-300">{row.value}</span>
                 </div>
               ))}
@@ -284,7 +284,7 @@ function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto b
           )}
           {holdings && holdings.length > 0 && (
             <div className="mt-2 border-t border-white/[0.06] pt-2">
-              <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Holdings</p>
+              <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-400">Holdings</p>
               <div className="space-y-1">
                 {holdings.map((holding) => (
                   <div key={holding.id} className="flex items-center justify-between gap-3 text-[11px]">
@@ -452,7 +452,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
         {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
 
         <span
-          className="ml-auto min-w-0 truncate pl-1 text-right text-[11px] text-zinc-600"
+          className="ml-auto min-w-0 truncate pl-1 text-right text-[11px] text-zinc-400"
           title={lastRefreshLabel ? `Tickers updated ${lastRefreshLabel}` : "Tickers not updated yet"}
         >
           {lastRefreshLabel
@@ -865,17 +865,17 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               {portfolio.name}
             </span>
             {providerName ? (
-              <button type="button" onClick={() => { if (!provider) return; onSelectProvider?.(provider.id); setMobileOpen(false); }} className="relative z-10 mt-0.5 block max-w-full truncate rounded text-left text-[10px] text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+              <button type="button" onClick={() => { if (!provider) return; onSelectProvider?.(provider.id); setMobileOpen(false); }} className="relative z-10 mt-0.5 flex min-h-6 max-w-full items-center truncate rounded text-left text-[10px] text-zinc-400 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
                 {providerName}
               </button>
             ) : (
-              <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{portfolio.accountId ? "Direct portfolio" : "Unassigned"}</span>
+              <span className="mt-0.5 block truncate text-[10px] text-zinc-400">{portfolio.accountId ? "Direct portfolio" : "Unassigned"}</span>
             )}
           </div>
           <span className="shrink-0 pl-1 text-xs tabular-nums text-zinc-400">{fmtGBP(total)}</span>
           {editMode && (
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`} className="relative z-10 text-zinc-500 hover:text-white"><MoreVertical className="h-3 w-3" /></Button>} />
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${portfolio.name} actions`} className="relative z-10 text-zinc-400 hover:text-white"><MoreVertical className="h-3 w-3" /></Button>} />
               <DropdownMenuContent className="border-white/10 bg-zinc-900 text-white">
                 <DropdownMenuItem onClick={() => setEditingPortfolio(portfolio)}><Move className="h-3 w-3" />Move</DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={() => onDeletePortfolio?.(portfolio)}><Trash2 className="h-3 w-3" />Delete</DropdownMenuItem>
@@ -910,11 +910,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                       <span className="truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
                       {live && <LiveBadge />}
                     </span>
-                    <span className="block truncate text-[9px] text-zinc-600">{holding.name}</span>
+                    <span className="block truncate text-[9px] text-zinc-400">{holding.name}</span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block text-[10px] font-medium tabular-nums text-zinc-300">{allocation.toFixed(1)}%</span>
-                    <span className="block text-[9px] tabular-nums text-zinc-600">{fmtGBP(holdingValue)}</span>
+                    <span className="block text-[9px] tabular-nums text-zinc-400">{fmtGBP(holdingValue)}</span>
                   </span>
                 </button>
               );
@@ -925,7 +925,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                   {row}
                 </RailTip>
               ) : row;
-            }) : <p className="px-1.5 py-1.5 text-[10px] text-zinc-600">No holdings yet.</p>}
+            }) : <p className="px-1.5 py-1.5 text-[10px] text-zinc-400">No holdings yet.</p>}
           </div>
         )}
       </div>
@@ -1094,7 +1094,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         <Logo size={36} />
         <Button variant="ghost" size="icon" className="xl:hidden !size-11" aria-label="Close menu" onClick={()=>setMobileOpen(false)}><X className="w-4 h-4"/></Button>
       </div>
-      <nav className={`flex-1 overflow-y-auto ${rail ? "p-2 xl:pt-4" : "p-3 xl:pt-5"}`}>
+      <nav aria-label="Portfolios and holdings" className={`flex-1 overflow-y-auto ${rail ? "p-2 xl:pt-4" : "p-3 xl:pt-5"}`}>
         {rail ? (
           <div className="flex flex-col items-center gap-1.5">
             <RailTip title="Search" subtitle="Portfolios & holdings">
@@ -1103,7 +1103,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 size="icon-sm"
                 onClick={expandSearch}
                 aria-label="Search portfolios and holdings"
-                className="text-zinc-500 hover:text-white"
+                className="text-zinc-400 hover:text-white"
               >
                 <Search className="h-4 w-4" />
               </Button>
@@ -1115,7 +1115,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 onClick={toggleSidebar}
                 aria-label="Expand sidebar"
                 aria-expanded={false}
-                className="text-zinc-500 hover:text-white"
+                className="text-zinc-400 hover:text-white"
               >
                 <PanelLeftOpen className="h-4 w-4" />
               </Button>
@@ -1124,9 +1124,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         ) : (
           <div className="flex items-center gap-1.5">
             <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"/>
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400"/>
               <Input ref={searchInputRef} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search portfolios & holdings…" aria-label="Search portfolios and holdings" className="pl-8 h-9 bg-white/[0.04] border-white/10 text-xs"/>
-              {q && <button onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
+              {q && <button type="button" onClick={()=>setQ("")} aria-label="Clear account search" className="absolute right-1 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-zinc-400 hover:text-white"><X className="w-3.5 h-3.5"/></button>}
             </div>
             {isDesktop && (
               <Button
@@ -1135,7 +1135,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 onClick={toggleSidebar}
                 aria-label="Collapse sidebar"
                 title="Collapse sidebar"
-                className="shrink-0 text-zinc-500 hover:text-white"
+                className="shrink-0 text-zinc-400 hover:text-white"
               >
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
@@ -1146,11 +1146,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         {rail ? <div className="mt-3">{renderRailTree()}</div> : (
         <div className="mt-3">
           <div className="flex items-center justify-between px-1 mb-2">
-            <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-500">Portfolios</span>
+            <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-400">Portfolios</span>
             <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon-sm" onClick={() => setEditMode(v => !v)} aria-pressed={editMode} aria-label="Toggle edit mode" title={editMode ? "Hide edit controls" : "Show edit controls"} className={editMode ? "bg-white/10 text-white hover:bg-white/15" : "text-zinc-500 hover:text-zinc-200"}><Pencil className="w-3.5 h-3.5" /></Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => setEditMode(v => !v)} aria-pressed={editMode} aria-label="Toggle edit mode" title={editMode ? "Hide edit controls" : "Show edit controls"} className={editMode ? "bg-white/10 text-white hover:bg-white/15" : "text-zinc-400 hover:text-zinc-200"}><Pencil className="w-3.5 h-3.5" /></Button>
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Create new" title="Create new" className="text-zinc-500 hover:text-zinc-200"><Plus className="w-4 h-4" /></Button>} />
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Create new" title="Create new" className="text-zinc-400 hover:text-zinc-200"><Plus className="w-4 h-4" /></Button>} />
                 <DropdownMenuContent align="end" className="min-w-56 bg-zinc-900 border-white/10 text-white">
                   <DropdownMenuItem onClick={() => setShowAccountDialog(true)}>
                     <Building2 className="w-3.5 h-3.5"/> Account
@@ -1167,7 +1167,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           </div>
 
           {loading ? <div className="space-y-3">{[1,2,3].map(i=><Skeleton key={i} className="h-[92px] rounded-2xl bg-white/5"/>)}</div>
-          : accounts.length === 0 && unassigned.length === 0 ? <Card className="p-6 text-center border-dashed bg-white/[0.02]"><p className="text-sm text-zinc-500">No portfolios yet</p><p className="text-xs text-zinc-600 mt-1">Create an account to start tracking portfolios</p><Button size="sm" className="mt-3" onClick={()=>setShowAccountDialog(true)}><Plus className="w-3.5 h-3.5"/>New account</Button></Card>
+          : accounts.length === 0 && unassigned.length === 0 ? <Card className="p-6 text-center border-dashed bg-white/[0.02]"><p className="text-sm text-zinc-400">No portfolios yet</p><p className="text-xs text-zinc-400 mt-1">Create an account to start tracking portfolios</p><Button size="sm" className="mt-3" onClick={()=>setShowAccountDialog(true)}><Plus className="w-3.5 h-3.5"/>New account</Button></Card>
           : (
           <div className="space-y-3">
             {filteredAccounts.map((acc, accountRowIndex) => {
@@ -1199,7 +1199,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                     <span className="shrink-0 text-sm font-medium tabular-nums text-zinc-300">{fmtGBP(total)}</span>
                     {editMode && (
                     <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Account actions" className="text-zinc-500 hover:text-white"><MoreVertical className="w-3.5 h-3.5"/></Button>} />
+                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Account actions" className="text-zinc-400 hover:text-white"><MoreVertical className="w-3.5 h-3.5"/></Button>} />
                       <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-40">
                         <DropdownMenuItem onClick={()=>{ setEditingAccount(acc); setEditAccountName(acc.name); }}><Pencil className="w-3.5 h-3.5"/>Rename account</DropdownMenuItem>
                         <DropdownMenuItem onClick={()=>{ setDirectTarget({accountId: acc.id}); setDirectForm(blankDirectForm()); setEditingDirectId(null); setDirectShowMenu(false); setShowDirectHolding(true); }}><TrendingUp className="w-3.5 h-3.5"/>Add stock directly</DropdownMenuItem>
@@ -1214,7 +1214,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                   {accountPortfolios.length === 0 && accountDirectHoldings.length === 0 ? (
                     <div className="px-3 pb-3">
                       <div className="flex items-center justify-between rounded-lg border border-dashed border-white/10 px-3 py-2">
-                        <span className="text-[11px] text-zinc-600">No portfolios</span>
+                        <span className="text-[11px] text-zinc-400">No portfolios</span>
                         <Button variant="link" size="xs" className="h-auto p-0 text-[11px] text-zinc-400 hover:text-white" onClick={()=>openWizard(acc.id, null)}>Add</Button>
                       </div>
                     </div>
@@ -1228,24 +1228,26 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
                       {accountDirectHoldings.length > 0 && (
                         <div className="mt-1 border-t border-white/[0.05] pt-1.5">
-                          <div className="px-1.5 pb-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-600">Direct</div>
+                          <div className="px-1.5 pb-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-400">Direct</div>
                           {accountDirectHoldings.map((h: Holding) => {
                             const directValue = holdingValueGBP(h, settings.fxRates);
                             const row = (
-                              <div key={h.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors ${onSelectHolding ? "cursor-pointer hover:bg-white/[0.035]" : ""}`} onClick={() => onSelectHolding?.(h)}>
-                                <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={22} />
-                                <span className="min-w-0 flex-1">
-                                  <span className="flex min-w-0 items-center gap-1.5">
-                                    <span className="truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
-                                    {isLiveHolding(h) && <LiveBadge />}
+                              <div key={h.id} className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-white/[0.035]">
+                                <button type="button" onClick={() => onSelectHolding?.(h)} className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+                                  <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={22} />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <span className="truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
+                                      {isLiveHolding(h) && <LiveBadge />}
+                                    </span>
+                                    <span className="block truncate text-[9px] text-zinc-400">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
                                   </span>
-                                  <span className="block truncate text-[9px] text-zinc-600">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
-                                </span>
-                                <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{fmtGBP(directValue)}</span>
+                                  <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{fmtGBP(directValue)}</span>
+                                </button>
                                 {editMode && (
                                 <>
-                                  <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-white" aria-label={`Edit ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
-                                  <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-500 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); void fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(async()=>{ await onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }).catch((err: unknown)=>{ toast({title:"Remove failed", description: err instanceof Error ? err.message : String(err), variant:"error"}); }); }}><Trash2 className="w-3 h-3"/></Button>
+                                  <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-400 hover:text-white" aria-label={`Edit ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); openDirectEdit(h); }}><Pencil className="w-3 h-3"/></Button>
+                                  <Button variant="ghost" size="icon-xs" className="relative z-10 h-6 w-6 text-zinc-400 hover:text-red-400" aria-label={`Remove ${h.symbol}`} onClick={(e)=>{ e.stopPropagation(); void fetch(`/api/holdings?id=${h.id}`,{method:"DELETE"}).then(async()=>{ await onRefresh?.(); toast({title:"Stock removed", variant:"success"}); }).catch((err: unknown)=>{ toast({title:"Remove failed", description: err instanceof Error ? err.message : String(err), variant:"error"}); }); }}><Trash2 className="w-3 h-3"/></Button>
                                 </>
                                 )}
                               </div>
@@ -1277,7 +1279,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             {unassigned.length > 0 && (
               <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] overflow-hidden">
                 <div className="px-3 py-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold tracking-widest uppercase text-zinc-600">Unassigned</span>
+                  <span className="text-[11px] font-semibold tracking-widest uppercase text-zinc-400">Unassigned</span>
                   <Button variant="ghost" size="icon-xs" onClick={() => openWizard(null)} aria-label="New portfolio"><Plus className="w-3.5 h-3.5" /></Button>
                 </div>
                 <div className="px-2 pb-2 space-y-1">
@@ -1308,8 +1310,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         <DialogContent className="bg-zinc-900 border-white/10 text-white">
           <DialogHeader><DialogTitle>New account</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2"><Label>Account name</Label><Input value={accountName} onChange={(e) => { setAccountName(e.target.value); setAccountError(""); }} placeholder="e.g. Household, Personal" autoFocus onKeyDown={e=>e.key==="Enter"&&handleCreateAccount()} aria-invalid={Boolean(accountError)}/>{accountError && <p className="text-xs text-red-400">{accountError}</p>}</div>
-            <p className="text-xs text-zinc-500">Top level — holds providers. e.g. Household, Joint.</p>
+            <div className="space-y-2"><Label htmlFor="new-account-name">Account name</Label><Input id="new-account-name" value={accountName} onChange={(e) => { setAccountName(e.target.value); setAccountError(""); }} placeholder="e.g. Household, Personal" autoFocus onKeyDown={e=>e.key==="Enter"&&handleCreateAccount()} aria-invalid={Boolean(accountError)} aria-describedby={accountError ? "new-account-error" : undefined}/>{accountError && <p id="new-account-error" className="text-xs text-red-400">{accountError}</p>}</div>
+            <p className="text-xs text-zinc-400">Top level — holds providers. e.g. Household, Joint.</p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowAccountDialog(false)}>Cancel</Button>
               <Button onClick={handleCreateAccount} disabled={!accountName.trim() || saving}>{saving?"Creating…":"Create account"}</Button>
@@ -1322,7 +1324,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         <DialogContent className="bg-zinc-900 border-white/10 text-white">
           <DialogHeader><DialogTitle>Rename account</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2"><Label>Name</Label><Input value={editAccountName} onChange={e=>setEditAccountName(e.target.value)} autoFocus onKeyDown={e=>e.key==="Enter"&&handleRenameAccount()} placeholder="Account name"/></div>
+            <div className="space-y-2"><Label htmlFor="rename-account-name">Name</Label><Input id="rename-account-name" value={editAccountName} onChange={e=>setEditAccountName(e.target.value)} autoFocus onKeyDown={e=>e.key==="Enter"&&handleRenameAccount()} placeholder="Account name"/></div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={()=>setEditingAccount(null)}>Cancel</Button>
               <Button onClick={handleRenameAccount} disabled={saving || !editAccountName.trim()}>{saving?"Saving…":"Save"}</Button>
@@ -1335,7 +1337,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         <DialogContent className="bg-zinc-900 border-white/10 text-white">
           <DialogHeader><DialogTitle>Rename provider</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2"><Label>Name</Label><Input value={editProviderName} onChange={e=>setEditProviderName(e.target.value)} autoFocus /></div>
+            <div className="space-y-2"><Label htmlFor="rename-provider-name">Name</Label><Input id="rename-provider-name" value={editProviderName} onChange={e=>setEditProviderName(e.target.value)} autoFocus /></div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={()=>setEditingProvider(null)}>Cancel</Button>
               <Button onClick={handleRenameProvider} disabled={saving || !editProviderName.trim()}>{saving?"Saving…":"Save"}</Button>
@@ -1349,36 +1351,36 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           <DialogHeader><DialogTitle>Add stock directly — {directTarget?.providerId ? providers.find(p=>p.id===directTarget.providerId)?.name : accounts.find(a=>a.id===directTarget?.accountId)?.name ?? "—"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Symbol *</Label>
+              <Label htmlFor="direct-symbol">Symbol *</Label>
               <div className="relative">
-                <Input value={directForm.symbol} onChange={e=>{ const v=e.target.value.toUpperCase(); setDirectForm({...directForm, symbol:v}); setDirectQuery(v); if(v.trim().length<2){ setDirectSearchResults([]); setDirectShowMenu(false);} }} placeholder="AAPL or Apple" autoComplete="off" />
+                <Input id="direct-symbol" value={directForm.symbol} onChange={e=>{ const v=e.target.value.toUpperCase(); setDirectForm({...directForm, symbol:v}); setDirectQuery(v); if(v.trim().length<2){ setDirectSearchResults([]); setDirectShowMenu(false);} }} placeholder="AAPL or Apple" autoComplete="off" />
                 {directShowMenu && directSearchResults.length>0 && (
                   <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-xl max-h-48 overflow-auto">
                     {directSearchResults.map((r:SearchResult)=>(
                       <button key={r.symbol+r.exchange} type="button" onMouseDown={(e)=>{e.preventDefault(); setDirectForm({...directForm, symbol:r.symbol, name:r.name, exchange:r.exchange, currentPrice: r.price ? String(r.price) : directForm.currentPrice, currency: r.currency ?? directForm.currency}); setDirectShowMenu(false);}} className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between gap-2">
-                        <div><div className="text-sm text-white">{r.symbol} <span className="text-xs text-zinc-500">{r.exchange}</span>{r.price!=null && <span className="text-xs text-emerald-400 ml-1">{r.currency==="GBX"||r.currency==="GBp" ? `${Math.round(r.price).toLocaleString("en-GB")}p` : `£${Number(r.price).toFixed(2)}`}</span>}</div><div className="text-xs text-zinc-500 truncate">{r.name}</div></div>
+                        <div><div className="text-sm text-white">{r.symbol} <span className="text-xs text-zinc-400">{r.exchange}</span>{r.price!=null && <span className="text-xs text-emerald-400 ml-1">{r.currency==="GBX"||r.currency==="GBp" ? `${Math.round(r.price).toLocaleString("en-GB")}p` : `£${Number(r.price).toFixed(2)}`}</span>}</div><div className="text-xs text-zinc-400 truncate">{r.name}</div></div>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
             </div>
-            <div className="space-y-2"><Label>Name</Label><Input value={directForm.name} onChange={e=>setDirectForm({...directForm, name:e.target.value})} placeholder="Apple Inc" /></div>
+            <div className="space-y-2"><Label htmlFor="direct-name">Name</Label><Input id="direct-name" value={directForm.name} onChange={e=>setDirectForm({...directForm, name:e.target.value})} placeholder="Apple Inc" /></div>
             <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
-              <div className="space-y-2"><Label>Shares *</Label><Input type="number" value={directForm.shares} onChange={e=>setDirectForm({...directForm, shares:e.target.value})} placeholder="10" /></div>
-              <div className="space-y-2"><Label>Avg price *</Label><Input type="number" value={directForm.avgPrice} onChange={e=>setDirectForm({...directForm, avgPrice:e.target.value})} placeholder="150" /></div>
+              <div className="space-y-2"><Label htmlFor="direct-shares">Shares *</Label><Input id="direct-shares" type="number" value={directForm.shares} onChange={e=>setDirectForm({...directForm, shares:e.target.value})} placeholder="10" /></div>
+              <div className="space-y-2"><Label htmlFor="direct-avg-price">Avg price *</Label><Input id="direct-avg-price" type="number" value={directForm.avgPrice} onChange={e=>setDirectForm({...directForm, avgPrice:e.target.value})} placeholder="150" /></div>
             </div>
             <div className="space-y-2">
-              <Label>Current price <span className="text-zinc-500 font-normal">(live)</span></Label>
+              <p className="text-sm leading-none font-medium text-white">Current price <span className="text-zinc-400 font-normal">(live)</span></p>
               <div className="h-10 rounded-lg bg-white/5 border border-white/10 px-3 flex items-center text-sm text-zinc-300">
                 {directForm.currentPrice ? fmtPrice(Number(directForm.currentPrice), directForm.currency) : "— auto-filled from Yahoo"}
-                <span className="ml-auto text-xs text-zinc-600">read-only</span>
+                <span className="ml-auto text-xs text-zinc-400">read-only</span>
               </div>
-              <p className="text-xs text-zinc-600">Helps calculate gain; avg cost is what you paid</p>
+              <p className="text-xs text-zinc-400">Helps calculate gain; avg cost is what you paid</p>
             </div>
-            <div className="space-y-2"><Label>Exchange</Label>
+            <div className="space-y-2"><Label htmlFor="direct-exchange">Exchange</Label>
               <Select value={directForm.exchange || "__auto"} onValueChange={v=> setDirectForm({...directForm, exchange: (v as string)==="__auto" ? "" : (v as string)})}>
-                <SelectTrigger><span className="flex-1 text-left truncate text-sm">{directForm.exchange || "Auto"}</span></SelectTrigger>
+                <SelectTrigger id="direct-exchange"><span className="flex-1 text-left truncate text-sm">{directForm.exchange || "Auto"}</span></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__auto">Auto</SelectItem>
                   <SelectItem value="NASDAQ">NASDAQ</SelectItem>
@@ -1414,9 +1416,10 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   return (
     <>
-      <Button ref={mobileMenuTriggerRef} variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 !size-11 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu" aria-expanded={mobileOpen}><Menu className="w-4 h-4"/></Button>
+      <Button ref={mobileMenuTriggerRef} variant="ghost" size="icon" className="xl:hidden fixed top-3 left-3 z-40 !size-11 bg-black/70 backdrop-blur border border-white/10" onClick={()=>setMobileOpen(true)} aria-label="Open menu" aria-controls="mobile-navigation" aria-expanded={mobileOpen}><Menu className="w-4 h-4"/></Button>
       <aside
         ref={asideRef}
+        aria-label="Workspace navigation"
         className="hidden xl:flex relative shrink-0 flex-col h-screen sticky top-0 border-r bg-black"
         style={{ width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth, borderColor: "rgba(255,255,255,0.07)" }}
       >
@@ -1454,9 +1457,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         ) : null}
       </aside>
       {mobileOpen && !desktopLayout && (
-        <div ref={mobileMenuRef} className="fixed inset-0 z-50 xl:hidden flex" role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1}>
+        <div ref={mobileMenuRef} id="mobile-navigation" className="fixed inset-0 z-50 xl:hidden flex" role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1}>
           <div className="w-[85vw] max-w-[380px] bg-black border-r border-white/10 flex flex-col h-full overflow-hidden">{renderSidebar(false, false)}</div>
-          <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
+          <div aria-hidden className="flex-1 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)}/>
         </div>
       )}
     </>

@@ -9,7 +9,7 @@ const ROW_GRID =
 /** Column labels shared by the account and provider breakdown lists. */
 export function BreakdownHeader() {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600 sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
+    <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-400 sm:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem]">
       <span>Name</span>
       <span className="text-right">Value</span>
       <span className="hidden whitespace-nowrap text-right sm:block">Unrealized P/L</span>
@@ -35,7 +35,7 @@ export function BreakdownRow({ icon, title, subtitle, value, gain, onClick, clas
         {icon}
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium text-white">{title}</span>
-          <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-600">{subtitle}</span>
+          <span className="mt-0.5 block truncate text-[11px] tabular-nums text-zinc-400">{subtitle}</span>
         </span>
       </span>
       <span className="text-right">

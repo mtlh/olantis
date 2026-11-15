@@ -52,7 +52,7 @@ export function SegmentedControl<T extends string | number>({
           className={cn(
             "flex items-center justify-center gap-1.5 rounded-full font-medium transition-colors",
             size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
-            value === option.value ? "bg-white/[0.09] text-white" : "text-zinc-500 hover:text-zinc-300",
+            value === option.value ? "bg-white/[0.09] text-white" : "text-zinc-400 hover:text-zinc-300",
             buttonClassName,
           )}
         >

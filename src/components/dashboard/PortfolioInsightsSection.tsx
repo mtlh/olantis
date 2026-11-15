@@ -30,7 +30,7 @@ export function PortfolioInsightsSection({ insights, periodMovers, totalValue, r
         <div className="sm:pr-7">
           <p className={METRIC_LABEL}>Momentum</p>
           <p className="mt-1.5 text-lg font-semibold tabular-nums text-white">
-            {insights.profitableCount} <span className="text-sm font-normal text-zinc-500">gaining</span>
+            {insights.profitableCount} <span className="text-sm font-normal text-zinc-400">gaining</span>
           </p>
           {positionCount > 0 ? (
             <>
@@ -43,9 +43,9 @@ export function PortfolioInsightsSection({ insights, periodMovers, totalValue, r
                   { key: "unchanged", value: insights.unchangedCount, color: "#52525b" },
                 ]}
               />
-              <p className="mt-2 text-[11px] tabular-nums text-zinc-600">{insights.losingCount} falling · {insights.unchangedCount} unchanged</p>
+              <p className="mt-2 text-[11px] tabular-nums text-zinc-400">{insights.losingCount} falling · {insights.unchangedCount} unchanged</p>
             </>
-          ) : <p className="mt-2 text-[11px] text-zinc-600">No positions with a cost basis yet</p>}
+          ) : <p className="mt-2 text-[11px] text-zinc-400">No positions with a cost basis yet</p>}
         </div>
 
         <div className="sm:px-7">
@@ -53,12 +53,12 @@ export function PortfolioInsightsSection({ insights, periodMovers, totalValue, r
           {insights.largest ? (
             <>
               <p className="mt-1.5 text-lg font-semibold tabular-nums text-white">{fmtGBP(insights.largest.value)}</p>
-              <p className="mt-2 truncate text-[11px] text-zinc-600" title={`${insights.largest.holding.symbol} · ${insights.largest.portfolioName}`}>
+              <p className="mt-2 truncate text-[11px] text-zinc-400" title={`${insights.largest.holding.symbol} · ${insights.largest.portfolioName}`}>
                 <span className="text-zinc-400">{insights.largest.holding.symbol}</span> · {totalValue > 0 ? `${(insights.largest.value / totalValue * 100).toFixed(1)}% of portfolio` : "0.0% of portfolio"}
               </p>
               {totalValue > 0 && insights.largest.value / totalValue >= 0.25 && <p className="mt-1 text-[11px] text-amber-300/80">Over 25% in one position</p>}
             </>
-          ) : <p className="mt-1.5 text-sm text-zinc-600">No positions yet</p>}
+          ) : <p className="mt-1.5 text-sm text-zinc-400">No positions yet</p>}
         </div>
 
         <div className="sm:pl-7">
@@ -66,13 +66,13 @@ export function PortfolioInsightsSection({ insights, periodMovers, totalValue, r
           {periodMovers.strongest ? (
             periodMovers.strongest.change.amount === 0 ? (
               <>
-                <p className="mt-1.5 text-lg font-semibold text-zinc-500">No change</p>
-                <p className="mt-2 text-[11px] text-zinc-600">No position moved in this period</p>
+                <p className="mt-1.5 text-lg font-semibold text-zinc-400">No change</p>
+                <p className="mt-2 text-[11px] text-zinc-400">No position moved in this period</p>
               </>
             ) : (
               <>
                 <p className="mt-1.5 text-lg font-semibold tabular-nums"><SignedValue value={periodMovers.strongest.change.amount} /></p>
-                <p className="mt-2 text-[11px] text-zinc-600">
+                <p className="mt-2 text-[11px] text-zinc-400">
                   <span className="text-zinc-400">{periodMovers.strongest.holding.symbol}</span>
                   {periodMovers.weakest && periodMovers.weakest.holding.id !== periodMovers.strongest.holding.id && (
                     <> · weakest <span className="text-zinc-400">{periodMovers.weakest.holding.symbol}</span> <SignedValue value={periodMovers.weakest.change.amount} /></>
@@ -80,7 +80,7 @@ export function PortfolioInsightsSection({ insights, periodMovers, totalValue, r
                 </p>
               </>
             )
-          ) : <p className="mt-1.5 text-sm text-zinc-600">More position history needed</p>}
+          ) : <p className="mt-1.5 text-sm text-zinc-400">More position history needed</p>}
         </div>
       </div>
     </section>

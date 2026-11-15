@@ -47,8 +47,8 @@ export function DeleteConfirmationDialog({
         <p className="text-sm text-zinc-400">{description}</p>
         {confirmationText != null && (
           <div className="space-y-2">
-            <Label>Type <span className="text-white">{confirmationText}</span> to confirm</Label>
-            <Input value={input} onChange={(event) => setInput(event.target.value)} placeholder={confirmationText} autoFocus />
+            <Label htmlFor="delete-confirmation">Type <span className="text-white">{confirmationText}</span> to confirm</Label>
+            <Input id="delete-confirmation" value={input} onChange={(event) => setInput(event.target.value)} placeholder={confirmationText} autoFocus />
           </div>
         )}
         {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
