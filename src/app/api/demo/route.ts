@@ -6,7 +6,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
 import { clearDemo } from "@/lib/demo-cleanup";
 import { buildDemoHistory, demoHistoryIncomplete, weeklyDates, DEMO_HISTORY_YEARS, type DemoHistoryHolding } from "@/lib/demo-history";
-import { topUpDemoHistory } from "@/lib/demo-history-store";
+import { loadDemoMarketPath, topUpDemoHistory } from "@/lib/demo-history-store";
 import { getLatestFxRates } from "@/lib/fx";
 import { DEFAULT_FX_RATES } from "@/lib/format";
 import { sectorForSymbol } from "@/lib/sectors";
@@ -124,10 +124,13 @@ async function seedDemo(userId: string) {
     return;
   }
 
-  const [existingGoals, existingWatchlist, fx] = await Promise.all([
+  const [existingGoals, existingWatchlist, fx, marketPath] = await Promise.all([
     db.select({ id: goals.id }).from(goals).where(eq(goals.userId, userId)),
     db.select({ symbol: watchlistItems.symbol }).from(watchlistItems).where(eq(watchlistItems.userId, userId)),
     getLatestFxRates().catch(() => ({ date: null, rates: {} })),
+    // Shapes the history like the market the chart benchmarks against, so the
+    // demo cannot claim +14% over three years while its benchmark gains 50%.
+    loadDemoMarketPath(),
   ]);
   const demoRates = { ...DEFAULT_FX_RATES, ...fx.rates };
 
@@ -174,6 +177,7 @@ async function seedDemo(userId: string) {
     })),
     weeklyDates(DEMO_HISTORY_YEARS),
     demoRates,
+    marketPath,
   );
 
   // Side rows don't depend on the account tree, so start them immediately and

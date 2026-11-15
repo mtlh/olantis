@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   buildDemoHistory,
   demoHistoryIncomplete,
+  demoHistoryNeedsRebuild,
   marketFactor,
+  marketPathFactor,
   predefinedSeries,
   weeklyDates,
   DEMO_HISTORY_MIN_POINTS,
@@ -108,4 +110,83 @@ test("demoHistoryIncomplete flags tenants seeded before per-holding history", ()
   const empty = new Map<string, number>();
   assert.equal(demoHistoryIncomplete(HOLDINGS, empty), true);
   assert.equal(demoHistoryIncomplete([], empty), false);
+});
+
+/** Daily closes over the demo window, shaped like the stored benchmark series. */
+function marketPath(dates: readonly string[], growth: number): Array<{ date: string; value: number }> {
+  const start = Date.parse(`${dates[0]}T00:00:00Z`);
+  return dates.map((date, i) => ({
+    date,
+    value: 100 * (1 + (growth - 1) * (i / (dates.length - 1))),
+  })).concat([{ date: new Date(start - 86400000).toISOString().slice(0, 10), value: 100 }]);
+}
+
+test("marketPathFactor normalises the series to end at 1 and carries weekends forward", () => {
+  const dates = weeklyDates(DEMO_HISTORY_YEARS, NOW);
+  const path = marketPath(dates, 1.53);
+  const factor = marketPathFactor(path, dates);
+  assert.ok(factor);
+  assert.equal(factor.length, dates.length);
+  assert.ok(Math.abs(factor[factor.length - 1] - 1) < 1e-12);
+  // Every weekly point resamples the latest close on or before it.
+  assert.ok(factor[0] < 0.7);
+
+  // A date before the series starts cannot be anchored.
+  assert.equal(marketPathFactor(path, ["2000-01-03", "2000-01-10"]), null);
+  assert.equal(marketPathFactor([], dates), null);
+});
+
+test("buildDemoHistory follows the market path so the benchmark comparison holds", () => {
+  const dates = weeklyDates(DEMO_HISTORY_YEARS, NOW);
+  const path = marketPath(dates, 1.53);
+  const rows = buildDemoHistory("demo:s_market", HOLDINGS, dates, {}, path);
+
+  const first = rows.snapshotRows[0];
+  const last = rows.snapshotRows.at(-1);
+  assert.ok(last);
+
+  // The seeded value still lands exactly on today's prices.
+  const expected = HOLDINGS.reduce((sum, h) => sum + h.shares * h.currentPrice, 0);
+  assert.ok(Math.abs(last.value - expected) < 1e-6);
+
+  // Three-year growth tracks the market (+53%) instead of a fabricated ~14%.
+  const growth = last.value / first.value;
+  assert.ok(growth > 1.45 && growth < 1.62, `expected ~1.53x, got ${growth.toFixed(3)}`);
+
+  // Every holding follows the same market shape, so the portfolio cannot
+  // contradict the benchmark series it is charted against.
+  const byHolding = new Map<string, Map<string, number>>();
+  for (const row of rows.holdingRows) {
+    if (!byHolding.has(row.holdingId)) byHolding.set(row.holdingId, new Map());
+    byHolding.get(row.holdingId)?.set(row.date, row.value);
+  }
+  for (const [, series] of byHolding) {
+    const values = dates.map((date) => series.get(date) ?? 0);
+    const finalMarket = path[dates.length - 1].value;
+    for (let i = 0; i < values.length; i++) {
+      assert.ok(values[i] > 0, "demo values must stay positive");
+      // Same market trend within the deterministic per-holding edge.
+      const ratio = values[i] / values[values.length - 1];
+      const marketRatio = path[i].value / finalMarket;
+      assert.ok(Math.abs(ratio / marketRatio - 1) < 0.15, `holding drifted ${(ratio / marketRatio - 1).toFixed(3)} from the market`);
+    }
+  }
+});
+
+test("demoHistoryNeedsRebuild rebuilds fabricated and rebase-gapped series", () => {
+  const dates = weeklyDates(DEMO_HISTORY_YEARS, NOW);
+  const path = marketPath(dates, 1.53);
+  const shaped = buildDemoHistory("demo:s_shaped", HOLDINGS, dates, {}, path).snapshotRows;
+  assert.equal(demoHistoryNeedsRebuild(shaped, path), false);
+
+  // A series built by the old fabricated seed gains ~14% while the market gains 53%.
+  const fabricated = shaped.map((row, i) => ({ date: row.date, value: 30000 * (1 + 0.14 * (i / (shaped.length - 1))) }));
+  assert.equal(demoHistoryNeedsRebuild(fabricated, path), true);
+
+  // Without a market path only the rebase step is checked.
+  assert.equal(demoHistoryNeedsRebuild(fabricated), false);
+  const stepped = shaped.slice(-3).map((row) => ({ ...row }));
+  const inflated = stepped[stepped.length - 1];
+  inflated.value *= 1.23;
+  assert.equal(demoHistoryNeedsRebuild(stepped, path), true);
 });
