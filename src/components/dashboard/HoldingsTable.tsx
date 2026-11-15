@@ -1,9 +1,10 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { Download, Minus, Pencil, Plus, Trash2 } from "lucide-react";
+import { Download, Ellipsis, Minus, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandIcon } from "@/components/BrandIcon";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -150,7 +151,7 @@ export function HoldingsTable({
               <TableHead className={`${HEAD} text-right`}><span className="sm:hidden">P/L</span><span className="hidden sm:inline">Unrealized P/L</span></TableHead>
               <TableHead className={`${HEAD} hidden text-right sm:table-cell`}>Weight</TableHead>
               <TableHead className={`${HEAD} hidden text-right 2xl:table-cell`}>Updated</TableHead>
-              <TableHead className={`${HEAD} hidden w-36 sm:table-cell`} aria-label="Actions" />
+              <TableHead className={`${HEAD} hidden w-10 sm:table-cell`} aria-label="Actions" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -194,11 +195,19 @@ export function HoldingsTable({
                       : <span className="text-zinc-500">{fmtRelative(holding.lastRefreshedAt, dateFormat)}</span>}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
-                    <div className="flex justify-end gap-0.5">
-                      <Button type="button" variant="ghost" size="xs" className="px-1.5 text-zinc-400 hover:bg-white/[0.06] hover:text-white" onClick={(event) => { event.stopPropagation(); onTrade(holding, "buy"); }} title="Buy / DCA" aria-label={`Buy ${holding.symbol}`}><Plus className="h-3 w-3" /><span className="hidden sm:inline">Buy</span></Button>
-                      <Button type="button" variant="ghost" size="xs" className="px-1.5 text-zinc-400 hover:bg-white/[0.06] hover:text-white" onClick={(event) => { event.stopPropagation(); onTrade(holding, "sell"); }} title="Sell" aria-label={`Sell ${holding.symbol}`}><Minus className="h-3 w-3" /><span className="hidden sm:inline">Sell</span></Button>
-                      <Button type="button" variant="ghost" size="icon-xs" className="text-zinc-500 hover:text-white" onClick={(event) => { event.stopPropagation(); onEdit(holding); }} aria-label={`Edit ${holding.symbol}`}><Pencil className="h-3 w-3" /></Button>
-                      <Button type="button" variant="ghost" size="icon-xs" className="text-zinc-600 hover:text-red-400" onClick={(event) => { event.stopPropagation(); onDelete(holding); }} aria-label={`Delete ${holding.symbol}`}><Trash2 className="h-3 w-3" /></Button>
+                    <div className="flex justify-end" onClick={(event) => event.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" className="text-zinc-500 hover:bg-white/[0.06] hover:text-white data-[popup-open]:bg-white/10 data-[popup-open]:text-white" aria-label={`Actions for ${holding.symbol}`} title="Actions" />}>
+                          <Ellipsis className="h-4 w-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" side="bottom" className="min-w-40 border-white/10 bg-zinc-900 text-white">
+                          <DropdownMenuItem onClick={() => onTrade(holding, "buy")}><Plus className="h-3.5 w-3.5" />Buy / DCA</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onTrade(holding, "sell")}><Minus className="h-3.5 w-3.5" />Sell</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onEdit(holding)}><Pencil className="h-3.5 w-3.5" />Edit holding</DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-white/10" />
+                          <DropdownMenuItem variant="destructive" onClick={() => onDelete(holding)}><Trash2 className="h-3.5 w-3.5" />Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>
