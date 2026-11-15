@@ -25,6 +25,8 @@ export type DemoHistoryHolding = {
   shares: number;
   currentPrice: number;
   portfolioId: string | null;
+  /** Quote currency, so totals are converted the same way as live snapshots. */
+  currency?: string | null;
 };
 
 export type DemoHistoryRows = {
@@ -123,6 +125,18 @@ export function marketFactor(idx: number, n: number): number {
 }
 
 /**
+ * Convert a quoted amount into GBP, mirroring `toGBP` in lib/format (GBX/GBp
+ * are pence). Kept local so this module stays importable by the node tests.
+ */
+function toGbp(value: number, currency: string | null | undefined, rates: Record<string, number>): number {
+  if (currency === "GBX" || currency === "GBp") return value / 100;
+  const code = currency?.toUpperCase() ?? "GBP";
+  if (code === "GBP") return value;
+  const rate = rates[code];
+  return rate && Number.isFinite(rate) ? value * rate : value;
+}
+
+/**
  * Every snapshot row a demo tenant needs: one series per holding plus the
  * portfolio and total aggregates derived from those series (never computed
  * separately, so the charts always agree).
@@ -131,6 +145,7 @@ export function buildDemoHistory(
   userId: string,
   holdingRows: readonly DemoHistoryHolding[],
   dates: readonly string[],
+  rates: Record<string, number> = {},
 ): DemoHistoryRows {
   const n = dates.length;
   const seriesById = new Map<string, number[]>();
@@ -139,7 +154,7 @@ export function buildDemoHistory(
     seriesById.set(holding.id, raw.map((value, i) => value * marketFactor(i, n)));
   }
   const valueOn = (holding: DemoHistoryHolding, i: number) =>
-    (seriesById.get(holding.id)?.[i] ?? holding.currentPrice) * holding.shares;
+    toGbp((seriesById.get(holding.id)?.[i] ?? holding.currentPrice) * holding.shares, holding.currency, rates);
 
   const holdingSnapshotRows = dates.flatMap((date, i) =>
     holdingRows.map((holding) => ({

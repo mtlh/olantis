@@ -13,7 +13,7 @@ import {
 import { getLatestFxRates } from "@/lib/fx";
 import { windowSeries } from "@/lib/snapshot-window";
 import { isDemoUserId } from "@/lib/auth";
-import { pointsByHolding as countPointsByHolding, topUpDemoHistory } from "@/lib/demo-history-store";
+import { pointsByHolding as countPointsByHolding, rebaseDemoHistory, topUpDemoHistory } from "@/lib/demo-history-store";
 import { DEFAULT_FX_RATES, holdingValueGBP, valueChangeOverRange, todayISODate, type FxRates } from "@/lib/format";
 import type {
   Account,
@@ -109,7 +109,7 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   const accountRows = typed[0];
   const providerRows = typed[1];
   const portfolioRows = typed[2];
-  const totalSnapshots = typed[3];
+  let totalSnapshots = typed[3];
   let perHoldingSnapshots = typed[4];
   const settingsRows = typed[5];
   // Already restricted to `shares > 0` by the query, so no second filter pass.
@@ -122,25 +122,43 @@ export async function loadWorkspaceBootstrap(userId: string): Promise<WorkspaceB
   // visitor can open /dashboard directly with a cookie from a previous session
   // and never hit the seeding endpoint. Demo-only and idempotent: a complete
   // tenant costs one pass over rows we have already loaded.
+  //
+  // The same pass rebases a synthetic series whose seed-day values have been
+  // overtaken by the daily price refresh (see rebaseDemoHistory).
   if (isDemoUserId(userId)) {
-    const repaired = await topUpDemoHistory(
+    const demoRates = { ...DEFAULT_FX_RATES, ...fx.rates };
+    const demoHoldings = liveHoldings.map((h) => ({
+      id: h.id,
+      symbol: h.symbol,
+      shares: h.shares,
+      currentPrice: h.currentPrice,
+      portfolioId: h.portfolioId ?? null,
+      currency: h.currency,
+    }));
+    const rebased = await rebaseDemoHistory(userId, demoHoldings, totalSnapshots, demoRates).catch(() => false);
+    // After a rebase the series is complete and current, so the top-up below
+    // would be a no-op anyway; skip it to avoid a second write wave.
+    const repaired = rebased ? false : await topUpDemoHistory(
       userId,
-      liveHoldings.map((h) => ({
-        id: h.id,
-        symbol: h.symbol,
-        shares: h.shares,
-        currentPrice: h.currentPrice,
-        portfolioId: h.portfolioId ?? null,
-      })),
+      demoHoldings,
       countPointsByHolding(perHoldingSnapshots),
+      demoRates,
     ).catch(() => false);
-    if (repaired) {
-      // Re-read only in the rare repair case, so the movers on the very first
-      // paint already reflect the full series instead of the stale one.
-      perHoldingSnapshots = await db
-        .select({ holdingId: holdingSnapshots.holdingId, date: holdingSnapshots.date, value: holdingSnapshots.value })
-        .from(holdingSnapshots)
-        .where(eq(holdingSnapshots.userId, userId));
+    if (rebased || repaired) {
+      // Re-read only in the rare repair case, so the very first paint already
+      // reflects the rebuilt series instead of the stale one.
+      const [freshTotal, freshHolding] = await Promise.all([
+        db
+          .select({ date: snapshotsTable.date, value: snapshotsTable.value })
+          .from(snapshotsTable)
+          .where(eq(snapshotsTable.userId, userId)),
+        db
+          .select({ holdingId: holdingSnapshots.holdingId, date: holdingSnapshots.date, value: holdingSnapshots.value })
+          .from(holdingSnapshots)
+          .where(eq(holdingSnapshots.userId, userId)),
+      ]);
+      totalSnapshots = freshTotal;
+      perHoldingSnapshots = freshHolding;
     }
   }
 
