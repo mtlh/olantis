@@ -15,7 +15,6 @@ const LEGACY_EFFECT_FILES = [
   "src/components/dashboard/DashboardGoalCard.tsx",
   "src/components/dashboard/HoldingDialog.tsx",
   "src/components/dashboard/PerformanceChart.tsx",
-  "src/components/dashboard/useDashboardSelection.ts",
   "src/components/dashboard/useStaleHoldings.ts",
   "src/components/ui/toast.tsx",
   "src/components/useBrandIconWarmup.ts",
