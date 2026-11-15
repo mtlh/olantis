@@ -193,7 +193,7 @@ export async function PATCH(req: Request) {
     updated++;
   }
   if (toUpdate.length) {
-    await db.execute(sql`UPDATE holdings SET current_price = v.price, currency = v.currency, last_refreshed_at = v.ts FROM (VALUES ${sql.join(toUpdate.map((u) => sql`(${u.id}, ${u.price}, ${u.currency}, ${u.ts})`), sql`, `)}) AS v(id, price, currency, ts) WHERE holdings.id = v.id`);
+    await db.execute(sql`UPDATE holdings SET current_price = v.price, currency = v.currency, last_refreshed_at = v.ts FROM (VALUES ${sql.join(toUpdate.map((u) => sql`(${u.id}::text, ${u.price}::numeric, ${u.currency}::text, ${u.ts}::integer)`), sql`, `)}) AS v(id, price, currency, ts) WHERE holdings.id = v.id`);
   }
   if (!force && updated === 0 && skipped > 0) {
     return Response.json({ ok: false, error: "daily limit", message: "Prices already refreshed within 24h", nextAllowedAt, skipped }, { status: 429 });

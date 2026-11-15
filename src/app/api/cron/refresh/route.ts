@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { fetchQuotes, fetchSectors, lookupQuote } from "@/lib/yahoo";
 import { getDb } from "@/lib/db";
 import { holdings, snapshots, portfolioSnapshots, holdingSnapshots, portfolios } from "@/lib/db/schema";
-import { eq, sql, notLike, isNull, or } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { holdingValueGBP, todayISODate, DEFAULT_FX_RATES } from "@/lib/format";
 import { getLatestFxRates, refreshFxRates } from "@/lib/fx";
 import { pruneDemoSessions } from "@/lib/demo-cleanup";
@@ -11,7 +11,11 @@ import { backfillPending } from "@/lib/backfill";
 /** The daily refresh now also runs a bounded history-backfill sweep. */
 export const maxDuration = 60;
 
-const REFRESH_GUARD_SECONDS = 23 * 60 * 60;
+// A daily cron must always get past this guard. 23h skipped any holding that
+// happened to be seeded or refreshed shortly after 06:00 the day before, which
+// left demo sessions reporting "Updated 1d ago" for almost two days. 12h still
+// suppresses duplicate runs of the same job without skipping a day.
+const REFRESH_GUARD_SECONDS = 12 * 60 * 60;
 
 type HoldingRow = typeof holdings.$inferSelect;
 
@@ -35,13 +39,11 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   try { fxRates = { ...DEFAULT_FX_RATES, ...(await getLatestFxRates()).rates }; } catch {}
 
   let symbols = body.symbols ?? [];
-  // Demo tenants (`demo:*`) carry a predefined dataset and are deliberately
-  // excluded: refreshing them would overwrite the fixed demo prices and burn
-  // Yahoo quota on throwaway sandboxes.
-  const targetHoldings: HoldingRow[] = await db
-    .select()
-    .from(holdings)
-      .where(or(isNull(holdings.userId), notLike(holdings.userId, "demo:%")));
+  // Every tenant is refreshed, demo sessions included. Leaving demo prices
+  // frozen made the sidebar's "Tickers updated …" label drift for a day or
+  // more. Demo tenants share a small symbol set, which the dedupe below
+  // collapses into a handful of Yahoo calls, so the extra work is negligible.
+  const targetHoldings: HoldingRow[] = await db.select().from(holdings);
   const manualRows = await db.select({ id: portfolios.id }).from(portfolios).where(eq(portfolios.type, "manual"));
   const manualPortfolioIds = new Set(manualRows.map((p) => p.id));
   const refreshableHoldings = targetHoldings.filter((h) => !h.portfolioId || !manualPortfolioIds.has(h.portfolioId));
@@ -87,7 +89,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
     updated++;
   }
   if (toUpdate.length) {
-    await db.execute(sql`UPDATE holdings SET current_price = v.price, currency = v.currency, last_refreshed_at = v.ts FROM (VALUES ${sql.join(toUpdate.map((u) => sql`(${u.id}, ${u.price}, ${u.currency}, ${u.ts})`), sql`, `)}) AS v(id, price, currency, ts) WHERE holdings.id = v.id`);
+    await db.execute(sql`UPDATE holdings SET current_price = v.price, currency = v.currency, last_refreshed_at = v.ts FROM (VALUES ${sql.join(toUpdate.map((u) => sql`(${u.id}::text, ${u.price}::numeric, ${u.currency}::text, ${u.ts}::integer)`), sql`, `)}) AS v(id, price, currency, ts) WHERE holdings.id = v.id`);
   }
 
   const refreshedHoldings = targetHoldings.map((h) => {
@@ -99,8 +101,8 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
   // Positions still missing a sector get one here, so the allocation view can
   // group them without the user typing a value. Each lookup is a separate
   // (cached) Yahoo profile request, so cap the work per run — leftovers are
-  // picked up by the next refresh. Demo tenants stay fixed: their seed already
-  // carries sectors and the sweep must not rewrite predefined rows.
+  // picked up by the next refresh. The WHERE clause only fills blanks, so the
+  // sectors seeded for a demo tenant are never rewritten.
   let sectorsFilled = 0;
   const missingSector = new Map<string, { symbol: string; exchange?: string }>();
   for (const h of refreshableHoldings) {
@@ -115,7 +117,7 @@ async function doRefresh(body: { symbols?: Array<{ symbol: string; exchange?: st
       const sectors = await fetchSectors([...missingSector.values()]);
       const rows = Object.entries(sectors).filter(([, sector]) => Boolean(sector));
       if (rows.length) {
-        await db.execute(sql`UPDATE holdings SET sector = v.sector FROM (VALUES ${sql.join(rows.map(([symbol, sector]) => sql`(${symbol}, ${sector})`), sql`, `)}) AS v(symbol, sector) WHERE upper(holdings.symbol) = v.symbol AND (holdings.sector IS NULL OR btrim(holdings.sector) = '') AND (holdings.user_id IS NULL OR holdings.user_id NOT LIKE 'demo:%')`);
+        await db.execute(sql`UPDATE holdings SET sector = v.sector FROM (VALUES ${sql.join(rows.map(([symbol, sector]) => sql`(${symbol}::text, ${sector}::text)`), sql`, `)}) AS v(symbol, sector) WHERE upper(holdings.symbol) = v.symbol AND (holdings.sector IS NULL OR btrim(holdings.sector) = '')`);
         sectorsFilled = rows.length;
       }
     } catch {
