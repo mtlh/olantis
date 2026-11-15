@@ -5,8 +5,28 @@ on:
   push:
     branches: [master]
 
+# A follow-up push makes the previous PR run pointless, so cancel it instead of
+# queueing minutes of work nobody reads. Master runs keep their history: they
+# are the record of what shipped.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+# Every job below needs the same ~600 MB node_modules tree, and installing it is
+# the slowest thing in this workflow (an order of magnitude slower than lint,
+# typecheck or the tests). So: two jobs that install in parallel, each restoring
+# node_modules from the Actions cache instead of running `npm ci` on a hit.
+# A cached tree can only go bad if it was corrupted while saving — delete the
+# entry in Actions → Caches and the next run installs from scratch.
 jobs:
   verify:
+    name: Lint, typecheck, tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,8 +34,52 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - name: Restore node_modules
+        id: node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies
+        if: steps.node_modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+      # `npm run lint` caches per-file results here. The cache is keyed on the
+      # lint config, so any other change only re-lints the files it touched.
+      - name: Restore ESLint cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache/eslint
+          key: eslint-${{ runner.os }}-${{ hashFiles('eslint.config.mjs', 'tsconfig.json', 'package-lock.json') }}
+          restore-keys: eslint-${{ runner.os }}-
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Restore node_modules
+        id: node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies
+        if: steps.node_modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+      # Next.js keeps its compiled modules in .next/cache, so a build that starts
+      # from the previous run's cache only recompiles what actually changed.
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts', 'postcss.config.mjs', 'public/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - run: npm run build
