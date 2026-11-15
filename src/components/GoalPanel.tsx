@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Pencil, Plus, Trash2, TrendingUp } from "lucide-react";
+import { Maximize2, Pencil, Plus, Trash2, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fmtGBP, filterByRange, todayISODate, chartDateLabel, plural } from "@/lib/format";
@@ -46,6 +47,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
   const sortedGoals = useMemo(() => sortGoals(goals), [goals]);
   const [draft, setDraft] = useState<GoalDraft | null>(null);
   const [range, setRange] = useState<ChartRange>("MAX");
+  const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -165,6 +167,90 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
   const changeLabel = periodChange === null ? "—" : `${periodChange >= 0 ? "+" : "−"}${fmtGBP(Math.abs(periodChange))}`;
   const changeTone = periodChange === null ? "text-zinc-600" : periodChange >= 0 ? "text-emerald-400" : "text-red-400";
   const editingNew = draft?.id === null;
+  const chartTitle = focusGoal ? "Progress over time" : "Value over time";
+
+  // Shared by the inline card and the expanded dialog so both plots stay
+  // identical; only the height and the gradient id differ per surface.
+  const renderChart = (heightClass: string, fillId: string) => (
+    <>
+      {sortedGoals.length > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2">
+          {sortedGoals.map((goal, index) => {
+            const color = goalColor(index);
+            const progress = goal.targetValue > 0 ? currentValue / goal.targetValue * 100 : 0;
+            return (
+              <span key={goal.id} className="inline-flex min-w-0 items-center gap-1.5">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                <span className="max-w-[220px] truncate text-[11px] text-zinc-400" title={goal.name}>{goal.name}</span>
+                <span className="text-[11px] tabular-nums text-zinc-600">{progress.toFixed(1)}%</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {chartRows.length > 0 ? (
+        <>
+          <div className={`${heightClass} w-full`}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartRows} margin={{ top: 12, right: 18, left: 4, bottom: 0 }}>
+                <defs>
+                  <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={sortedGoals.length ? goalColor(0) : FALLBACK_COLOR} stopOpacity={0.28} />
+                    <stop offset="100%" stopColor={sortedGoals.length ? goalColor(0) : FALLBACK_COLOR} stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="date" tickFormatter={chartDateLabel} minTickGap={28} tick={{ fontSize: 11, fill: "#71717a" }} axisLine={false} tickLine={false} />
+                <YAxis
+                  domain={sortedGoals.length ? [0, chartMax] : ["auto", "auto"]}
+                  tickFormatter={(value: number) => sortedGoals.length ? `${value}%` : fmtGBP(value)}
+                  tick={{ fontSize: 11, fill: "#71717a" }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={sortedGoals.length ? 48 : 64}
+                />
+                <Tooltip
+                  labelFormatter={(label) => shortDate(label as string)}
+                  formatter={(value, name) => sortedGoals.length
+                    ? [`${Number(value).toFixed(1)}%`, String(name)]
+                    : [fmtGBP(Number(value)), "Portfolio value"]}
+                  contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }}
+                />
+                {sortedGoals.length > 0 && <ReferenceLine y={100} stroke="#a1a1aa" strokeDasharray="5 5" label={{ value: "Target", fill: "#a1a1aa", fontSize: 11, position: "insideTopRight" }} />}
+                {sortedGoals.length > 0 ? sortedGoals.map((goal, index) => {
+                  const color = goalColor(index);
+                  return (
+                    <Area
+                      key={goal.id}
+                      type="monotone"
+                      dataKey={goal.id}
+                      name={goal.name}
+                      stroke={color}
+                      fill={sortedGoals.length === 1 ? `url(#${fillId})` : color}
+                      fillOpacity={sortedGoals.length === 1 ? 1 : 0.06}
+                      strokeWidth={2.5}
+                      dot={chartRows.length === 1 ? { r: 4, fill: color } : false}
+                      activeDot={{ r: 5, fill: color, stroke: "#09090b", strokeWidth: 2 }}
+                    />
+                  );
+                }) : (
+                  <Area type="monotone" dataKey="value" name="Portfolio value" stroke={FALLBACK_COLOR} fill={`url(#${fillId})`} strokeWidth={2.5} dot={chartRows.length === 1 ? { r: 4, fill: FALLBACK_COLOR } : false} activeDot={{ r: 5, fill: FALLBACK_COLOR, stroke: "#09090b", strokeWidth: 2 }} />
+                )}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          {chartRows.length === 1 && (
+            <p className="mt-3 text-[11px] text-zinc-600">First snapshot saved. Progress will build from here.</p>
+          )}
+        </>
+      ) : (
+        <div className={`${heightClass} flex flex-col items-center justify-center gap-2 text-center`}>
+          <TrendingUp className="h-5 w-5 text-zinc-600" />
+          <p className="text-sm text-zinc-500">History builds as your portfolio updates.</p>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="space-y-8">
@@ -248,88 +334,30 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
 
       <Card className="panel">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <CardTitle className="min-w-0 truncate text-sm font-medium text-white">{focusGoal ? "Progress over time" : "Value over time"}</CardTitle>
-          <ChartRangeSelector range={range} onRangeChange={setRange} maxLabel="All" segmented />
+          <CardTitle className="min-w-0 truncate text-sm font-medium text-white">{chartTitle}</CardTitle>
+          <div className="flex items-center gap-2">
+            <ChartRangeSelector range={range} onRangeChange={setRange} maxLabel="All" segmented />
+            <button type="button" onClick={() => setExpanded(true)} aria-label="Expand chart" className="rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-white">
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </CardHeader>
         <CardContent>
-          {sortedGoals.length > 0 && (
-            <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2">
-              {sortedGoals.map((goal, index) => {
-                const color = goalColor(index);
-                const progress = goal.targetValue > 0 ? currentValue / goal.targetValue * 100 : 0;
-                return (
-                  <span key={goal.id} className="inline-flex min-w-0 items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                    <span className="max-w-[220px] truncate text-[11px] text-zinc-400" title={goal.name}>{goal.name}</span>
-                    <span className="text-[11px] tabular-nums text-zinc-600">{progress.toFixed(1)}%</span>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-          {chartRows.length > 0 ? (
-            <>
-              <div className="h-[320px] w-full sm:h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartRows} margin={{ top: 12, right: 18, left: 4, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="goalProgressFill0" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={sortedGoals.length ? goalColor(0) : FALLBACK_COLOR} stopOpacity={0.28} />
-                        <stop offset="100%" stopColor={sortedGoals.length ? goalColor(0) : FALLBACK_COLOR} stopOpacity={0.01} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="date" tickFormatter={chartDateLabel} minTickGap={28} tick={{ fontSize: 11, fill: "#71717a" }} axisLine={false} tickLine={false} />
-                    <YAxis
-                      domain={sortedGoals.length ? [0, chartMax] : ["auto", "auto"]}
-                      tickFormatter={(value: number) => sortedGoals.length ? `${value}%` : fmtGBP(value)}
-                      tick={{ fontSize: 11, fill: "#71717a" }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={sortedGoals.length ? 48 : 64}
-                    />
-                    <Tooltip
-                      labelFormatter={(label) => shortDate(label as string)}
-                      formatter={(value, name) => sortedGoals.length
-                        ? [`${Number(value).toFixed(1)}%`, String(name)]
-                        : [fmtGBP(Number(value)), "Portfolio value"]}
-                      contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff" }}
-                    />
-                    {sortedGoals.length > 0 && <ReferenceLine y={100} stroke="#a1a1aa" strokeDasharray="5 5" label={{ value: "Target", fill: "#a1a1aa", fontSize: 11, position: "insideTopRight" }} />}
-                    {sortedGoals.length > 0 ? sortedGoals.map((goal, index) => {
-                      const color = goalColor(index);
-                      return (
-                        <Area
-                          key={goal.id}
-                          type="monotone"
-                          dataKey={goal.id}
-                          name={goal.name}
-                          stroke={color}
-                          fill={sortedGoals.length === 1 ? "url(#goalProgressFill0)" : color}
-                          fillOpacity={sortedGoals.length === 1 ? 1 : 0.06}
-                          strokeWidth={2.5}
-                          dot={chartRows.length === 1 ? { r: 4, fill: color } : false}
-                          activeDot={{ r: 5, fill: color, stroke: "#09090b", strokeWidth: 2 }}
-                        />
-                      );
-                    }) : (
-                      <Area type="monotone" dataKey="value" name="Portfolio value" stroke={FALLBACK_COLOR} fill="url(#goalProgressFill0)" strokeWidth={2.5} dot={chartRows.length === 1 ? { r: 4, fill: FALLBACK_COLOR } : false} activeDot={{ r: 5, fill: FALLBACK_COLOR, stroke: "#09090b", strokeWidth: 2 }} />
-                    )}
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-              {chartRows.length === 1 && (
-                <p className="mt-3 text-[11px] text-zinc-600">First snapshot saved. Progress will build from here.</p>
-              )}
-            </>
-          ) : (
-            <div className="flex h-[320px] flex-col items-center justify-center gap-2 text-center sm:h-[400px]">
-              <TrendingUp className="h-5 w-5 text-zinc-600" />
-              <p className="text-sm text-zinc-500">History builds as your portfolio updates.</p>
-            </div>
-          )}
+          {renderChart("h-[320px] sm:h-[400px]", "goalProgressFill0")}
         </CardContent>
       </Card>
+
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        {/* The dialog reuses the card's plot so the expanded view always
+            matches the inline one, just with more room to read the curve. */}
+        <DialogContent className="max-w-[95vw] sm:max-w-[95vw]">
+          <DialogHeader className="flex-row flex-wrap items-center justify-between gap-3 pr-10">
+            <DialogTitle>{chartTitle}</DialogTitle>
+            <ChartRangeSelector range={range} onRangeChange={setRange} maxLabel="All" segmented />
+          </DialogHeader>
+          {renderChart("h-[70vh]", "goalProgressFillExpanded")}
+        </DialogContent>
+      </Dialog>
 
       <section aria-labelledby="goals-heading" className="space-y-4">
         <SectionHeading
