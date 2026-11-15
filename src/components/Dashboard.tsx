@@ -6,8 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { Plus, AlertTriangle } from "lucide-react";
 import dynamic from "next/dynamic";
 import { MainDashboard } from "@/components/dashboard/MainDashboard";
-import { PortfolioDashboard } from "@/components/dashboard/PortfolioDashboard";
-import { HoldingsTable } from "@/components/dashboard/HoldingsTable";
 import { useAccountProviderDashboardData } from "@/components/dashboard/useAccountProviderDashboardData";
 import { useBrandIconWarmup } from "@/components/useBrandIconWarmup";
 import { usePortfolioOverviewInsights } from "@/components/dashboard/usePortfolioOverviewInsights";
@@ -47,6 +45,13 @@ const PerformanceChart = dynamic(() => import("@/components/dashboard/Performanc
 const IndividualDashboard = dynamic(() => import("@/components/dashboard/IndividualDashboard").then((module) => module.IndividualDashboard), { loading: () => <StockFallback /> });
 const AccountDashboard = dynamic(() => import("@/components/dashboard/AccountDashboard").then((module) => module.AccountDashboard), { loading: () => <ViewFallback /> });
 const ProviderDashboard = dynamic(() => import("@/components/dashboard/ProviderDashboard").then((module) => module.ProviderDashboard), { loading: () => <ViewFallback /> });
+// The portfolio level pulls in HoldingsTable, whose row-actions menu and sort
+// select are the only eager users of Base UI's menu/select primitives — and
+// those drag the whole floating-ui stack (~65KB gzip) into the first load.
+// The overview never shows a holdings table, so the level ships as its own
+// chunk like the account and provider drill-downs above.
+const PortfolioDashboard = dynamic(() => import("@/components/dashboard/PortfolioDashboard").then((module) => module.PortfolioDashboard), { loading: () => <ViewFallback /> });
+const HoldingsTable = dynamic(() => import("@/components/dashboard/HoldingsTable").then((module) => module.HoldingsTable), { loading: () => <HoldingsTableFallback /> });
 const WatchlistPanel = dynamic(() => import("@/components/WatchlistPanel").then((module) => module.WatchlistPanel), { loading: () => <WatchlistFallback /> });
 const GoalPanel = dynamic(() => import("@/components/GoalPanel").then((module) => module.GoalPanel), { loading: () => <GoalsFallback /> });
 const CreatePortfolioWizard = dynamic(() => import("@/components/CreatePortfolioWizard").then((module) => module.CreatePortfolioWizard), { ssr: false, loading: () => <WizardFallback /> });
@@ -162,6 +167,38 @@ function ViewFallback() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Portfolio holdings: heading row with search/sort/CSV controls, then table
+// rows with the same column rhythm, so the deferred chunk cannot move the
+// chart and metric band above it.
+function HoldingsTableFallback() {
+  return (
+    <section aria-busy="true" aria-label="Loading holdings">
+      <div className="flex flex-wrap items-baseline justify-between gap-3 pb-3">
+        <Skeleton className="h-5 w-24 bg-white/[0.05]" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-44 rounded-lg bg-white/[0.04]" />
+          <Skeleton className="h-8 w-28 rounded-lg bg-white/[0.04]" />
+          <Skeleton className="h-8 w-20 rounded-lg bg-white/[0.04]" />
+        </div>
+      </div>
+      <div className="border-y border-white/[0.06]">
+        {[1, 2, 3, 4].map((index) => (
+          <div key={index} className="flex items-center justify-between gap-3 border-b border-white/[0.05] px-1 py-3.5 last:border-b-0">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-8 w-8 rounded-full bg-white/[0.05]" />
+              <div>
+                <Skeleton className="h-4 w-20 bg-white/[0.05]" />
+                <Skeleton className="mt-1 h-3 w-32 bg-white/[0.04]" />
+              </div>
+            </div>
+            <Skeleton className="h-4 w-16 bg-white/[0.05]" />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
