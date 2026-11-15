@@ -5,8 +5,10 @@ import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshot
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
 import { clearDemo } from "@/lib/demo-cleanup";
-import { buildDemoHistory, weeklyDates, DEMO_HISTORY_YEARS, type DemoHistoryHolding } from "@/lib/demo-history";
+import { buildDemoHistory, demoHistoryIncomplete, weeklyDates, DEMO_HISTORY_YEARS, type DemoHistoryHolding } from "@/lib/demo-history";
 import { topUpDemoHistory } from "@/lib/demo-history-store";
+import { getLatestFxRates } from "@/lib/fx";
+import { DEFAULT_FX_RATES } from "@/lib/format";
 import { sectorForSymbol } from "@/lib/sectors";
 
 /**
@@ -94,6 +96,7 @@ async function seedDemo(userId: string) {
         shares: holdings.shares,
         currentPrice: holdings.currentPrice,
         portfolioId: holdings.portfolioId,
+        currency: holdings.currency,
       })
       .from(holdings)
       .where(eq(holdings.userId, userId)),
@@ -107,18 +110,26 @@ async function seedDemo(userId: string) {
     // Repair anything a tenant seeded by an older build is missing: per-holding
     // history (#67) and the sector used by the Sectors tab (#68).
     const points = new Map(historyCounts.map((row) => [row.holdingId, Number(row.points)]));
+    const eligible = existingHoldings.filter((h) => h.shares > 0);
     // A repair failure must never block the demo from opening.
-    await Promise.all([
-      topUpDemoHistory(userId, existingHoldings.filter((h) => h.shares > 0), points).catch(() => false),
-      backfillDemoSectors(userId).catch(() => {}),
-    ]);
+    const repairs: Array<Promise<unknown>> = [backfillDemoSectors(userId).catch(() => {})];
+    if (demoHistoryIncomplete(eligible, points)) {
+      repairs.push(
+        getLatestFxRates()
+          .then((fx) => topUpDemoHistory(userId, eligible, points, { ...DEFAULT_FX_RATES, ...fx.rates }))
+          .catch(() => false),
+      );
+    }
+    await Promise.all(repairs);
     return;
   }
 
-  const [existingGoals, existingWatchlist] = await Promise.all([
+  const [existingGoals, existingWatchlist, fx] = await Promise.all([
     db.select({ id: goals.id }).from(goals).where(eq(goals.userId, userId)),
     db.select({ symbol: watchlistItems.symbol }).from(watchlistItems).where(eq(watchlistItems.userId, userId)),
+    getLatestFxRates().catch(() => ({ date: null, rates: {} })),
   ]);
+  const demoRates = { ...DEFAULT_FX_RATES, ...fx.rates };
 
   const existingSymbols = new Set(existingWatchlist.map((item) => item.symbol));
   const demoWatchlist = [
@@ -159,8 +170,10 @@ async function seedDemo(userId: string) {
       shares: h.shares,
       currentPrice: h.currentPrice,
       portfolioId: h.portfolioId ?? null,
+      currency: h.currency,
     })),
     weeklyDates(DEMO_HISTORY_YEARS),
+    demoRates,
   );
 
   // Side rows don't depend on the account tree, so start them immediately and

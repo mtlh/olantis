@@ -79,6 +79,19 @@ test("buildDemoHistory emits a series per holding and consistent aggregates", ()
   assert.ok(rows.holdingRows.every((row) => row.userId === "demo:s_test"));
 });
 
+test("buildDemoHistory converts quoted currencies at the supplied rates", () => {
+  const dates = weeklyDates(DEMO_HISTORY_YEARS, NOW);
+  const rows = buildDemoHistory(
+    "demo:s_fx",
+    [{ id: "h1", symbol: "AAPL", shares: 2, currentPrice: 100, portfolioId: "p1", currency: "USD" }],
+    dates,
+    { USD: 0.5 },
+  );
+  // 2 shares × $100 × 0.5 = £100, for the holding and its aggregate.
+  assert.equal(rows.holdingRows.at(-1)?.value, 100);
+  assert.equal(rows.snapshotRows.at(-1)?.value, 100);
+});
+
 test("demoHistoryIncomplete flags tenants seeded before per-holding history", () => {
   const complete = new Map(HOLDINGS.map((h) => [h.id, DEMO_HISTORY_MIN_POINTS]));
   assert.equal(demoHistoryIncomplete(HOLDINGS, complete), false);
