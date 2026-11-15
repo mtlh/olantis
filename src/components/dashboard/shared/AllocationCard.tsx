@@ -64,7 +64,7 @@ export const AllocationCard = memo(function AllocationCard({
       <CardContent className={`flex-1 min-h-0 ${fillsCard ? "flex" : ""}`}>
         {allocation.length === 0 ? (
           <div className="grid h-full min-h-40 place-items-center text-center">
-            {emptyContent ?? <p className="text-sm text-zinc-500">{emptyMessage}</p>}
+            {emptyContent ?? <p className="text-sm text-zinc-400">{emptyMessage}</p>}
           </div>
         ) : fillsCard ? (
           <div className="mx-auto flex min-h-[320px] w-full max-w-[560px] flex-1 flex-col items-stretch gap-3 min-[360px]:flex-row min-[360px]:items-center min-[360px]:gap-4">

@@ -6,7 +6,7 @@ export function signedTone(
   value: number | null | undefined,
   zero: "neutral" | "positive" | "negative" = "neutral",
 ): string {
-  if (value == null || !Number.isFinite(value)) return "text-zinc-500";
+  if (value == null || !Number.isFinite(value)) return "text-zinc-400";
   if (value > 0) return "text-emerald-400";
   if (value < 0) return "text-red-400";
   if (zero === "positive") return "text-emerald-400";

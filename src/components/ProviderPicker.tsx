@@ -101,15 +101,15 @@ export function ProviderPicker({ id, value, onChange, providers, disabled, class
             <span className="min-w-0 flex-1 truncate text-zinc-100">{value.name}</span>
           </>
         ) : (
-          <span className="min-w-0 flex-1 truncate text-zinc-600">{disabled ? "Select an account first" : "Select a provider"}</span>
+          <span className="min-w-0 flex-1 truncate text-zinc-400">{disabled ? "Select an account first" : "Select a provider"}</span>
         )}
-        <ChevronDown className={cn("size-4 shrink-0 text-zinc-500 transition-transform", open && "rotate-180")} aria-hidden="true" />
+        <ChevronDown className={cn("size-4 shrink-0 text-zinc-400 transition-transform", open && "rotate-180")} aria-hidden="true" />
       </button>
 
       {open && !disabled && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-[0_24px_60px_rgba(0,0,0,.55)]">
           <div className="relative border-b border-white/[.07]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
             <input
               ref={inputRef}
               value={query}
@@ -117,12 +117,12 @@ export function ProviderPicker({ id, value, onChange, providers, disabled, class
               placeholder="Search providers…"
               aria-label="Search providers"
               aria-controls={listId}
-              className="h-10 w-full bg-transparent pl-9 pr-3 text-sm text-white outline-none placeholder:text-zinc-600"
+              className="h-10 w-full bg-transparent pl-9 pr-3 text-sm text-white outline-none placeholder:text-zinc-400"
             />
           </div>
           <div id={listId} role="listbox" aria-label="Providers" className="max-h-60 overflow-y-auto p-1">
             {filtered.length === 0 ? (
-              <p className="px-2.5 py-3 text-xs text-zinc-500">No provider matches “{query.trim()}”.</p>
+              <p className="px-2.5 py-3 text-xs text-zinc-400">No provider matches “{query.trim()}”.</p>
             ) : (
               filtered.map((option) => {
                 const selected = value ? option.providerId === value.id : false;

@@ -26,7 +26,7 @@ export function AccountBreakdownCard({ accounts, totalValue, onOpenAccount, onOp
         <EmptyState bordered size="sm" title="Create an account to organize your portfolios." />
       ) : (
         <>
-          <div className="grid grid-cols-[minmax(0,1fr)_5rem_6.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600">
+          <div className="grid grid-cols-[minmax(0,1fr)_5rem_6.5rem] gap-3 border-y border-white/[0.06] px-1 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-400">
             <span>Account</span>
             <span className="text-right">Value</span>
             <span className="whitespace-nowrap text-right">Unrealized P/L</span>
@@ -37,13 +37,13 @@ export function AccountBreakdownCard({ accounts, totalValue, onOpenAccount, onOp
                 <button type="button" onClick={() => onOpenAccount(account.id)} className="grid w-full grid-cols-[minmax(0,1fr)_5rem_6.5rem] items-center gap-3 px-1 py-3.5 text-left transition-colors hover:bg-white/[0.025]">
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-white">{account.name}</span>
-                    <span className="mt-0.5 block text-[11px] tabular-nums text-zinc-600">{percentOf(account.value, totalValue)} of total</span>
+                    <span className="mt-0.5 block text-[11px] tabular-nums text-zinc-400">{percentOf(account.value, totalValue)} of total</span>
                   </span>
                   <span className="text-right text-sm tabular-nums text-zinc-200">{fmtGBP(account.value)}</span>
                   <SignedValue value={account.gain} className="text-right text-xs" />
                 </button>
                 {account.children.map((child) => child.kind === "direct" ? (
-                  <div key={`${account.id}-direct`} className="grid grid-cols-[minmax(0,1fr)_5rem_6.5rem] items-center gap-3 px-1 py-2 text-xs text-zinc-500">
+                  <div key={`${account.id}-direct`} className="grid grid-cols-[minmax(0,1fr)_5rem_6.5rem] items-center gap-3 px-1 py-2 text-xs text-zinc-400">
                     <span className="min-w-0 truncate pl-6">Direct holdings</span>
                     <span className="text-right tabular-nums text-zinc-400">{fmtGBP(child.value)}</span>
                     <SignedValue value={child.gain} className="text-right text-xs" />

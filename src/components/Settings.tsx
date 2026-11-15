@@ -28,7 +28,7 @@ interface SettingsState {
   showTradeMarkers: number;
 }
 
-const ROW_HINT = "mt-0.5 text-[11px] text-zinc-600";
+const ROW_HINT = "mt-0.5 text-[11px] text-zinc-400";
 const FIELD = "w-full border-white/[0.08] bg-white/[0.03]";
 const ACTION = "justify-start rounded-full text-zinc-300 sm:justify-center";
 
@@ -109,7 +109,7 @@ function IconGrid({
           aria-label={label}
           title={label}
           onClick={() => onChange(id)}
-          className={`${tile(value === id)} ${value === id ? "" : "text-zinc-500 hover:text-zinc-200"}`}
+          className={`${tile(value === id)} ${value === id ? "" : "text-zinc-400 hover:text-zinc-200"}`}
         >
           <EntityIcon icon={id} size={15} color={value === id ? color : undefined} />
         </button>
@@ -122,7 +122,7 @@ function CsvFormatBlock({ label, required, sample }: { label: string; required: 
   return (
     <div>
       <p className="text-[11px] font-medium text-zinc-200">{label}</p>
-      <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">{required}</p>
+      <p className="mt-0.5 text-[10px] leading-snug text-zinc-400">{required}</p>
       <pre className="mt-1.5 overflow-x-auto rounded-lg border border-white/[0.07] bg-black/50 px-2.5 py-1.5 font-mono text-[10px] leading-relaxed text-zinc-300">{sample}</pre>
     </div>
   );
@@ -182,7 +182,7 @@ function PaletteEditor() {
           <Button
             variant="ghost"
             size="xs"
-            className="rounded-full text-zinc-500 hover:text-white"
+            className="rounded-full text-zinc-400 hover:text-white"
             disabled={isDefaultPalette(palette)}
             onClick={() => { resetPalette(); setNotice(null); }}
           >
@@ -190,7 +190,7 @@ function PaletteEditor() {
           </Button>
         }
       />
-      <p className="mt-1 text-[11px] text-zinc-600">Auto-tints cycle through this list. Click a swatch to recolour it; remove the ones you never use.</p>
+      <p className="mt-1 text-[11px] text-zinc-400">Auto-tints cycle through this list. Click a swatch to recolour it; remove the ones you never use.</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
         {palette.map((color) => (
@@ -202,13 +202,13 @@ function PaletteEditor() {
                 else setNotice(null);
               }}
               label={`Change ${color.label} colour`}
-              className="h-5 w-5 rounded-full"
+              className="h-6 w-6 rounded-full"
             />
             <span className="text-[11px] text-zinc-400">{color.label}</span>
             <Button
               variant="ghost"
               size="icon-xs"
-              className="h-5 w-5 rounded-full text-zinc-600 hover:text-white"
+              className="h-6 w-6 rounded-full text-zinc-400 hover:text-white"
               aria-label={`Remove ${color.label}`}
               title={palette.length <= 1 ? "Keep at least one colour" : `Remove ${color.label}`}
               disabled={palette.length <= 1}
@@ -266,7 +266,7 @@ function PaletteEditor() {
             <Plus className="h-3.5 w-3.5" /> Add colour
           </Button>
         </div>
-        <p className="mt-2 text-[11px] text-zinc-600" aria-live="polite">{hint}</p>
+        <p className="mt-2 text-[11px] text-zinc-400" aria-live="polite">{hint}</p>
       </div>
     </section>
   );
@@ -437,7 +437,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
         <details className="group py-6" open>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
             <span className="text-sm font-medium text-white">Colour &amp; icons</span>
-            <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+            <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open:rotate-180" />
           </summary>
           <div className="grid gap-6 pt-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-10">
             <div className="min-w-0">
@@ -453,7 +453,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                   { value: "portfolios" as const, label: "Portfolios", icon: <Folder className="h-3.5 w-3.5" /> },
                 ]}
               />
-              <p className="mt-3 text-[11px] text-zinc-600">
+              <p className="mt-3 text-[11px] text-zinc-400">
                 {colorTab === "accounts"
                   ? "Base colour and folder icon for each account; providers and portfolios tint from these."
                   : colorTab === "providers"
@@ -462,7 +462,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               </p>
 
               {colorTab === "accounts" && (
-                accounts.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No accounts yet. Create one from the sidebar.</p> : (
+                accounts.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-400">No accounts yet. Create one from the sidebar.</p> : (
                   <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
                     {sortedAccounts.map((acc) => {
                       const base = resolveAccountColor(acc, accounts, palette);
@@ -476,8 +476,8 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                               <span className="truncate text-sm font-medium text-white">{acc.name}</span>
                             </div>
                             <div className="flex shrink-0 items-center gap-1">
-                              <Button variant="ghost" size="xs" aria-expanded={iconPickerFor === acc.id} className="rounded-full text-zinc-500 hover:text-white" onClick={() => setIconPickerFor(iconPickerFor === acc.id ? null : acc.id)} disabled={saving === acc.id}>Icon</Button>
-                              {acc.color && <Button variant="ghost" size="xs" className="rounded-full text-zinc-500 hover:text-white" onClick={()=>handleAccountColor(acc.id, null)} disabled={saving===acc.id}>Reset</Button>}
+                              <Button variant="ghost" size="xs" aria-expanded={iconPickerFor === acc.id} className="rounded-full text-zinc-400 hover:text-white" onClick={() => setIconPickerFor(iconPickerFor === acc.id ? null : acc.id)} disabled={saving === acc.id}>Icon</Button>
+                              {acc.color && <Button variant="ghost" size="xs" className="rounded-full text-zinc-400 hover:text-white" onClick={()=>handleAccountColor(acc.id, null)} disabled={saving===acc.id}>Reset</Button>}
                             </div>
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -503,7 +503,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               )}
 
               {colorTab === "providers" && (
-                providers.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No providers yet.</p> : (
+                providers.length === 0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-400">No providers yet.</p> : (
                   <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
                     {sortedProviders.map((pr)=>{
                       const acc = accounts.find(a=>a.id===pr.accountId);
@@ -516,12 +516,12 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                                 {pr.icon ? <EntityIcon icon={pr.icon} size={15} color={base} /> : <BrandIcon provider={pr.name} size={18} />}
                               </span>
                               <span className="truncate text-sm font-medium text-white">{pr.name}</span>
-                              <span className="shrink-0 text-[11px] text-zinc-600">{acc?.name ?? "—"}</span>
+                              <span className="shrink-0 text-[11px] text-zinc-400">{acc?.name ?? "—"}</span>
                             </div>
-                            <Button variant="ghost" size="xs" aria-expanded={iconPickerFor === pr.id} className="shrink-0 rounded-full text-zinc-500 hover:text-white" onClick={() => setIconPickerFor(iconPickerFor === pr.id ? null : pr.id)} disabled={saving === pr.id}>Icon</Button>
+                            <Button variant="ghost" size="xs" aria-expanded={iconPickerFor === pr.id} className="shrink-0 rounded-full text-zinc-400 hover:text-white" onClick={() => setIconPickerFor(iconPickerFor === pr.id ? null : pr.id)} disabled={saving === pr.id}>Icon</Button>
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <button type="button" aria-pressed={!pr.color} onClick={()=>handleProviderColor(pr.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!pr.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-500 hover:text-zinc-300"}`}>Auto tint</button>
+                            <button type="button" aria-pressed={!pr.color} onClick={()=>handleProviderColor(pr.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!pr.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:text-zinc-300"}`}>Auto tint</button>
                             {palette.map(c=> <Swatch key={c.value} color={c.value} active={pr.color===c.value} onClick={()=>handleProviderColor(pr.id, c.value)} />)}
                           </div>
                           {iconPickerFor === pr.id && (
@@ -541,7 +541,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               )}
 
               {colorTab === "portfolios" && (
-                portfolios.length===0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-500">No portfolios yet.</p> : (
+                portfolios.length===0 ? <p className="mt-3 border-t border-white/[0.05] py-6 text-sm text-zinc-400">No portfolios yet.</p> : (
                   <div className="mt-3 divide-y divide-white/[0.05] border-t border-white/[0.05]">
                     {sortedPortfolios.map((p)=>{
                       const prov = providers.find(pr=> pr.id===p.providerId);
@@ -552,11 +552,11 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                           <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
                             <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/20" style={{ background: tinted }} />
                             <span className="truncate text-sm font-medium text-white">{p.name}</span>
-                            <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-zinc-600">{p.type}</span>
-                            <span className="truncate text-[11px] text-zinc-600">{acc?.name ?? "Unassigned"} {prov ? `/ ${prov.name}` : ""}</span>
+                            <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-zinc-400">{p.type}</span>
+                            <span className="truncate text-[11px] text-zinc-400">{acc?.name ?? "Unassigned"} {prov ? `/ ${prov.name}` : ""}</span>
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <button type="button" aria-pressed={!p.color} onClick={()=>handlePortfolioColor(p.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!p.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-500 hover:text-zinc-300"}`}>Auto tint</button>
+                            <button type="button" aria-pressed={!p.color} onClick={()=>handlePortfolioColor(p.id, null)} className={`rounded-full border px-3 py-1 text-[11px] transition-colors ${!p.color ? "border-white/[0.18] bg-white/[0.09] text-white" : "border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:text-zinc-300"}`}>Auto tint</button>
                             {palette.map(c=> <Swatch key={c.value} color={c.value} active={p.color===c.value} onClick={()=>handlePortfolioColor(p.id, c.value)} />)}
                           </div>
                         </div>
@@ -592,49 +592,12 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
             </div>
 
             <details className="group">
-              <summary className="relative flex cursor-pointer list-none items-center justify-between gap-3 py-3.5 [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3.5 [&::-webkit-details-marker]:hidden">
                 <div>
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm text-zinc-200">Import CSV</p>
-                    <button
-                      type="button"
-                      aria-expanded={showImportFormat}
-                      aria-controls="import-csv-format"
-                      aria-label="Show the expected CSV format"
-                      title="Expected CSV format"
-                      onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowImportFormat((open) => !open); }}
-                      className={`rounded-full p-0.5 transition-colors ${showImportFormat ? "text-white" : "text-zinc-500 hover:text-zinc-200"}`}
-                    >
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <p className="text-sm text-zinc-200">Import CSV</p>
                   <p className={ROW_HINT}>Holdings or buy/sell trades into a portfolio.</p>
                 </div>
-                <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
-                {showImportFormat && (
-                  <div
-                    id="import-csv-format"
-                    role="note"
-                    onClick={(event) => event.stopPropagation()}
-                    className="absolute left-0 top-full z-30 mt-1 w-[min(30rem,calc(100vw-3rem))] rounded-2xl border border-white/[0.1] bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-xl"
-                  >
-                    <p className="text-[11px] font-medium text-white">Expected CSV format</p>
-                    <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Comma separated with a header row. Column order doesn&apos;t matter, and headers are matched loosely — e.g. Symbol or Ticker, Shares or Qty, AvgPrice or CostBasis.</p>
-                    <div className="mt-2.5 space-y-2.5">
-                      <CsvFormatBlock
-                        label="Holdings"
-                        required="Required: Symbol, Shares, AvgPrice. CurrentPrice is optional."
-                        sample={"Symbol,Name,Shares,AvgPrice,CurrentPrice,Currency\nAAPL,Apple Inc.,10,150.25,182.40,USD"}
-                      />
-                      <CsvFormatBlock
-                        label="Trades"
-                        required="Required: Symbol, Type, Shares, Price. Type is Buy or Sell."
-                        sample={"Symbol,Type,Shares,Price,Date,Currency\nAAPL,Buy,5,152.10,2024-03-11,USD"}
-                      />
-                    </div>
-                    <p className="mt-2.5 text-[10px] leading-snug text-zinc-500">Optional columns: Name, Sector, Exchange, Date. Date defaults to today, Currency to GBP.</p>
-                  </div>
-                )}
+                <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open:rotate-180" />
               </summary>
               <div className="space-y-2 pb-4">
                 <Label htmlFor="import-portfolio" className="sr-only">Import CSV into portfolio</Label>
@@ -691,7 +654,35 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                   }}
                 />
                 <Button variant="outline" size="sm" className={`${ACTION} w-full border-white/[0.08] bg-white/[0.03]`} disabled={importing || !importPortfolioId} onClick={() => document.getElementById("import-csv")?.click()}><Upload className="h-4 w-4" />{importing ? "Importing…" : "Choose CSV file"}</Button>
-                <p className="text-[11px] text-zinc-600">Holdings: Symbol, Name, Shares, AvgPrice, CurrentPrice, Currency. Trades: Symbol, Type, Shares, Price, Date.</p>
+                <button
+                  type="button"
+                  aria-expanded={showImportFormat}
+                  aria-controls="import-csv-format"
+                  onClick={() => setShowImportFormat((open) => !open)}
+                  className="flex min-h-6 items-center gap-1.5 py-1 text-[11px] text-zinc-400 transition-colors hover:text-white"
+                >
+                  <Info className="h-3.5 w-3.5" /> Expected CSV format
+                </button>
+                {showImportFormat && (
+                  <div id="import-csv-format" role="note" className="w-full rounded-2xl border border-white/[0.1] bg-white/[0.03] p-3">
+                    <p className="text-[11px] font-medium text-white">Expected CSV format</p>
+                    <p className="mt-0.5 text-[10px] leading-snug text-zinc-400">Comma separated with a header row. Column order doesn&apos;t matter, and headers are matched loosely — e.g. Symbol or Ticker, Shares or Qty, AvgPrice or CostBasis.</p>
+                    <div className="mt-2.5 space-y-2.5">
+                      <CsvFormatBlock
+                        label="Holdings"
+                        required="Required: Symbol, Shares, AvgPrice. CurrentPrice is optional."
+                        sample={"Symbol,Name,Shares,AvgPrice,CurrentPrice,Currency\nAAPL,Apple Inc.,10,150.25,182.40,USD"}
+                      />
+                      <CsvFormatBlock
+                        label="Trades"
+                        required="Required: Symbol, Type, Shares, Price. Type is Buy or Sell."
+                        sample={"Symbol,Type,Shares,Price,Date,Currency\nAAPL,Buy,5,152.10,2024-03-11,USD"}
+                      />
+                    </div>
+                    <p className="mt-2.5 text-[10px] leading-snug text-zinc-400">Optional columns: Name, Sector, Exchange, Date. Date defaults to today, Currency to GBP.</p>
+                  </div>
+                )}
+                <p className="text-[11px] text-zinc-400">Holdings: Symbol, Name, Shares, AvgPrice, CurrentPrice, Currency. Trades: Symbol, Type, Shares, Price, Date.</p>
               </div>
             </details>
 

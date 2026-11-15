@@ -41,7 +41,7 @@ export function SectionHeading({
     >
       <div className="flex min-w-0 items-baseline gap-2">
         <h2 id={id} className={cn("text-sm font-medium text-white", titleClassName)}>{title}</h2>
-        {meta != null && <span className="text-[11px] tabular-nums text-zinc-600">{meta}</span>}
+        {meta != null && <span className="text-[11px] tabular-nums text-zinc-400">{meta}</span>}
       </div>
       {action}
     </div>

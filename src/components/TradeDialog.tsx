@@ -85,34 +85,34 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
         <div className="space-y-4 pt-2">
           {holding && (
             <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-white/[0.04] border border-white/5 text-center">
-              <div><div className="text-[10px] tracking-widest uppercase text-zinc-500">Shares</div><div className="text-sm font-semibold text-white">{holding.shares}</div></div>
-              <div><div className="text-[10px] tracking-widest uppercase text-zinc-500">Avg cost</div><div className="text-sm font-semibold text-white">{fmtPrice(holding.avgPrice, cur)}</div></div>
-              <div><div className="text-[10px] tracking-widest uppercase text-zinc-500">Price</div><div className="text-sm font-semibold text-white">{fmtPrice(holding.currentPrice, cur)}</div></div>
+              <div><div className="text-[10px] tracking-widest uppercase text-zinc-400">Shares</div><div className="text-sm font-semibold text-white">{holding.shares}</div></div>
+              <div><div className="text-[10px] tracking-widest uppercase text-zinc-400">Avg cost</div><div className="text-sm font-semibold text-white">{fmtPrice(holding.avgPrice, cur)}</div></div>
+              <div><div className="text-[10px] tracking-widest uppercase text-zinc-400">Price</div><div className="text-sm font-semibold text-white">{fmtPrice(holding.currentPrice, cur)}</div></div>
             </div>
           )}
 
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5"><Hash className="w-3 h-3" /> Shares *</Label>
-              <Input type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} placeholder="e.g. 10" autoFocus />
+              <Label htmlFor="trade-shares" className="flex items-center gap-1.5"><Hash className="w-3 h-3" /> Shares *</Label>
+              <Input id="trade-shares" type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} placeholder="e.g. 10" autoFocus />
             </div>
             <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5">Price / share *</Label>
-              <Input type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 106.40" />
+              <Label htmlFor="trade-price" className="flex items-center gap-1.5">Price / share *</Label>
+              <Input id="trade-price" type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 106.40" />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Date</Label>
-            <Input type="date" value={date} max={new Date().toISOString().split("T")[0]} onChange={(e) => setDate(e.target.value)} />
+            <Label htmlFor="trade-date" className="flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Date</Label>
+            <Input id="trade-date" type="date" value={date} max={new Date().toISOString().split("T")[0]} onChange={(e) => setDate(e.target.value)} />
           </div>
 
           {preview?.kind === "buy" && holding && (
             <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400"><Calculator className="w-3.5 h-3.5" /> Dollar-cost averaging preview</div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New avg cost</div><div className="font-semibold text-white">{fmtPrice(preview.newAvg, cur)}</div><div className="text-zinc-600 text-[11px]">was {fmtPrice(holding.avgPrice, cur)}</div></div>
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">New holding</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">+{s} shares • {fmtPrice(preview.costDelta, cur)} cost</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-400">New avg cost</div><div className="font-semibold text-white">{fmtPrice(preview.newAvg, cur)}</div><div className="text-zinc-400 text-[11px]">was {fmtPrice(holding.avgPrice, cur)}</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-400">New holding</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-400 text-[11px]">+{s} shares • {fmtPrice(preview.costDelta, cur)} cost</div></div>
               </div>
               {p < holding.avgPrice && <p className="text-xs text-emerald-300">Buying below your average — your avg cost will decrease ↓</p>}
               {p > holding.avgPrice && <p className="text-xs text-amber-300">Buying above your average — your avg cost will increase ↑</p>}
@@ -123,15 +123,15 @@ export function TradeDialog({ open, onOpenChange, holding, type, onSubmit }: Pro
             <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-red-400"><Calculator className="w-3.5 h-3.5" /> Sale preview</div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Proceeds</div><div className="font-semibold text-white">{fmtPrice(preview.proceeds, cur)}</div><div className={`text-[11px] ${preview.pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{preview.pl >= 0 ? "+" : ""}{fmtPrice(preview.pl, cur)} P/L</div></div>
-                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-500">Remaining</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-600 text-[11px]">{preview.newShares === 0 ? "Position closed" : `${preview.newShares} × ${fmtPrice(holding.avgPrice, cur)} avg`}</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-400">Proceeds</div><div className="font-semibold text-white">{fmtPrice(preview.proceeds, cur)}</div><div className={`text-[11px] ${preview.pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{preview.pl >= 0 ? "+" : ""}{fmtPrice(preview.pl, cur)} P/L</div></div>
+                <div className="p-2 rounded-lg bg-black/20"><div className="text-zinc-400">Remaining</div><div className="font-semibold text-white">{preview.newShares} shares</div><div className="text-zinc-400 text-[11px]">{preview.newShares === 0 ? "Position closed" : `${preview.newShares} × ${fmtPrice(holding.avgPrice, cur)} avg`}</div></div>
               </div>
             </div>
           )}
 
           {preview?.kind === "error" && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{preview.error}</p>}
           {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</p>}
-          <div className="flex items-center gap-2 text-xs text-zinc-500"><TrendingUp className="w-3 h-3" /> Uses weighted average. Chart will mark this trade.</div>
+          <div className="flex items-center gap-2 text-xs text-zinc-400"><TrendingUp className="w-3 h-3" /> Uses weighted average. Chart will mark this trade.</div>
         </div>
 
         <DialogActions

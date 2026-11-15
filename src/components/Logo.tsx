@@ -36,7 +36,7 @@ export function Logo({ size = 36, showText = true, className = "" }: { size?: nu
       {showText && (
         <div className="leading-none">
           <div className="font-semibold tracking-tight text-white text-[15px]">Olantis</div>
-          <div className="text-[11px] tracking-[0.13em] uppercase text-zinc-500">Portfolio</div>
+          <div className="text-[11px] tracking-[0.13em] uppercase text-zinc-400">Portfolio</div>
         </div>
       )}
     </div>

@@ -61,7 +61,7 @@ export function MainDashboard({
           </Button>
         }
         below={portfoliosCount === 0 ? (
-          <Button variant="link" size="xs" className="mt-1 h-auto p-0 text-xs text-zinc-500" onClick={onCreateFirstPortfolio}>
+          <Button variant="link" size="xs" className="mt-1 h-auto p-0 text-xs text-zinc-400" onClick={onCreateFirstPortfolio}>
             Create your first portfolio
           </Button>
         ) : null}
@@ -95,7 +95,7 @@ export function MainDashboard({
           <Metric
             position="middle"
             label={`Change · ${range}`}
-            tone={periodChange ? changeTone : "text-zinc-600"}
+            tone={periodChange ? changeTone : "text-zinc-400"}
             value={periodChange ? (
               <>
                 {periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))}

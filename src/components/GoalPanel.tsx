@@ -165,7 +165,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
   const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dateFormat, { day: "numeric", month: "short", year: "numeric" });
   const rangeLabel = range === "MAX" ? "All" : range;
   const changeLabel = periodChange === null ? "—" : `${periodChange >= 0 ? "+" : "−"}${fmtGBP(Math.abs(periodChange))}`;
-  const changeTone = periodChange === null ? "text-zinc-600" : periodChange >= 0 ? "text-emerald-400" : "text-red-400";
+  const changeTone = periodChange === null ? "text-zinc-400" : periodChange >= 0 ? "text-emerald-400" : "text-red-400";
   const editingNew = draft?.id === null;
   const chartTitle = focusGoal ? "Progress over time" : "Value over time";
 
@@ -182,7 +182,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
               <span key={goal.id} className="inline-flex min-w-0 items-center gap-1.5">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                 <span className="max-w-[220px] truncate text-[11px] text-zinc-400" title={goal.name}>{goal.name}</span>
-                <span className="text-[11px] tabular-nums text-zinc-600">{progress.toFixed(1)}%</span>
+                <span className="text-[11px] tabular-nums text-zinc-400">{progress.toFixed(1)}%</span>
               </span>
             );
           })}
@@ -200,11 +200,11 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="date" tickFormatter={chartDateLabel} minTickGap={28} tick={{ fontSize: 11, fill: "#71717a" }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="date" tickFormatter={chartDateLabel} minTickGap={28} tick={{ fontSize: 11, fill: "#a1a1aa" }} axisLine={false} tickLine={false} />
                 <YAxis
                   domain={sortedGoals.length ? [0, chartMax] : ["auto", "auto"]}
                   tickFormatter={(value: number) => sortedGoals.length ? `${value}%` : fmtGBP(value)}
-                  tick={{ fontSize: 11, fill: "#71717a" }}
+                  tick={{ fontSize: 11, fill: "#a1a1aa" }}
                   axisLine={false}
                   tickLine={false}
                   width={sortedGoals.length ? 48 : 64}
@@ -240,13 +240,13 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
             </ResponsiveContainer>
           </div>
           {chartRows.length === 1 && (
-            <p className="mt-3 text-[11px] text-zinc-600">First snapshot saved. Progress will build from here.</p>
+            <p className="mt-3 text-[11px] text-zinc-400">First snapshot saved. Progress will build from here.</p>
           )}
         </>
       ) : (
         <div className={`${heightClass} flex flex-col items-center justify-center gap-2 text-center`}>
-          <TrendingUp className="h-5 w-5 text-zinc-600" />
-          <p className="text-sm text-zinc-500">History builds as your portfolio updates.</p>
+          <TrendingUp className="h-5 w-5 text-zinc-400" />
+          <p className="text-sm text-zinc-400">History builds as your portfolio updates.</p>
         </div>
       )}
     </>
@@ -305,7 +305,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
               className="col-span-2 sm:col-span-1"
               label="Monthly pace"
               value={focusStats.reached || focusStats.daysLeft === 0 ? "—" : fmtGBP(focusStats.monthlyPace)}
-              tone={focusStats.reached || focusStats.daysLeft === 0 ? "text-zinc-600" : "text-white"}
+              tone={focusStats.reached || focusStats.daysLeft === 0 ? "text-zinc-400" : "text-white"}
               sub={focusStats.reached
                 ? "Complete"
                 : focusStats.daysLeft === 0
@@ -381,7 +381,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
           <div className="flex flex-col items-start gap-3 border-b border-white/[0.06] py-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-zinc-400">No goals yet.</p>
-              <p className="mt-1 text-xs text-zinc-600">Set one or more targets and track progress toward each.</p>
+              <p className="mt-1 text-xs text-zinc-400">Set one or more targets and track progress toward each.</p>
             </div>
             <Button size="sm" className="rounded-full bg-white px-3.5 text-black hover:bg-zinc-200" onClick={startAdd}>
               <Plus className="h-3.5 w-3.5" /> Add a goal
@@ -405,10 +405,10 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
                     <div className="flex items-center gap-2">
                       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                       <p className="truncate text-sm text-white" title={goal.name}>{goal.name}</p>
-                      <span className={`ml-auto shrink-0 text-xs tabular-nums ${stats.reached ? "text-emerald-400" : "text-zinc-500"}`}>{Math.min(stats.progress, 999).toFixed(1)}%</span>
+                      <span className={`ml-auto shrink-0 text-xs tabular-nums ${stats.reached ? "text-emerald-400" : "text-zinc-400"}`}>{Math.min(stats.progress, 999).toFixed(1)}%</span>
                     </div>
                     <ProgressBar value={stats.progress} label={`${goal.name} progress`} color={color} className="mt-2" />
-                    <p className="mt-2 text-[11px] tabular-nums text-zinc-600">
+                    <p className="mt-2 text-[11px] tabular-nums text-zinc-400">
                       {fmtGBP(currentValue)} of {fmtGBP(goal.targetValue)}
                       {stats.reached ? " · Reached" : stats.daysLeft === 0 ? " · Target date passed" : ` · ${stats.daysLeft} days left`}
                     </p>
@@ -426,10 +426,10 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
                     <p className={`mt-1 text-sm tabular-nums ${stats.reached ? "text-emerald-400" : "text-zinc-300"}`}>{stats.reached ? "Reached" : stats.daysLeft === 0 ? "—" : `${fmtGBP(stats.monthlyPace)}/mo`}</p>
                   </div>
                   <div className="flex items-center gap-1 lg:justify-end">
-                    <Button variant="ghost" size="icon-sm" aria-label={`Edit ${goal.name}`} title="Edit goal" className="text-zinc-500 hover:bg-white/[0.05] hover:text-white" onClick={() => startEdit(goal)}>
+                    <Button variant="ghost" size="icon-sm" aria-label={`Edit ${goal.name}`} title="Edit goal" className="text-zinc-400 hover:bg-white/[0.05] hover:text-white" onClick={() => startEdit(goal)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon-sm" aria-label={`Remove ${goal.name}`} title="Remove goal" className="text-zinc-600 hover:bg-white/[0.05] hover:text-red-300" onClick={() => void remove(goal)} disabled={deletingId === goal.id}>
+                    <Button variant="ghost" size="icon-sm" aria-label={`Remove ${goal.name}`} title="Remove goal" className="text-zinc-400 hover:bg-white/[0.05] hover:text-red-300" onClick={() => void remove(goal)} disabled={deletingId === goal.id}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -439,7 +439,7 @@ export function GoalPanel({ currentValue, history, dateFormat }: { currentValue:
           </ul>
         )}
 
-        <p className="text-[11px] leading-relaxed text-zinc-600">Progress is measured against your total portfolio value. Monthly pace is a straight-line estimate and excludes investment returns.</p>
+        <p className="text-[11px] leading-relaxed text-zinc-400">Progress is measured against your total portfolio value. Monthly pace is a straight-line estimate and excludes investment returns.</p>
         {error && <p role="alert" className="text-xs text-amber-300">{error}</p>}
       </section>
     </div>

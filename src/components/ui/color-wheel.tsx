@@ -115,12 +115,12 @@ export function ColorWheel({ value, onChange, label, className, open, onOpenChan
         <PopoverPrimitive.Positioner sideOffset={8} align="start" className="z-50">
           <PopoverPrimitive.Popup initialFocus={false} className="w-60 rounded-2xl border border-white/[0.1] bg-zinc-950/95 p-3 text-white shadow-2xl outline-none backdrop-blur-xl data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95">
             <div className="flex items-center justify-between gap-2">
-              <PopoverPrimitive.Title className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">Pick a colour</PopoverPrimitive.Title>
+              <PopoverPrimitive.Title className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">Pick a colour</PopoverPrimitive.Title>
               <div className="flex items-center gap-1.5">
                 <span className="font-mono text-[11px] uppercase tracking-tight text-zinc-400">{value}</span>
                 <PopoverPrimitive.Close
                   aria-label="Close colour picker"
-                  className="grid h-6 w-6 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none"
+                  className="grid h-6 w-6 place-items-center rounded-full text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none"
                 >
                   <X className="h-3 w-3" />
                 </PopoverPrimitive.Close>
@@ -176,7 +176,7 @@ export function ColorWheel({ value, onChange, label, className, open, onOpenChan
               />
             </label>
 
-            <p className="mt-2 text-[10px] leading-snug text-zinc-600">Click or drag the wheel for hue and saturation, then use the slider for brightness.</p>
+            <p className="mt-2 text-[10px] leading-snug text-zinc-400">Click or drag the wheel for hue and saturation, then use the slider for brightness.</p>
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>
       </PopoverPrimitive.Portal>

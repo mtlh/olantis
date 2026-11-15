@@ -46,7 +46,7 @@ export function DashboardGoalCard({ currentValue, onViewGoals }: DashboardGoalCa
         spacing="none"
         action={
           <div className="flex items-baseline gap-2">
-            {goals.length > 1 && <span className="text-[11px] text-zinc-600">{goals.length} tracked</span>}
+            {goals.length > 1 && <span className="text-[11px] text-zinc-400">{goals.length} tracked</span>}
             {goal && <span className="text-xs font-medium tabular-nums text-emerald-300">{progress.toFixed(0)}%</span>}
           </div>
         }
@@ -56,15 +56,15 @@ export function DashboardGoalCard({ currentValue, onViewGoals }: DashboardGoalCa
         <>
           <p className="mt-1 truncate text-xs text-zinc-400">{goal.name}{remainingCount > 0 ? ` +${remainingCount} more` : ""}</p>
           <ProgressBar value={progress} label={`${goal.name} progress`} className="mt-3" />
-          <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px] text-zinc-600">
+          <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px] text-zinc-400">
             <span className="tabular-nums">{fmtGBP(currentValue)} of {fmtGBP(goal.targetValue)}</span>
-            <button type="button" onClick={onViewGoals} className="shrink-0 text-zinc-500 transition-colors hover:text-white">View</button>
+            <button type="button" onClick={onViewGoals} className="inline-flex min-h-6 shrink-0 items-center text-zinc-400 transition-colors hover:text-white">View</button>
           </div>
         </>
       ) : (
         <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-xs text-zinc-600">No goal set.</p>
-          <button type="button" onClick={onViewGoals} className="text-[11px] text-zinc-400 transition-colors hover:text-white">Set one</button>
+          <p className="text-xs text-zinc-400">No goal set.</p>
+          <button type="button" onClick={onViewGoals} className="inline-flex min-h-6 items-center text-[11px] text-zinc-400 transition-colors hover:text-white">Set one</button>
         </div>
       )}
     </section>

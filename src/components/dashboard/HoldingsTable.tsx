@@ -30,7 +30,7 @@ type HoldingsTableProps = {
   onDelete: (holding: Holding) => void;
 };
 
-const HEAD = "h-8 px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600";
+const HEAD = "h-8 px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-400";
 
 export function HoldingsTable({
   portfolio,
@@ -114,7 +114,7 @@ export function HoldingsTable({
               inputClassName="bg-white/[0.04]"
             />
             <Select value={sort} onValueChange={(value) => setSort(value ?? "value")}>
-              <SelectTrigger className="h-8 w-28 bg-white/[0.04] text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Sort holdings" className="h-8 w-28 bg-white/[0.04] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="value">Value</SelectItem>
                 <SelectItem value="gain">Gain</SelectItem>
@@ -151,7 +151,7 @@ export function HoldingsTable({
               <TableHead className={`${HEAD} text-right`}><span className="sm:hidden">P/L</span><span className="hidden sm:inline">Unrealized P/L</span></TableHead>
               <TableHead className={`${HEAD} hidden text-right sm:table-cell`}>Weight</TableHead>
               <TableHead className={`${HEAD} hidden text-right 2xl:table-cell`}>Updated</TableHead>
-              <TableHead className={`${HEAD} hidden w-10 sm:table-cell`} aria-label="Actions" />
+              <TableHead className={`${HEAD} hidden w-10 sm:table-cell`}><span className="sr-only">Actions</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -164,7 +164,12 @@ export function HoldingsTable({
               return (
                 <TableRow key={holding.id} className="cursor-pointer border-white/[0.05] hover:bg-white/[0.025]" onClick={() => onSelect(holding)}>
                   <TableCell className="pl-1">
-                    <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); onSelect(holding); }}
+                      className="flex max-w-full items-center gap-3 rounded text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                    >
+                      <span className="sr-only">Open </span>
                       <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={32} />
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
@@ -173,10 +178,10 @@ export function HoldingsTable({
                             <LiveBadge />
                           )}
                         </div>
-                        <div className="max-w-[128px] truncate text-[11px] text-zinc-500 sm:max-w-[160px]">{holding.name}</div>
-                        <div className="text-[11px] tabular-nums text-zinc-600 md:hidden">{holding.shares} × {fmtPrice(holding.avgPrice, holdingCurrency(holding))}</div>
+                        <div className="max-w-[128px] truncate text-[11px] text-zinc-400 sm:max-w-[160px]">{holding.name}</div>
+                        <div className="text-[11px] tabular-nums text-zinc-400 md:hidden">{holding.shares} × {fmtPrice(holding.avgPrice, holdingCurrency(holding))}</div>
                       </div>
-                    </div>
+                    </button>
                   </TableCell>
                   <TableCell className="hidden text-sm tabular-nums text-zinc-400 md:table-cell">{holding.shares} × {fmtPrice(holding.avgPrice, holdingCurrency(holding))}</TableCell>
                   <TableCell className="hidden text-right text-sm tabular-nums text-zinc-400 lg:table-cell">{fmtPrice(holding.currentPrice, holdingCurrency(holding))}</TableCell>
@@ -186,18 +191,18 @@ export function HoldingsTable({
                     <div className={`text-sm font-medium tabular-nums ${gain >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {gain >= 0 ? "+" : "−"}{fmtGBP(Math.abs(gain))}
                     </div>
-                    <div className="text-[11px] tabular-nums text-zinc-600">{fmtPct(returnPct)}</div>
+                    <div className="text-[11px] tabular-nums text-zinc-400">{fmtPct(returnPct)}</div>
                   </TableCell>
                   <TableCell className="hidden text-right text-xs tabular-nums text-zinc-400 sm:table-cell">{weight.toFixed(1)}%</TableCell>
                   <TableCell className="hidden text-right text-xs tabular-nums 2xl:table-cell" title={holding.lastRefreshedAt ? fmtTimestamp(holding.lastRefreshedAt, dateFormat) : "No refresh recorded"}>
                     {stale
                       ? <span className="text-amber-300/80" title="No recent quote refresh is recorded for this holding">{holding.lastRefreshedAt ? `Stale · ${fmtRelative(holding.lastRefreshedAt, dateFormat)}` : "Unverified"}</span>
-                      : <span className="text-zinc-500">{fmtRelative(holding.lastRefreshedAt, dateFormat)}</span>}
+                      : <span className="text-zinc-400">{fmtRelative(holding.lastRefreshedAt, dateFormat)}</span>}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <div className="flex justify-end" onClick={(event) => event.stopPropagation()}>
                       <DropdownMenu>
-                        <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" className="text-zinc-500 hover:bg-white/[0.06] hover:text-white data-[popup-open]:bg-white/10 data-[popup-open]:text-white" aria-label={`Actions for ${holding.symbol}`} title="Actions" />}>
+                        <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" className="text-zinc-400 hover:bg-white/[0.06] hover:text-white data-[popup-open]:bg-white/10 data-[popup-open]:text-white" aria-label={`Actions for ${holding.symbol}`} title="Actions" />}>
                           <Ellipsis className="h-4 w-4" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" side="bottom" className="min-w-40 border-white/10 bg-zinc-900 text-white">

@@ -183,8 +183,8 @@ export const ValueTimeChart = memo(function ValueTimeChart({
                 equal steps) so every row of the grid is the same height. */}
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" syncWithTicks />
             <ZoomSelectionArea labels={chartZoom.selectionLabels} />
-            <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} />
-            <YAxis domain={yDomain ?? ["auto", "auto"]} ticks={axis?.ticks} tickFormatter={axisFormatter} tick={{ fontSize: 12, fill: "#71717a" }} axisLine={false} tickLine={false} width={60} />
+            <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#a1a1aa" }} axisLine={false} tickLine={false} />
+            <YAxis domain={yDomain ?? ["auto", "auto"]} ticks={axis?.ticks} tickFormatter={axisFormatter} tick={{ fontSize: 12, fill: "#a1a1aa" }} axisLine={false} tickLine={false} width={60} />
             <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => tooltipFormatter(value)} />
             {totalVisible && (
               <Area
@@ -210,8 +210,8 @@ export const ValueTimeChart = memo(function ValueTimeChart({
       </div>
       {canShowDots && dots.length > 0 && (
         <div className="mt-2 flex gap-4 text-[11px]">
-          <span className="flex items-center gap-1.5 text-zinc-500"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Buy</span>
-          <span className="flex items-center gap-1.5 text-zinc-500"><span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Sell</span>
+          <span className="flex items-center gap-1.5 text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Buy</span>
+          <span className="flex items-center gap-1.5 text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Sell</span>
         </div>
       )}
       {showSeriesToggle && (
@@ -219,12 +219,12 @@ export const ValueTimeChart = memo(function ValueTimeChart({
           {[{ key: "total", name: "Total", color: "#ffffff" }, ...series].map((item) => {
             const visible = visibleKeys.has(item.key);
             return (
-              <button key={item.key} type="button" onClick={() => toggleSeries(item.key)} title={`${visible ? "Hide" : "Show"} ${item.name}`} className={`flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors ${visible ? "text-zinc-300 hover:text-white" : "text-zinc-600 hover:text-zinc-400"}`}>
+              <button key={item.key} type="button" onClick={() => toggleSeries(item.key)} title={`${visible ? "Hide" : "Show"} ${item.name}`} className={`flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors ${visible ? "text-zinc-300 hover:text-white" : "text-zinc-400 hover:text-zinc-400"}`}>
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: item.color, opacity: visible ? 1 : 0.3 }} /> {item.name}
               </button>
             );
           })}
-          {visibleSeries.length < series.length && <button type="button" onClick={showAllSeries} className="px-2 py-1 text-zinc-500 transition-colors hover:text-white">Show all</button>}
+          {visibleSeries.length < series.length && <button type="button" onClick={showAllSeries} className="px-2 py-1 text-zinc-400 transition-colors hover:text-white">Show all</button>}
         </div>
       )}
     </>
@@ -236,7 +236,7 @@ export const ValueTimeChart = memo(function ValueTimeChart({
         <CardHeader className="flex flex-row items-center justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="text-sm font-medium text-white">{title}</CardTitle>
-            {description && <CardDescription className="mt-1 text-xs text-zinc-500">{description}</CardDescription>}
+            {description && <CardDescription className="mt-1 text-xs text-zinc-400">{description}</CardDescription>}
           </div>
           <div className="flex items-center gap-2">
             <SegmentedControl
