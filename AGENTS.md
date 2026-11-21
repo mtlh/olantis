@@ -12,7 +12,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Project
 - Name: **olantis** (Personal Finance — Portfolio Dashboard). Tagline: "Your portfolios, beautifully simple."
-- Stack: Next.js 16.3.6 (Turbopack) + React 19.3.0, Tailwind 4 + tw-animate-css, shadcn + Base UI, Recharts, Drizzle ORM + Neon Postgres (serverless), WorkOS AuthKit Next.js 4.3.2, Yahoo Finance, Vercel Cron (06:00 UTC daily refresh).
+- Stack: Next.js 16.4.6 (Turbopack) + React 19.3.1, Tailwind 4 + tw-animate-css, shadcn + Base UI, Recharts, Drizzle ORM + Neon Postgres (serverless), WorkOS AuthKit Next.js 4.6.3, Yahoo Finance, Vercel Cron (06:00 UTC daily refresh).
+- TypeScript runs side-by-side: `@typescript/native` is the TypeScript 7 `tsc` used by `npm run typecheck`, while `typescript` aliases `@typescript/typescript6` because typescript-eslint (and therefore ESLint) still needs the TypeScript 6 API. Do not collapse the two aliases.
 - Design: black glass `glass` / `glass-card` (backdrop-blur), grey cards, colour only for charts. See `src/app/globals.css`. Logo in `src/components/Logo.tsx`.
 - Routes: `/` → landing (public, redirects to `/dashboard` if signed in), `/dashboard` → app (auth required, demo bypass), `/login` → `GET` WorkOS `getSignInUrl()` redirect, `/signin` → `redirect("/login")`, `/callback` → `handleAuth`, `/logout` → `signOut({returnTo:"/"})`, `/api/demo` → set `olantis_demo=1` + `redirect("/dashboard")`, `/api/demo?clear=1` → clear demo + `redirect("/")`.
 - DB schema: `src/lib/db/schema.ts` — accounts/portfolios/holdings/snapshots, isolated by `userId`. Seeding in `src/app/api/demo/route.ts`.
