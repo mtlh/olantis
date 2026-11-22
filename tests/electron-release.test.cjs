@@ -182,6 +182,69 @@ test("disabling the updater retires retry and progress state", () => {
   assert.equal(state.percent, null);
 });
 
+// --- Update changelog -------------------------------------------------------
+
+const changelog = `## What's Changed
+* feat: show the changelog before relaunching by @mtlh in https://github.com/mtlh/olantis/pull/131
+* fix: keep sidebar selections instant by @mtlh in https://github.com/mtlh/olantis/pull/129
+
+**Full Changelog**: https://github.com/mtlh/olantis/compare/desktop-1...desktop-2`;
+
+const offeredWithChangelog = () =>
+  reduceUpdate(createUpdateState({ currentVersion: "0.1.4" }), {
+    type: "update-available",
+    version: "0.1.5",
+    releaseNotes: changelog,
+    releaseDate: "2026-11-22T09:00:00.000Z",
+    at: AT,
+  });
+
+test("an offered update carries its changelog into the status payload", () => {
+  const payload = toUpdateStatusPayload(offeredWithChangelog());
+
+  assert.deepEqual(payload.notes, [
+    "feat: show the changelog before relaunching",
+    "fix: keep sidebar selections instant",
+  ]);
+  assert.equal(payload.releaseUrl, "https://github.com/mtlh/olantis/releases/latest");
+  assert.equal(payload.releasedAt, "2026-11-22T09:00:00.000Z");
+});
+
+test("a completed download keeps the notes from the offer", () => {
+  const downloaded = reduceUpdate(offeredWithChangelog(), { type: "download-complete", version: "0.1.5" });
+
+  assert.equal(downloaded.status, "downloaded");
+  assert.equal(downloaded.releaseNotes.length, 2);
+  assert.equal(toUpdateStatusPayload(downloaded).state, "ready");
+});
+
+test("a download can supply notes the offer did not carry", () => {
+  const available = reduceUpdate(createUpdateState(), { type: "update-available", version: "0.1.5" });
+  const downloaded = reduceUpdate(available, {
+    type: "download-complete",
+    version: "0.1.5",
+    releaseNotes: "* fix: one more thing by @mtlh in https://example.test/1",
+  });
+
+  assert.deepEqual(downloaded.releaseNotes, ["fix: one more thing"]);
+});
+
+test("a no-update answer clears the changelog", () => {
+  const state = reduceUpdate(offeredWithChangelog(), { type: "no-update", at: AT });
+  const payload = toUpdateStatusPayload(state);
+
+  assert.deepEqual(state.releaseNotes, []);
+  assert.equal(payload.releaseUrl, null);
+  assert.equal(payload.releasedAt, null);
+});
+
+test("a failed check keeps the changelog available for the retry", () => {
+  const state = reduceUpdate(offeredWithChangelog(), { type: "check-failed", at: AT });
+
+  assert.equal(state.status, "error");
+  assert.equal(state.releaseNotes.length, 2);
+});
+
 test("background checks back off exponentially and cap at six hours", () => {
   const steady = () => 0.5;
 
