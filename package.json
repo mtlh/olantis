@@ -17,7 +17,7 @@
     "lint:fix": "eslint . --fix --max-warnings=0 --cache --cache-location .next/cache/eslint/",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm test",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/format.test.mts tests/backfill.test.mts tests/demo-history.test.mts tests/brands.test.mts tests/sectors.test.mts tests/electron-policy.test.cjs tests/electron-entry.test.cjs tests/electron-release.test.cjs tests/electron-shell.test.cjs tests/electron-window.test.cjs tests/electron-startup-bench.test.cjs",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/format.test.mts tests/backfill.test.mts tests/demo-history.test.mts tests/brands.test.mts tests/sectors.test.mts tests/electron-policy.test.cjs tests/electron-entry.test.cjs tests/electron-release.test.cjs tests/electron-shell.test.cjs tests/electron-release-notes.test.cjs tests/electron-window.test.cjs tests/electron-startup-bench.test.cjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:backfill-benchmarks": "node scripts/backfill-benchmarks.mjs"

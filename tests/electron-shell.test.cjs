@@ -106,9 +106,10 @@ test("downloaded updates are handed to the app instead of a native dialog", () =
   // straight away when the restart control is clicked: no prompt, no timer.
   assert.match(
     main,
-    /"update-downloaded", \(info\) => dispatch\(\{ type: "download-complete", version: info\?\.version \?\? null \}\)/,
-    "a downloaded update must be handed to the app",
+    /"update-downloaded", \(info\) =>\s*dispatch\(\{[\s\S]*?type: "download-complete"[\s\S]*?version: info\?\.version \?\? null[\s\S]*?releaseNotes: info\?\.releaseNotes \?\? null/,
+    "a downloaded update must carry its changelog into the app",
   );
+  assert.match(main, /releaseNotes: info\?\.releaseNotes \?\? null/);
   assert.doesNotMatch(main, /setTimeout\(installUpdate/, "a download must not force a relaunch");
   assert.match(main, /autoInstallOnAppQuit = true/);
   assert.match(main, /ipcMain\.handle\("olantis:update:status"/);
@@ -121,14 +122,29 @@ test("downloaded updates are handed to the app instead of a native dialog", () =
   assert.match(appPreload, /"olantis:update:restart"/);
 });
 
-test("the update control stays a desktop-only button, not a popover", () => {
+test("the update control shows the changelog before the explicit restart", () => {
   const sidebar = read("src/components/Sidebar.tsx");
+  const panel = read("src/components/DesktopUpdatePanel.tsx");
 
   assert.match(sidebar, /const updateButton = update\.desktop \?/, "the web app must not render an updater");
-  assert.match(sidebar, /animate-spin/, "a check or download must spin the icon");
-  assert.match(sidebar, /"Restart to update"/, "a downloaded build waits for an explicit restart");
+  assert.match(sidebar, /update\.offered/, "an offered update opens its changelog instead of restarting");
+  assert.match(sidebar, /DesktopUpdatePanel/, "the changelog panel is mounted by the update control");
+  assert.match(sidebar, /UpdateProgressRing/, "the icon shows the download progress");
+  assert.match(panel, /What&apos;s changed/);
+  assert.match(panel, /notes\.map/, "the commits are listed");
+  assert.match(panel, /Restart to update/, "a downloaded build waits for an explicit restart");
+  assert.match(panel, /Try again/, "a failed update can be retried from the panel");
+  assert.match(panel, /View release/);
   assert.doesNotMatch(sidebar, /Restarting to install/, "nothing relaunches on its own");
-  assert.doesNotMatch(sidebar, /Check for updates<\/DropdownMenuItem>/, "there is no menu item to click");
+});
+
+test("the update flow can be previewed in an unpackaged shell only", () => {
+  // Lets a dev run (and screenshots) paint the changelog without publishing an
+  // installer, while a packaged app can never be steered by the env var.
+  assert.match(main, /const UPDATE_PREVIEW_STATE = app\.isPackaged \? "" : process\.env\.OLANTIS_UPDATE_PREVIEW/);
+  assert.match(main, /function startUpdatePreview\(\)/);
+  assert.match(main, /startUpdatePreview\(\);/);
+  assert.match(main, /if \(!UPDATE_PREVIEW_STATE\) return;/);
 });
 
 test("a first renderer failure schedules a short recovery reload", () => {

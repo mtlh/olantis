@@ -24,6 +24,16 @@ const iconPath = app.isPackaged
 // helper is a no-op otherwise, so the shipped app pays nothing for it.
 const STARTUP_TRACE = Boolean(Number(process.env.OLANTIS_STARTUP_TRACE || 0));
 const STARTUP_TRACE_FILE = process.env.OLANTIS_STARTUP_TRACE_FILE || "";
+// Dev-only switch for reviewing the update flow without publishing a release:
+// OLANTIS_UPDATE_PREVIEW=available|downloading|ready|error seeds the sidebar's
+// update state in an unpackaged shell. A packaged app ignores it.
+const UPDATE_PREVIEW_STATE = app.isPackaged ? "" : process.env.OLANTIS_UPDATE_PREVIEW || "";
+const UPDATE_PREVIEW_NOTES = `## What's Changed
+* feat: show the update changelog before relaunching by @mtlh in https://github.com/mtlh/olantis/pull/131
+* fix: keep sidebar selections instant by @mtlh in https://github.com/mtlh/olantis/pull/129
+* chore: upgrade all dependencies to latest by @mtlh in https://github.com/mtlh/olantis/pull/130
+
+**Full Changelog**: https://github.com/mtlh/olantis/compare/desktop-136...desktop-137`;
 // Wait this long after DOM ready before reading the page's paint timings: the
 // first frame of a freshly revealed view is composited after the load event.
 const PAINT_METRICS_DELAY_MS = 500;
@@ -769,10 +779,25 @@ if (!app.requestSingleInstanceLock()) {
       dispatch({ type: "check-failed" });
     });
     updater.on("checking-for-update", () => dispatch({ type: "check-start" }));
-    updater.on("update-available", (info) => dispatch({ type: "update-available", version: info?.version ?? null }));
+    updater.on("update-available", (info) =>
+      dispatch({
+        type: "update-available",
+        version: info?.version ?? null,
+        // The GitHub release body is what the changelog panel lists.
+        releaseNotes: info?.releaseNotes ?? null,
+        releaseDate: info?.releaseDate ?? null,
+      }),
+    );
     updater.on("update-not-available", () => dispatch({ type: "no-update" }));
     updater.on("download-progress", (progress) => dispatch({ type: "download-progress", percent: progress?.percent ?? null }));
-    updater.on("update-downloaded", (info) => dispatch({ type: "download-complete", version: info?.version ?? null }));
+    updater.on("update-downloaded", (info) =>
+      dispatch({
+        type: "download-complete",
+        version: info?.version ?? null,
+        releaseNotes: info?.releaseNotes ?? null,
+        releaseDate: info?.releaseDate ?? null,
+      }),
+    );
 
     // Exponential backoff instead of a fixed six-hour poll: 5m, 15m, 1h, then a
     // capped 6h, with jitter. A check that completes resets the schedule, and a
@@ -813,13 +838,47 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   /**
+   * Paint the update flow in an unpackaged shell so its changelog, progress and
+   * restart states can be reviewed without publishing a release. Like the real
+   * updater this is skipped in packaged builds.
+   */
+  function startUpdatePreview() {
+    if (!UPDATE_PREVIEW_STATE) return;
+    const version = "0.1.137";
+    const steps = {
+      available: [{ type: "update-available", version }],
+      downloading: [
+        { type: "update-available", version },
+        { type: "download-progress", percent: 63 },
+      ],
+      ready: [
+        { type: "update-available", version },
+        { type: "download-progress", percent: 100 },
+        { type: "download-complete", version },
+      ],
+      error: [
+        { type: "update-available", version },
+        { type: "check-failed" },
+      ],
+    }[UPDATE_PREVIEW_STATE];
+    if (!steps) return;
+    for (const step of steps) {
+      dispatchUpdate({
+        ...step,
+        releaseNotes: UPDATE_PREVIEW_NOTES,
+        releaseDate: new Date().toISOString(),
+        at: Date.now(),
+      });
+    }
+  }
+
+  /**
    * Start the updater only once the app has had its first paint. Requiring
    * electron-updater pulls in ~200ms of synchronous module loading, and its
    * first check competes with the launch itself for disk and network — both
    * were landing on the critical path when this ran straight from whenReady.
    */
-  function startAutoUpdatesWhenIdle() {
-    if (!app.isPackaged) return;
+  function startAutoUpdatesWhenIdle() {    if (!app.isPackaged) return;
 
     let started = false;
     const start = () => {
@@ -878,6 +937,7 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(platformMenu ? Menu.buildFromTemplate(platformMenu) : null);
     installWindowControls();
     trace("app:window-installed");
+    startUpdatePreview();
     startAutoUpdatesWhenIdle();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) installWindowControls();

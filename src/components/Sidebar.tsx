@@ -2,7 +2,7 @@
 import { type Portfolio, type Account, type Provider, type Holding, useSettings, applyWorkspaceOrder } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, ArrowDownToLine, RotateCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -27,11 +27,17 @@ const DropdownMenuTrigger = dynamic(() => import("@/components/ui/dropdown-menu"
 const DropdownMenuContent = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuContent })), { ssr: false });
 const DropdownMenuItem = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuItem })), { ssr: false });
 const DropdownMenuSeparator = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuSeparator })), { ssr: false });
+// The update changelog popover is only reachable while an update is pending, so
+// its Base UI chunk loads on demand like the menus above.
+const Popover = dynamic(() => import("@/components/ui/popover").then((module) => ({ default: module.Popover })), { ssr: false });
+const PopoverTrigger = dynamic(() => import("@/components/ui/popover").then((module) => ({ default: module.PopoverTrigger })), { ssr: false });
+const PopoverContent = dynamic(() => import("@/components/ui/popover").then((module) => ({ default: module.PopoverContent })), { ssr: false });
 const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPortfolioDialog").then((module) => ({ default: module.EditPortfolioDialog })), { ssr: false });
 import { Logo } from "@/components/Logo";
 import { BrandIcon, ProviderIcon } from "@/components/BrandIcon";
 import { EntityIcon } from "@/components/EntityIcon";
 import { useDesktopUpdate } from "@/components/useDesktopUpdate";
+import { DesktopUpdatePanel } from "@/components/DesktopUpdatePanel";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { resolvePortfolioColor } from "@/lib/colors";
@@ -43,6 +49,69 @@ interface SearchResult { symbol: string; name: string; exchange: string; price?:
 
 const TOOL_BUTTON_CLASS = "text-zinc-400 hover:text-white";
 const TOOL_ICON_CLASS = "w-4 h-4";
+
+// The update download is shown as a ring around the control's icon, so the
+// sidebar shows how far along the download is without opening the changelog.
+function UpdateProgressRing({ percent, children }: { percent: number; children: ReactNode }) {
+  const radius = 7.5;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.min(100, Math.max(0, percent));
+  return (
+    <span className="relative grid h-[18px] w-[18px] place-items-center">
+      <svg className="pointer-events-none absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 18 18" aria-hidden>
+        <circle cx="9" cy="9" r={radius} fill="none" className="stroke-white/15" strokeWidth="1.5" />
+        <circle
+          cx="9"
+          cy="9"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - clamped / 100)}
+          strokeLinecap="round"
+          strokeWidth="1.5"
+          className="text-amber-300 transition-[stroke-dashoffset] duration-300"
+        />
+      </svg>
+      {children}
+    </span>
+  );
+}
+
+function DesktopUpdateIcon({ update }: { update: ReturnType<typeof useDesktopUpdate> }) {
+  if (update.state === "downloading") {
+    return (
+      <UpdateProgressRing percent={update.percent ?? 0}>
+        <ArrowDownToLine className="h-3 w-3 text-amber-300" />
+      </UpdateProgressRing>
+    );
+  }
+  if (update.state === "available") {
+    return (
+      <span className="relative grid place-items-center">
+        <ArrowDownToLine className={TOOL_ICON_CLASS} />
+        <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />
+      </span>
+    );
+  }
+  if (update.state === "ready") {
+    return (
+      <span className="relative grid place-items-center">
+        <RotateCw className={TOOL_ICON_CLASS} />
+        <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />
+      </span>
+    );
+  }
+  if (update.state === "error") {
+    return (
+      <span className="relative grid place-items-center">
+        <RefreshCw className={TOOL_ICON_CLASS} />
+        <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-red-400 ring-2 ring-zinc-950" aria-hidden />
+      </span>
+    );
+  }
+  return <RefreshCw className={`${TOOL_ICON_CLASS} ${update.busy ? "animate-spin" : ""}`} />;
+}
 
 // Tree rows use a bare chevron instead of a boxed icon button so the hierarchy
 // reads as one calm list rather than a stack of nested controls.
@@ -384,28 +453,91 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
   };
 
   const updatePercent = update.percent == null ? null : Math.round(update.percent);
-  const updateLabel = update.ready
-    ? update.version ? `Restart to update to v${update.version}` : "Restart to update"
-    : update.busy
-      ? updatePercent == null ? "Checking for updates…" : `Downloading update… ${updatePercent}%`
-      : "Check for updates";
+  const updateLabel = update.state === "ready"
+    ? `Update ready${update.version ? ` (v${update.version})` : ""} — open to restart`
+    : update.state === "downloading"
+      ? `Downloading update${update.version ? ` v${update.version}` : ""}${updatePercent == null ? "" : ` (${updatePercent}%)`}`
+      : update.state === "available"
+        ? `Update available${update.version ? `: v${update.version}` : ""}`
+        : update.state === "error"
+          ? "Update failed — open to retry"
+          : update.busy
+            ? "Checking for updates…"
+            : "Check for updates";
 
-  // Desktop only: the icon spins while a check or download runs, and a finished
-  // download waits for an explicit restart (it also installs on the next quit).
-  // The browser has no updater at all, so the web app gets no control.
+  const updateTipTitle = update.state === "ready"
+    ? "Update ready"
+    : update.state === "downloading"
+      ? "Downloading update"
+      : update.state === "available"
+        ? "Update available"
+        : update.state === "error"
+          ? "Update failed"
+          : update.busy
+            ? "Checking for updates"
+            : "Updates";
+  const updateTipSubtitle = update.state === "ready"
+    ? "Open to restart"
+    : update.state === "downloading"
+      ? `${update.version ? `v${update.version} · ` : ""}${updatePercent ?? 0}% downloaded`
+      : update.state === "available"
+        ? update.notes[0] ?? "Preparing the download"
+        : update.state === "error"
+          ? "Open to try again"
+          : update.busy
+            ? "Looking for a new build"
+            : "Check for updates";
+
+  // Desktop only. While an update is offered the control opens its changelog,
+  // so the commits are visible while the download runs and before the explicit
+  // restart. Without an update it keeps the one-click check. The browser has no
+  // updater at all, so the web app gets no control.
   const updateButton = update.desktop ? (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className={`${TOOL_BUTTON_CLASS} relative ${update.ready ? "text-amber-300 hover:text-amber-200" : ""}`}
-      onClick={update.ready ? update.restart : handleUpdateCheck}
-      disabled={update.busy}
-      aria-label={updateLabel}
-      title={rail ? undefined : updateLabel}
-    >
-      <RefreshCw className={`${TOOL_ICON_CLASS} ${update.busy ? "animate-spin" : ""}`} />
-      {update.ready && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />}
-    </Button>
+    update.offered ? (
+      <Popover>
+        <PopoverTrigger
+          openOnHover={!rail}
+          delay={350}
+          closeDelay={150}
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={`${TOOL_BUTTON_CLASS} relative ${update.ready ? "text-amber-300 hover:text-amber-200" : ""}`}
+              aria-label={updateLabel}
+              title={rail ? undefined : updateLabel}
+            />
+          }
+        >
+          <DesktopUpdateIcon update={update} />
+        </PopoverTrigger>
+        <PopoverContent side={rail ? "right" : "top"} align="end" aria-label="Update details">
+          <DesktopUpdatePanel
+            state={update.state}
+            version={update.version}
+            percent={update.percent}
+            releasedAt={update.releasedAt}
+            notes={update.notes}
+            releaseUrl={update.releaseUrl}
+            errorContext={update.errorContext}
+            onRestart={update.restart}
+            onRetry={handleUpdateCheck}
+          />
+        </PopoverContent>
+      </Popover>
+    ) : (
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className={TOOL_BUTTON_CLASS}
+        onClick={handleUpdateCheck}
+        disabled={update.busy}
+        aria-label={updateLabel}
+        title={rail ? undefined : updateLabel}
+      >
+        <DesktopUpdateIcon update={update} />
+      </Button>
+    )
   ) : null;
 
   const signOutLink = (
@@ -430,8 +562,8 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
           <div className="my-1 h-px w-6 bg-white/10" />
           {update.desktop && withTip(
-            update.ready ? "Update ready" : update.busy ? (updatePercent == null ? "Checking for updates" : "Downloading update") : "Updates",
-            update.ready ? "Restart to update" : update.busy ? (updatePercent == null ? "Looking for a new build" : `${updatePercent}% downloaded`) : "Check for updates",
+            updateTipTitle,
+            updateTipSubtitle,
             updateButton,
             [{ label: "Tickers updated", value: lastRefreshLabel ?? "Not yet" }],
           )}
@@ -452,12 +584,16 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
         {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />, "Savings targets")}
         {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
 
+        {/* The relative label is computed from the server's clock and again from
+            the browser's, so a minute boundary between the two renders must not
+            abort hydration of this tree (which also mounts the update control). */}
         <span
           className="ml-auto min-w-0 truncate pl-1 text-right text-[11px] text-zinc-400"
           title={lastRefreshLabel ? `Tickers updated ${lastRefreshLabel}` : "Tickers not updated yet"}
+          suppressHydrationWarning
         >
           {lastRefreshLabel
-            ? <>Updated <span className="tabular-nums text-zinc-400">{lastRefreshLabel}</span></>
+            ? <>Updated <span className="tabular-nums text-zinc-400" suppressHydrationWarning>{lastRefreshLabel}</span></>
             : "Not updated yet"}
         </span>
         <div className="flex shrink-0 items-center gap-1">
