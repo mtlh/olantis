@@ -10,14 +10,10 @@ const TITLEBAR_HEIGHT = 46;
 // Matches the app's own background (globals.css) so no white frame can show
 // through while the remote page loads.
 const APP_BACKGROUND = "#050507";
-const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // A window that was shown but never produced compositor frames is lifted out of
 // its launch transparency after this long, so a broken renderer cannot leave the
 // app invisible.
 const WINDOW_OPACITY_FALLBACK_MS = 1000;
-// A downloaded update is installed without a prompt, so the sidebar gets this
-// long to show the new version before the app relaunches into it.
-const UPDATE_RESTART_DELAY_MS = 1500;
 const iconPath = app.isPackaged
   ? path.join(process.resourcesPath, "brand-mark.png")
   : path.join(__dirname, "..", "public", "brand", "mark-512.png");
@@ -80,10 +76,10 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow;
   let appView;
   let appRevealed = false;
+  const { createUpdateState, nextCheckDelayMs, reduceUpdate, toUpdateStatusPayload } = require("./update-machine.cjs");
   // Surfaced in the app's update control through app-preload.cjs.
-  let updateStatus = { state: "idle", version: null };
+  let updateState = createUpdateState({ currentVersion: app.getVersion(), enabled: app.isPackaged });
   let updaterInstance;
-  let updateRestartTimer;
 
   app.on("second-instance", () => {
     if (!mainWindow) return;
@@ -195,18 +191,20 @@ if (!app.requestSingleInstanceLock()) {
     return event.senderFrame === appView.webContents.mainFrame;
   }
 
-  ipcMain.handle("olantis:update:status", (event) => (appViewWindowFor(event) ? updateStatus : { state: "idle", version: null }));
+  ipcMain.handle("olantis:update:status", (event) =>
+    toUpdateStatusPayload(appViewWindowFor(event) ? updateState : createUpdateState({ enabled: false })),
+  );
   // Manual "check for updates" from the sidebar. The periodic check keeps
   // running on its own; this just lets someone ask early. It resolves once the
   // check finishes, which is exactly how long the control spins.
   ipcMain.handle("olantis:update:check", async (event) => {
-    if (!appViewWindowFor(event) || !updaterInstance) return { state: "idle", version: null };
+    if (!appViewWindowFor(event) || !updaterInstance) return toUpdateStatusPayload(updateState);
     try {
       await updaterInstance.checkForUpdates();
     } catch (error) {
       console.error("[updater] check failed:", error?.message ?? error);
     }
-    return updateStatus;
+    return toUpdateStatusPayload(updateState);
   });
   ipcMain.on("olantis:update:restart", (event) => {
     if (!appViewWindowFor(event)) return;
@@ -479,22 +477,30 @@ if (!app.requestSingleInstanceLock()) {
 
   function sendUpdateStatus() {
     if (!appView || appView.webContents.isDestroyed()) return;
-    appView.webContents.send("olantis:update:status", updateStatus);
+    appView.webContents.send("olantis:update:status", toUpdateStatusPayload(updateState));
   }
 
-  function setUpdateStatus(state, version) {
-    updateStatus = { state, version: version ?? null };
+  /** Fold one updater event into the reducer, then tell the page what changed. */
+  function dispatchUpdate(event) {
+    updateState = reduceUpdate(updateState, event);
     sendUpdateStatus();
   }
 
-  /** Quit, apply the downloaded build and relaunch: the normal install handoff. */
+  /**
+   * Quit, apply the downloaded build and relaunch. This only runs when someone
+   * clicks the sidebar's restart control: there is no timer that forces it.
+   */
   function installUpdate() {
-    if (updateStatus.state !== "ready" || !updaterInstance) return;
-    if (updateRestartTimer) {
-      clearTimeout(updateRestartTimer);
-      updateRestartTimer = undefined;
+    if (updateState.status !== "downloaded" || !updaterInstance) return;
+    let launched = false;
+    try {
+      launched = updaterInstance.quitAndInstall(true, true);
+    } catch (error) {
+      console.error("[updater] install failed:", error?.message ?? error);
     }
-    updaterInstance.quitAndInstall(true, true);
+    // A false return means the installer never started, but the build is still
+    // on disk, so the control offers another restart instead of stranding it.
+    if (!launched) dispatchUpdate({ type: "install-failed", at: Date.now() });
   }
 
   function startAutoUpdates() {
@@ -509,35 +515,65 @@ if (!app.requestSingleInstanceLock()) {
       trace("updater:required");
     } catch (error) {
       console.error("[updater] electron-updater is unavailable:", error?.message ?? error);
+      dispatchUpdate({ type: "disable" });
       return;
     }
 
     updaterInstance = updater;
     updater.logger = console;
+    // Download in the background and install on the next quit. Nothing relaunches
+    // the app underneath someone who is reading their portfolio.
     updater.autoDownload = true;
     updater.autoInstallOnAppQuit = true;
+
+    const dispatch = (event) => dispatchUpdate({ ...event, at: Date.now() });
     updater.on("error", (error) => {
       console.error("[updater]", error?.message ?? error);
-      // Stop the spinner: a failed check or download is not progress.
-      setUpdateStatus("error", null);
+      // The reducer decides whether this was a check or a download failure.
+      dispatch({ type: "check-failed" });
     });
-    updater.on("checking-for-update", () => setUpdateStatus("checking", null));
-    updater.on("update-not-available", () => setUpdateStatus("idle", null));
-    updater.on("update-available", (info) => setUpdateStatus("downloading", info?.version));
-    // No native dialog and no menu: the sidebar shows the new version, then the
-    // app relaunches into it on its own. The pause is only long enough for that
-    // state to paint; the control's restart click still works if it is missed.
-    updater.on("update-downloaded", (info) => {
-      setUpdateStatus("ready", info?.version);
-      if (updateRestartTimer) clearTimeout(updateRestartTimer);
-      updateRestartTimer = setTimeout(installUpdate, UPDATE_RESTART_DELAY_MS);
-    });
+    updater.on("checking-for-update", () => dispatch({ type: "check-start" }));
+    updater.on("update-available", (info) => dispatch({ type: "update-available", version: info?.version ?? null }));
+    updater.on("update-not-available", () => dispatch({ type: "no-update" }));
+    updater.on("download-progress", (progress) => dispatch({ type: "download-progress", percent: progress?.percent ?? null }));
+    updater.on("update-downloaded", (info) => dispatch({ type: "download-complete", version: info?.version ?? null }));
 
-    const check = () => {
-      updater.checkForUpdates().catch((error) => console.error("[updater] check failed:", error?.message ?? error));
-    };
-    check();
-    setInterval(check, UPDATE_CHECK_INTERVAL_MS).unref();
+    // Exponential backoff instead of a fixed six-hour poll: 5m, 15m, 1h, then a
+    // capped 6h, with jitter. A check that completes resets the schedule, and a
+    // background check is skipped while the machine is offline.
+    let checkAttempt = 0;
+
+    function scheduleNextCheck() {
+      const delay = nextCheckDelayMs(checkAttempt);
+      setTimeout(runScheduledCheck, delay).unref?.();
+      trace("updater:next-check", { delay, attempt: checkAttempt });
+    }
+
+    function runScheduledCheck() {
+      if (!require("electron").net.isOnline()) {
+        trace("updater:check-skipped-offline");
+        scheduleNextCheck();
+        return;
+      }
+      checkAttempt += 1;
+      void updater
+        .checkForUpdates()
+        .then(
+          // Reaching the feed is the success the backoff resets on, whether or
+          // not it found a new build.
+          () => {
+            checkAttempt = 0;
+          },
+          (error) => {
+            console.error("[updater] check failed:", error?.message ?? error);
+          },
+        )
+        .then(scheduleNextCheck);
+    }
+
+    // The first check runs immediately; everything after it is scheduled.
+    void updater.checkForUpdates().catch((error) => console.error("[updater] check failed:", error?.message ?? error));
+    scheduleNextCheck();
   }
 
   /**

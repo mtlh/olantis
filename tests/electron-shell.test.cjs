@@ -99,13 +99,15 @@ test("the startup mark is removed once the app view is revealed", () => {
 test("downloaded updates are handed to the app instead of a native dialog", () => {
   assert.doesNotMatch(main, /showMessageBox/, "a background update must not block the window");
   assert.match(main, /preload: path\.join\(__dirname, "app-preload\.cjs"\)/, "the app view needs the update bridge");
-  // The download is shown in the sidebar, then installed on its own: no prompt
-  // and no second click.
+  // The download is shown in the sidebar and installed on the next quit, or
+  // straight away when the restart control is clicked: no prompt, no timer.
   assert.match(
     main,
-    /"update-downloaded", \(info\) => \{[\s\S]*setUpdateStatus\("ready", info\?\.version\)[\s\S]*setTimeout\(installUpdate, UPDATE_RESTART_DELAY_MS\)/,
-    "a downloaded update must be shown, then relaunched into",
+    /"update-downloaded", \(info\) => dispatch\(\{ type: "download-complete", version: info\?\.version \?\? null \}\)/,
+    "a downloaded update must be handed to the app",
   );
+  assert.doesNotMatch(main, /setTimeout\(installUpdate/, "a download must not force a relaunch");
+  assert.match(main, /autoInstallOnAppQuit = true/);
   assert.match(main, /ipcMain\.handle\("olantis:update:status"/);
   assert.match(main, /ipcMain\.on\("olantis:update:restart"/);
   assert.match(main, /quitAndInstall\(true, true\)/, "restart keeps the normal install path");
@@ -116,12 +118,13 @@ test("downloaded updates are handed to the app instead of a native dialog", () =
   assert.match(appPreload, /"olantis:update:restart"/);
 });
 
-test("the update control is a desktop-only spinner, not a popover", () => {
+test("the update control stays a desktop-only button, not a popover", () => {
   const sidebar = read("src/components/Sidebar.tsx");
 
   assert.match(sidebar, /const updateButton = update\.desktop \?/, "the web app must not render an updater");
   assert.match(sidebar, /animate-spin/, "a check or download must spin the icon");
-  assert.doesNotMatch(sidebar, /Restart to update/, "the update popover is gone");
+  assert.match(sidebar, /"Restart to update"/, "a downloaded build waits for an explicit restart");
+  assert.doesNotMatch(sidebar, /Restarting to install/, "nothing relaunches on its own");
   assert.doesNotMatch(sidebar, /Check for updates<\/DropdownMenuItem>/, "there is no menu item to click");
 });
 
