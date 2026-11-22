@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { isAllowedNavigation, isExternalWebUrl } = require("../electron/url-policy.cjs");
+const { isAllowedNavigation, isExternalWebUrl, isSafeExternalUrl } = require("../electron/url-policy.cjs");
+const { isPermissionAllowed, installPermissionHandlers } = require("../electron/permissions.cjs");
 
 const productionUrl = "https://olantis.vercel.app";
 
@@ -57,4 +58,51 @@ test("only web links can be opened in the system browser", () => {
   assert.equal(isExternalWebUrl("http://example.com"), true);
   assert.equal(isExternalWebUrl("file:///etc/passwd"), false);
   assert.equal(isExternalWebUrl("javascript:alert(1)"), false);
+});
+
+test("external links may be web pages or mail drafts with an address", () => {
+  assert.equal(isSafeExternalUrl("https://example.com/pricing"), true);
+  assert.equal(isSafeExternalUrl("http://example.com"), true);
+  assert.equal(isSafeExternalUrl("mailto:hi@example.com"), true);
+  // An empty mail draft is not a link, and no other scheme reaches the OS.
+  assert.equal(isSafeExternalUrl("mailto:"), false);
+  assert.equal(isSafeExternalUrl("mailto:?subject=Olantis"), false);
+  assert.equal(isSafeExternalUrl("tel:+15551234567"), false);
+  assert.equal(isSafeExternalUrl("file:///etc/passwd"), false);
+  assert.equal(isSafeExternalUrl("javascript:alert(1)"), false);
+});
+
+test("notifications are granted only to the app's own origin", () => {
+  assert.equal(isPermissionAllowed("notifications", "https://olantis.vercel.app/dashboard", productionUrl), true);
+  // A provider page in the sign-in chain shares this session with the app.
+  assert.equal(isPermissionAllowed("notifications", "https://accounts.google.com/v3/signin", productionUrl), false);
+  assert.equal(isPermissionAllowed("camera", "https://olantis.vercel.app/dashboard", productionUrl), false);
+  assert.equal(isPermissionAllowed("clipboard-read", "https://olantis.vercel.app/dashboard", productionUrl), false);
+  assert.equal(isPermissionAllowed("notifications", "not a url", productionUrl), false);
+  assert.equal(isPermissionAllowed("notifications", undefined, productionUrl), false);
+});
+
+test("permission handlers deny by default and answer the capability query", () => {
+  const handlers = {};
+  const fakeSession = {
+    setPermissionRequestHandler: (handler) => {
+      handlers.request = handler;
+    },
+    setPermissionCheckHandler: (handler) => {
+      handlers.check = handler;
+    },
+  };
+
+  installPermissionHandlers({ session: fakeSession, appUrl: productionUrl });
+  assert.equal(typeof handlers.request, "function");
+  assert.equal(typeof handlers.check, "function");
+
+  const decisions = [];
+  handlers.request({}, "notifications", (granted) => decisions.push(granted), { requestingUrl: productionUrl });
+  handlers.request({}, "camera", (granted) => decisions.push(granted), { requestingUrl: productionUrl });
+  assert.deepEqual(decisions, [true, false]);
+
+  assert.equal(handlers.check({}, "notifications", productionUrl), true);
+  assert.equal(handlers.check({}, "microphone", productionUrl), false);
+  assert.equal(handlers.check({}, "notifications", "https://example.com"), false);
 });
