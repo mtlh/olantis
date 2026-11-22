@@ -1,5 +1,10 @@
 const desktop = window.olantisDesktop;
-const iconPath = new URLSearchParams(window.location.search).get("icon");
+const search = new URLSearchParams(window.location.search);
+const iconPath = search.get("icon");
+// The title bar layout differs per platform (shell.css): macOS keeps its native
+// traffic lights, so its custom window controls are hidden.
+const platform = search.get("platform");
+if (platform) document.documentElement.dataset.platform = platform;
 
 if (iconPath) {
   for (const id of ["brand-icon", "splash-icon"]) {

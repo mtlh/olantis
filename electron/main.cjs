@@ -253,6 +253,24 @@ if (!app.requestSingleInstanceLock()) {
     return { canGoBack: Boolean(history?.canGoBack()), canGoForward: Boolean(history?.canGoForward()) };
   });
 
+  // Zoom applies to the embedded app only: the shell page's title bar has fixed
+  // pixel dimensions and must stay at 1x (see electron/shell.css).
+  const ZOOM_MIN_LEVEL = -3;
+  const ZOOM_MAX_LEVEL = 3;
+  const ZOOM_STEP = 0.5;
+
+  function applyAppZoom(direction) {
+    if (!appView || appView.webContents.isDestroyed()) return;
+    const contents = appView.webContents;
+    if (direction === "reset") {
+      contents.setZoomLevel(0);
+      return;
+    }
+    const step = direction === "in" ? ZOOM_STEP : -ZOOM_STEP;
+    const level = Math.min(ZOOM_MAX_LEVEL, Math.max(ZOOM_MIN_LEVEL, contents.getZoomLevel() + step));
+    contents.setZoomLevel(level);
+  }
+
   function syncAppBounds() {
     if (!mainWindow || !appView) return;
     const { width, height } = mainWindow.getContentBounds();
@@ -267,6 +285,7 @@ if (!app.requestSingleInstanceLock()) {
   function installWindowControls() {
     const template = path.join(__dirname, "shell-preload.cjs");
     const shellHtml = path.join(__dirname, "shell.html");
+    const { buildContextMenuTemplate } = require("./context-menu.cjs");
 
     // The embedded app is the slow half of a launch, so its view is created and
     // pointed at the app before the shell window exists. The request, the
@@ -346,6 +365,41 @@ if (!app.requestSingleInstanceLock()) {
     for (const eventName of ["did-navigate", "did-navigate-in-page", "did-finish-load"]) {
       appView.webContents.on(eventName, sendNavigationState);
     }
+    // Cmd/Ctrl +/-/0 resize the page, not the window. The menu accelerators on
+    // macOS go through the same helper (electron/menu.cjs).
+    appView.webContents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown") return;
+      const accel = process.platform === "darwin" ? input.meta : input.control;
+      if (!accel || input.alt) return;
+      if (input.key === "0") {
+        event.preventDefault();
+        applyAppZoom("reset");
+      } else if (input.key === "+" || input.key === "=") {
+        event.preventDefault();
+        applyAppZoom("in");
+      } else if (input.key === "-" || input.key === "_") {
+        event.preventDefault();
+        applyAppZoom("out");
+      }
+    });
+    // Ctrl+wheel arrives as a zoom request rather than as a key press.
+    appView.webContents.on("zoom-changed", (event, direction) => {
+      event.preventDefault();
+      applyAppZoom(direction === "in" ? "in" : "out");
+    });
+    // A right click gets the platform's editing commands (and link actions) from
+    // electron/context-menu.cjs instead of Chromium's default page menu.
+    appView.webContents.on("context-menu", (event, params) => {
+      event.preventDefault();
+      const contents = appView?.webContents;
+      if (!mainWindow || mainWindow.isDestroyed() || !contents || contents.isDestroyed()) return;
+      const menu = Menu.buildFromTemplate(
+        buildContextMenuTemplate(params, {
+          inspectElement: () => contents.inspectElement(params.x, params.y),
+        }),
+      );
+      menu.popup({ window: mainWindow });
+    });
     // A reload starts with an empty renderer world, so hand it the update state
     // the shell already knows about.
     appView.webContents.on("did-finish-load", sendUpdateStatus);
@@ -383,12 +437,23 @@ if (!app.requestSingleInstanceLock()) {
         trace("view:navigate-failed", { message: error instanceof Error ? error.message : String(error) });
       });
 
+    // Geometry comes from the last session (electron/window-state.cjs): clamped
+    // to a display that is actually connected, and centred when there is no
+    // usable state to restore.
+    const windowState = require("./window-state.cjs");
+    const windowStateFile = path.join(app.getPath("userData"), "window-state.json");
+    const initialBounds = windowState.resolveInitialBounds(
+      windowState.readWindowState(windowStateFile),
+      require("electron").screen.getAllDisplays(),
+    );
     trace("shell:window-create");
     mainWindow = new BrowserWindow({
-      width: 1440,
-      height: 920,
-      minWidth: 900,
-      minHeight: 620,
+      x: initialBounds.x,
+      y: initialBounds.y,
+      width: initialBounds.width,
+      height: initialBounds.height,
+      minWidth: windowState.MIN_WINDOW_WIDTH,
+      minHeight: windowState.MIN_WINDOW_HEIGHT,
       // Created hidden and transparent, and only made opaque once the shell has
       // produced frames (see revealWindow). Windows 11 fills the client area of
       // a presented window with its own backdrop (#202020) until our first
@@ -398,7 +463,12 @@ if (!app.requestSingleInstanceLock()) {
       // first pixel the user sees is the shell's own #050507 title bar.
       show: false,
       opacity: 0,
-      frame: false,
+      // macOS keeps its native traffic lights inside this same title bar row
+      // (shell.css hides the custom controls there); elsewhere the frame is off
+      // and shell.html draws both the title bar and the window controls.
+      ...(process.platform === "darwin"
+        ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 15, y: 17 } }
+        : { frame: false }),
       backgroundColor: APP_BACKGROUND,
       title: "Olantis — Portfolio Dashboard",
       icon: iconPath,
@@ -417,6 +487,9 @@ if (!app.requestSingleInstanceLock()) {
     // load still reveals, so the window can never stay invisible.
     const revealWindow = () => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+      // A maximised last session is applied before the window is ever presented,
+      // so the first frame the user sees is already the maximised window.
+      if (initialBounds.maximized) mainWindow.maximize();
       // Shown while still fully transparent: Windows composites its window
       // backdrop into an invisible window, not onto the screen.
       mainWindow.show();
@@ -447,6 +520,29 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.on("resize", syncAppBounds);
     mainWindow.on("maximize", () => mainWindow.webContents.send("olantis:window:maximized", true));
     mainWindow.on("unmaximize", () => mainWindow.webContents.send("olantis:window:maximized", false));
+    // Geometry is saved on a debounce, so dragging or resizing does not write the
+    // disk on every pixel; closing flushes synchronously to keep the last state.
+    const persistWindowState = () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      windowState.writeWindowState(windowStateFile, {
+        ...mainWindow.getNormalBounds(),
+        maximized: mainWindow.isMaximized(),
+      });
+    };
+    let windowStateTimer;
+    const scheduleWindowStateSave = () => {
+      if (windowStateTimer) clearTimeout(windowStateTimer);
+      windowStateTimer = setTimeout(persistWindowState, 500);
+      windowStateTimer.unref?.();
+    };
+    for (const eventName of ["resize", "move", "maximize", "unmaximize"]) {
+      mainWindow.on(eventName, scheduleWindowStateSave);
+    }
+    mainWindow.on("close", () => {
+      if (windowStateTimer) clearTimeout(windowStateTimer);
+      windowStateTimer = undefined;
+      persistWindowState();
+    });
     if (STARTUP_TRACE) {
       mainWindow.webContents.once("did-finish-load", () => trace("shell:did-finish-load"));
       mainWindow.once("ready-to-show", () => trace("shell:ready-to-show"));
@@ -470,6 +566,9 @@ if (!app.requestSingleInstanceLock()) {
 
     const shellUrl = require("node:url").pathToFileURL(shellHtml);
     shellUrl.searchParams.set("icon", require("node:url").pathToFileURL(iconPath).href);
+    // shell.js turns this into document.documentElement.dataset.platform, which
+    // shell.css uses to hide the custom window controls on macOS.
+    shellUrl.searchParams.set("platform", process.platform);
     void mainWindow.loadURL(shellUrl.href);
 
     if (smokeTest) void runSmokeTest(shellReady, appReady);
@@ -626,8 +725,18 @@ if (!app.requestSingleInstanceLock()) {
         return { action: "deny" };
       });
     });
-    // The integrated toolbar replaces the platform menu/title bar.
-    Menu.setApplicationMenu(null);
+    // The shell and the app are dark-only, so native chrome (menus, scrollbars,
+    // form controls) must not follow a light OS theme.
+    require("electron").nativeTheme.themeSource = "dark";
+    // Windows and Linux draw their own title bar and window controls, so they
+    // keep no application menu; macOS keeps its native menu bar.
+    const { buildMenuTemplate } = require("./menu.cjs");
+    const platformMenu = buildMenuTemplate({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      actions: { zoom: applyAppZoom },
+    });
+    Menu.setApplicationMenu(platformMenu ? Menu.buildFromTemplate(platformMenu) : null);
     installWindowControls();
     trace("app:window-installed");
     startAutoUpdatesWhenIdle();

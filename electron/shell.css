@@ -128,6 +128,18 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* macOS draws its own traffic lights inset into this title bar row, so the
+   custom controls would only duplicate them. The extra padding keeps the brand
+   clear of the traffic lights. `platform` comes from shell.html's query string
+   (see shell.js). */
+:root[data-platform="darwin"] .window-controls {
+  display: none;
+}
+
+:root[data-platform="darwin"] .titlebar {
+  padding-left: 84px;
+}
+
 .window-button {
   display: grid;
   place-items: center;
