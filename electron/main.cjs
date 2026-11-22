@@ -171,6 +171,67 @@ if (!app.requestSingleInstanceLock()) {
     }
   }
 
+  // Reliability: a rotating file under the OS log directory, so a failure on a
+  // machine with no terminal still leaves a trail. Logging is best-effort and
+  // can never throw into the handler that reported the problem.
+  let logger;
+  let appErrorMessage = null;
+
+  function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  function startFileLogging() {
+    try {
+      const { createLogFile, createLogger } = require("./log.cjs");
+      logger = createLogger(createLogFile({ dir: app.getPath("logs") }), "main");
+    } catch (error) {
+      console.error("[main] file logging is unavailable:", errorMessage(error));
+    }
+  }
+
+  function logInfo(message, detail) {
+    if (logger) logger.info(message, detail);
+  }
+
+  function logWarn(message, detail) {
+    if (logger) logger.warn(message, detail);
+    else console.warn("[main]", message, detail ?? "");
+  }
+
+  function logError(message, detail) {
+    if (logger) logger.error(message, detail);
+    else console.error("[main]", message, detail ?? "");
+  }
+
+  // The error panel lives in the shell page, underneath the app view, so the
+  // view is hidden while the panel is up and put back once the app recovers.
+  function setAppError(message) {
+    const next = typeof message === "string" && message.length > 0 ? message : null;
+    if (next === appErrorMessage) return;
+    appErrorMessage = next;
+    if (appView && !appView.webContents.isDestroyed()) {
+      appView.setVisible(next === null && appRevealed);
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("olantis:app:error", { message: next });
+    }
+    if (next === null) logInfo("app error cleared");
+    else logWarn("app error shown", { message: next });
+  }
+
+  // Re-point the embedded app at the same destination a fresh launch would use.
+  // The entry URL is resolved per reload so a sign-in or sign-out is respected.
+  function reloadAppView() {
+    if (!appView || appView.webContents.isDestroyed()) return;
+    void homeUrl()
+      .then((url) => {
+        if (!appView || appView.webContents.isDestroyed()) return undefined;
+        return appView.webContents.loadURL(url);
+      })
+      .catch((error) => logError("app reload failed", { message: errorMessage(error) }));
+  }
+
   ipcMain.on("olantis:window:minimize", (event) => shellWindowFor(event)?.minimize());
   ipcMain.on("olantis:window:toggle-maximize", (event) => {
     const window = shellWindowFor(event);
@@ -183,6 +244,14 @@ if (!app.requestSingleInstanceLock()) {
   // The shell asks once after loading, so a reveal that happened before it was
   // listening still tears the startup mark down.
   ipcMain.handle("olantis:app:is-ready", (event) => Boolean(shellWindowFor(event)) && appRevealed);
+  // The error panel's Reload action. The shell only ever asks for this, never
+  // for an arbitrary URL.
+  ipcMain.on("olantis:app:reload", (event) => {
+    if (!shellWindowFor(event)) return;
+    logInfo("app reload requested from the shell");
+    setAppError(null);
+    reloadAppView();
+  });
 
   function appViewWindowFor(event) {
     if (!appView || appView.webContents.isDestroyed() || event.sender !== appView.webContents) return false;
@@ -340,9 +409,69 @@ if (!app.requestSingleInstanceLock()) {
     // that never reaches dom-ready.
     appView.webContents.once("dom-ready", revealApp);
     appView.webContents.once("did-finish-load", revealApp);
-    appView.webContents.on("did-fail-load", (_event, _code, _description, _url, isMainFrame) => {
-      if (isMainFrame) revealApp();
+
+    // Reliability: crashes, hangs and failed loads share one recovery path.
+    // nextRecoveryDelay bounds how often a crash loop may reload; failed loads
+    // use the same backoff table and are explained once the budget is spent.
+    const { RETRY_DELAYS_MS, isRetryableLoadError, nextRecoveryDelay, nextRetryDelay } = require("./recovery.cjs");
+    const recoverableReasons = new Set(["crashed", "oom", "killed", "abnormal-exit"]);
+    const recoveryAttempts = [];
+    const LOAD_ERROR_MESSAGE = "Olantis could not be reached. Check your connection, then reload.";
+    let loadRetries = 0;
+
+    // A failed main-frame load is retried with backoff, then explained. The view
+    // is revealed either way so the startup mark never sticks on a broken load.
+    appView.webContents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
+      if (!isMainFrame) return;
+      revealApp();
+      logWarn("app load failed", { code, description, url });
+      // -3 is ERR_ABORTED: a superseded navigation, not a failure to report.
+      if (code === -3) return;
+      const delayMs = isRetryableLoadError(code) ? nextRetryDelay(loadRetries) : null;
+      if (delayMs === null) {
+        logError("app load retries exhausted", { code, attempts: loadRetries });
+        setAppError(LOAD_ERROR_MESSAGE);
+        return;
+      }
+      loadRetries += 1;
+      logInfo("app load retry scheduled", { code, attempt: loadRetries, delayMs });
+      const retry = setTimeout(reloadAppView, delayMs);
+      retry.unref?.();
     });
+
+    appView.webContents.on("did-finish-load", () => {
+      loadRetries = 0;
+      setAppError(null);
+    });
+
+    // A dead renderer is reloaded, but only inside the recovery budget: a crash
+    // loop must end in the error panel, not in an endless relaunch.
+    appView.webContents.on("render-process-gone", (_event, details) => {
+      logError("app renderer gone", { reason: details?.reason, exitCode: details?.exitCode });
+      if (!recoverableReasons.has(details?.reason)) return;
+      const delayMs = RETRY_DELAYS_MS[Math.min(recoveryAttempts.length, RETRY_DELAYS_MS.length - 1)];
+      const decision = nextRecoveryDelay(recoveryAttempts, Date.now(), { delayMs });
+      if (!decision.recover) {
+        logError("app recovery budget exhausted", {
+          attempts: recoveryAttempts.length,
+          retryAfterMs: decision.delayMs,
+        });
+        setAppError("Olantis stopped unexpectedly and could not recover. Reload to try again.");
+        return;
+      }
+      recoveryAttempts.push(Date.now());
+      logWarn("app recovery reload scheduled", { attempt: recoveryAttempts.length, delayMs: decision.delayMs });
+      const recovery = setTimeout(reloadAppView, decision.delayMs);
+      recovery.unref?.();
+    });
+
+    // Never kill a slow renderer: a long task may still finish. The panel only
+    // offers a reload, and clears itself if the renderer answers again.
+    appView.webContents.on("unresponsive", () => {
+      logWarn("app view unresponsive");
+      setAppError("Olantis is taking too long to respond.");
+    });
+    appView.webContents.on("responsive", () => setAppError(null));
 
     appView.webContents.setWindowOpenHandler(({ url }) => {
       if (isAllowedNavigation(url, APP_URL, appView.webContents.getURL())) {
@@ -553,6 +682,14 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.once("ready-to-show", revealWindow);
     mainWindow.webContents.once("did-finish-load", revealWindow);
     mainWindow.webContents.once("did-fail-load", revealWindow);
+    // A shell that fails to load still reveals, but the reason belongs in the
+    // log: without it a white window on a user's machine is unexplainable.
+    mainWindow.webContents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
+      if (isMainFrame) logError("shell load failed", { code, description, url });
+    });
+    mainWindow.webContents.on("render-process-gone", (_event, details) => {
+      logError("shell renderer gone", { reason: details?.reason, exitCode: details?.exitCode });
+    });
     mainWindow.on("closed", () => {
       mainWindow = undefined;
       appView = undefined;
@@ -725,6 +862,8 @@ if (!app.requestSingleInstanceLock()) {
         return { action: "deny" };
       });
     });
+    startFileLogging();
+    logInfo("session started", { version: app.getVersion(), url: APP_URL, packaged: app.isPackaged });
     // The shell and the app are dark-only, so native chrome (menus, scrollbars,
     // form controls) must not follow a light OS theme.
     require("electron").nativeTheme.themeSource = "dark";

@@ -26,4 +26,10 @@ contextBridge.exposeInMainWorld("olantisDesktop", {
     ipcRenderer.on("olantis:window:maximized", listener);
     return () => ipcRenderer.removeListener("olantis:window:maximized", listener);
   },
+  onAppError: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("olantis:app:error", listener);
+    return () => ipcRenderer.removeListener("olantis:app:error", listener);
+  },
+  reloadApp: () => ipcRenderer.send("olantis:app:reload"),
 });
