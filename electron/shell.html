@@ -46,5 +46,13 @@
     <div class="splash" id="splash" aria-hidden="true">
       <img id="splash-icon" alt="" />
     </div>
+
+    <!-- Recovery panel: shown by the main process when the embedded app cannot
+         load or has crashed past its recovery budget. The app view covers this
+         area, so main hides the view while the panel is up. -->
+    <div class="app-error" id="app-error" hidden role="alert">
+      <p class="app-error-message" id="app-error-message"></p>
+      <button class="app-error-action" id="app-error-reload" type="button">Reload</button>
+    </div>
   </body>
 </html>

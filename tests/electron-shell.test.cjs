@@ -1,8 +1,11 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
+const { createLogFile, createLogger } = require("../electron/log.cjs");
+const { nextRecoveryDelay } = require("../electron/recovery.cjs");
 
 const root = path.join(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -127,4 +130,94 @@ test("the update control stays a desktop-only button, not a popover", () => {
   assert.doesNotMatch(sidebar, /Restarting to install/, "nothing relaunches on its own");
   assert.doesNotMatch(sidebar, /Check for updates<\/DropdownMenuItem>/, "there is no menu item to click");
 });
+
+test("a first renderer failure schedules a short recovery reload", () => {
+  // Nothing has been attempted yet: reload once, quickly.
+  assert.deepEqual(nextRecoveryDelay([], 1_000), { recover: true, delayMs: 500 });
+  // The caller can pass its own backoff step.
+  assert.deepEqual(nextRecoveryDelay([], 1_000, { delayMs: 1500 }), { recover: true, delayMs: 1500 });
+});
+
+test("recovery stops once the attempt budget inside the window is spent", () => {
+  const now = 10_000;
+  const attempts = [now - 4_000, now - 2_000, now - 500];
+
+  const decision = nextRecoveryDelay(attempts, now);
+
+  assert.equal(decision.recover, false, "a crash loop must not reload forever");
+  // The oldest attempt leaves the 60s window first: 60s minus its 4s of age.
+  assert.equal(decision.delayMs, 56_000);
+});
+
+test("attempts that aged out of the window stop counting", () => {
+  const now = 100_000;
+  const attempts = [now - 61_000, now - 65_000, now - 70_000];
+
+  assert.deepEqual(nextRecoveryDelay(attempts, now), { recover: true, delayMs: 500 });
+  // Custom limits are honoured, which is what keeps the helper testable.
+  assert.equal(nextRecoveryDelay([now - 1_000, now - 2_000], now, { maxAttempts: 2 }).recover, false);
+});
+
+test("the log file rotates and the live file stays bounded", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "olantis-log-"));
+  try {
+    const logFile = createLogFile({ dir, name: "main.log", maxBytes: 200, maxFiles: 3 });
+    const line = "x".repeat(99);
+
+    for (let index = 0; index < 6; index += 1) logFile.write(line);
+
+    assert.ok(fs.existsSync(path.join(dir, "main.log.1")), "the previous file must be kept as .1");
+    assert.ok(fs.existsSync(path.join(dir, "main.log.2")), "rotation keeps the last two files");
+    assert.ok(
+      fs.statSync(path.join(dir, "main.log")).size <= 200,
+      "the live file must never grow past maxBytes",
+    );
+    assert.ok(!fs.existsSync(path.join(dir, "main.log.3")), "maxFiles caps the number kept");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the logger prefixes the timestamp, level and scope", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "olantis-log-"));
+  try {
+    const logger = createLogger(createLogFile({ dir, name: "main.log" }), "main");
+    logger.info("session started", { version: "0.1.0" });
+
+    const text = fs.readFileSync(path.join(dir, "main.log"), "utf8");
+    assert.match(text, /^\d{4}-\d{2}-\d{2}T[\d:.]+Z \[info\] \[main\] session started \{"version":"0.1.0"\}$/m);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the shell has a hidden recovery panel wired to a reload channel", () => {
+  assert.match(shell, /id="app-error"[^>]*hidden/, "the panel must start hidden");
+  assert.match(shell, /id="app-error-message"/);
+  assert.match(shell, /id="app-error-reload"/);
+  assert.match(shellCss, /\.app-error\s*\{/);
+  assert.match(shellCss, /\.app-error\[hidden\]\s*\{[^}]*display:\s*none/, "hidden must win over the panel layout");
+
+  const shellJs = read("electron/shell.js");
+  const shellPreload = read("electron/shell-preload.cjs");
+
+  assert.match(shellJs, /desktop\.onAppError\(showAppError\)/);
+  assert.match(shellJs, /desktop\.reloadApp\(\)/);
+  assert.match(shellPreload, /onAppError:\s*\(callback\)/);
+  assert.match(shellPreload, /reloadApp:\s*\(\)\s*=>\s*ipcRenderer\.send\("olantis:app:reload"\)/);
+  assert.match(main, /ipcMain\.on\("olantis:app:reload"/);
+  assert.match(main, /send\("olantis:app:error", \{ message: next \}\)|send\("olantis:app:error", \{ message/);
+});
+
+test("the main process retries failed loads and recovers dead renderers", () => {
+  assert.match(main, /"did-fail-load"[\s\S]*isRetryableLoadError\(code\)[\s\S]*setTimeout\(reloadAppView/);
+  assert.match(main, /"render-process-gone"/);
+  assert.match(main, /nextRecoveryDelay\(recoveryAttempts, Date\.now\(\)/);
+  // A hung renderer is reported, never killed outright.
+  assert.match(main, /"unresponsive"/);
+  assert.doesNotMatch(main, /webContents\.forcefullyCrashRenderer/);
+  // Startup opens the rotating log after Electron is ready, never before.
+  assert.match(main, /app\.whenReady\(\)\.then\(\(\) => \{[\s\S]*startFileLogging\(\)/);
+});
+
 

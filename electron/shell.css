@@ -208,3 +208,57 @@ body {
   object-fit: contain;
   border-radius: 20px;
 }
+
+/* Recovery panel. Covers the same area as the splash, below the title bar; the
+   main process hides the app view while it is up, so these styles are what the
+   user sees when the embedded app cannot recover on its own. */
+.app-error {
+  position: fixed;
+  top: 46px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  padding: 32px;
+  text-align: center;
+  background: #050507;
+}
+
+/* The author `display` above would otherwise beat the hidden attribute. */
+.app-error[hidden] {
+  display: none;
+}
+
+.app-error-message {
+  margin: 0;
+  max-width: 420px;
+  color: #c4c4cb;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.app-error-action {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4f4f5;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 16px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.app-error-action:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.app-error-action:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 2px;
+}

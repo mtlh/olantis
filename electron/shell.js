@@ -62,3 +62,17 @@ function updateMaximizeButton(maximized) {
 
 desktop.isMaximized().then(updateMaximizeButton);
 desktop.onMaximizedChange(updateMaximizeButton);
+
+// Recovery panel: main sends the reason when the embedded app fails past its
+// retry budget or its renderer has gone, and a null message once it is healthy
+// again. Reload asks main to point the view at the entry URL once more.
+const errorPanel = document.getElementById("app-error");
+const errorPanelMessage = document.getElementById("app-error-message");
+
+function showAppError({ message }) {
+  errorPanel.hidden = !message;
+  if (message) errorPanelMessage.textContent = message;
+}
+
+desktop.onAppError(showAppError);
+document.getElementById("app-error-reload").addEventListener("click", () => desktop.reloadApp());
