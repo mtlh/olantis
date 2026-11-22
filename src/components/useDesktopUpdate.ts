@@ -3,7 +3,15 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 /** Update state pushed by electron/main.cjs through electron/app-preload.cjs. */
-type DesktopUpdatePayload = { state: string; version: string | null };
+type DesktopUpdatePayload = {
+  state: string;
+  version: string | null;
+  /** Download progress (0-100) while a build is downloading, else null. */
+  percent?: number | null;
+  enabled?: boolean;
+  canRetry?: boolean;
+  errorContext?: "check" | "download" | "install" | null;
+};
 
 type DesktopBridge = {
   updateStatus?: () => Promise<DesktopUpdatePayload>;
@@ -12,7 +20,7 @@ type DesktopBridge = {
   onUpdateStatus?: (callback: (payload: DesktopUpdatePayload) => void) => (() => void) | void;
 };
 
-const IDLE: DesktopUpdatePayload = { state: "idle", version: null };
+const IDLE: DesktopUpdatePayload = { state: "idle", version: null, percent: null, enabled: false, canRetry: false, errorContext: null };
 
 function desktopBridge(): DesktopBridge | undefined {
   if (typeof window === "undefined") return undefined;
@@ -64,6 +72,8 @@ export function useDesktopUpdate() {
     desktop,
     ready: payload.state === "ready",
     version: payload.version,
+    /** Download progress (0-100) while a build downloads; null otherwise. */
+    percent: payload.percent ?? null,
     /** A check or a download is in flight, so the control spins instead of idling. */
     busy: checking || payload.state === "checking" || payload.state === "downloading",
     /** Ask the desktop shell to check now. False when there is no updater (web). */

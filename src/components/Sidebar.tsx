@@ -383,15 +383,16 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
     void update.check();
   };
 
+  const updatePercent = update.percent == null ? null : Math.round(update.percent);
   const updateLabel = update.ready
-    ? `Updating to ${update.version ? `v${update.version}` : "the new version"} and restarting…`
+    ? update.version ? `Restart to update to v${update.version}` : "Restart to update"
     : update.busy
-      ? "Checking for updates…"
+      ? updatePercent == null ? "Checking for updates…" : `Downloading update… ${updatePercent}%`
       : "Check for updates";
 
-  // Desktop only: the icon spins while a check or download runs, then shows the
-  // new version and relaunches into it. The browser has no updater at all, so
-  // the web app gets no control.
+  // Desktop only: the icon spins while a check or download runs, and a finished
+  // download waits for an explicit restart (it also installs on the next quit).
+  // The browser has no updater at all, so the web app gets no control.
   const updateButton = update.desktop ? (
     <Button
       variant="ghost"
@@ -429,8 +430,8 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
           <div className="my-1 h-px w-6 bg-white/10" />
           {update.desktop && withTip(
-            update.ready ? "Update ready" : update.busy ? "Checking for updates" : "Updates",
-            update.ready ? "Restarting to install" : update.busy ? "Looking for a new build" : "Check for updates",
+            update.ready ? "Update ready" : update.busy ? (updatePercent == null ? "Checking for updates" : "Downloading update") : "Updates",
+            update.ready ? "Restart to update" : update.busy ? (updatePercent == null ? "Looking for a new build" : `${updatePercent}% downloaded`) : "Check for updates",
             updateButton,
             [{ label: "Tickers updated", value: lastRefreshLabel ?? "Not yet" }],
           )}
