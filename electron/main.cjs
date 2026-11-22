@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const path = require("node:path");
 const { app, BrowserWindow, Menu, WebContentsView, ipcMain, session, shell } = require("electron");
-const { isAllowedNavigation, isExternalWebUrl } = require("./url-policy.cjs");
+const { isAllowedNavigation, isSafeExternalUrl } = require("./url-policy.cjs");
 const { resolveEntryUrl } = require("./entry-url.cjs");
 
 const DEFAULT_APP_URL = "https://olantis.vercel.app";
@@ -158,7 +158,11 @@ if (!app.requestSingleInstanceLock()) {
 
   function shellWindowFor(event) {
     const window = BrowserWindow.fromWebContents(event.sender);
-    return window === mainWindow ? window : null;
+    if (!window || window !== mainWindow || window.webContents.isDestroyed()) return null;
+    // Only the shell page's own top-level frame may drive the window: a remote
+    // iframe, or any other contents that somehow reached this channel, is not
+    // the title bar.
+    return event.senderFrame === window.webContents.mainFrame ? window : null;
   }
 
   async function tracePageMetrics(label) {
@@ -185,7 +189,10 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle("olantis:app:is-ready", (event) => Boolean(shellWindowFor(event)) && appRevealed);
 
   function appViewWindowFor(event) {
-    return Boolean(appView) && !appView.webContents.isDestroyed() && event.sender === appView.webContents;
+    if (!appView || appView.webContents.isDestroyed() || event.sender !== appView.webContents) return false;
+    // The update bridge belongs to the app page itself, not to a frame it
+    // embeds: a third-party iframe must not read or trigger an install.
+    return event.senderFrame === appView.webContents.mainFrame;
   }
 
   ipcMain.handle("olantis:update:status", (event) => (appViewWindowFor(event) ? updateStatus : { state: "idle", version: null }));
@@ -323,7 +330,7 @@ if (!app.requestSingleInstanceLock()) {
     appView.webContents.setWindowOpenHandler(({ url }) => {
       if (isAllowedNavigation(url, APP_URL, appView.webContents.getURL())) {
         void appView.webContents.loadURL(url);
-      } else if (isExternalWebUrl(url)) {
+      } else if (isSafeExternalUrl(url)) {
         void shell.openExternal(url);
       }
       return { action: "deny" };
@@ -332,7 +339,7 @@ if (!app.requestSingleInstanceLock()) {
     const handleAppNavigation = (event, url) => {
       if (isAllowedNavigation(url, APP_URL, appView.webContents.getURL())) return;
       event.preventDefault();
-      if (isExternalWebUrl(url)) void shell.openExternal(url);
+      if (isSafeExternalUrl(url)) void shell.openExternal(url);
     };
     appView.webContents.on("will-navigate", handleAppNavigation);
     appView.webContents.on("will-redirect", handleAppNavigation);
@@ -567,6 +574,22 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     trace("app:ready");
+    // Permissions are scoped to the app's origin, and the default is deny: the
+    // sign-in chain runs in this session, so a provider page must not be able to
+    // reach the camera, the microphone or the clipboard.
+    const { installPermissionHandlers } = require("./permissions.cjs");
+    installPermissionHandlers({ session: session.defaultSession, appUrl: APP_URL });
+    // Backstop for every web contents this process creates. The app view below
+    // installs its own window-open handler, which is the one that decides where
+    // Olantis links go; this only keeps anything else from opening a window or
+    // embedding a <webview>.
+    app.on("web-contents-created", (_event, contents) => {
+      contents.on("will-attach-webview", (event) => event.preventDefault());
+      contents.setWindowOpenHandler(({ url }) => {
+        if (isSafeExternalUrl(url)) void shell.openExternal(url);
+        return { action: "deny" };
+      });
+    });
     // The integrated toolbar replaces the platform menu/title bar.
     Menu.setApplicationMenu(null);
     installWindowControls();

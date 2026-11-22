@@ -66,4 +66,18 @@ function isExternalWebUrl(candidate) {
   }
 }
 
-module.exports = { isAllowedNavigation, isExternalWebUrl };
+// What may be handed to the OS through shell.openExternal: a web page or a mail
+// draft with a real address. Everything else (tel:, file:, javascript:, custom
+// protocol handlers) stays inside the app as a denied navigation.
+function isSafeExternalUrl(candidate) {
+  try {
+    const { protocol, pathname } = new URL(candidate);
+    if (protocol === "https:" || protocol === "http:") return true;
+    // "mailto:" with nothing after the colon is an empty draft, not a link.
+    return protocol === "mailto:" && pathname.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { isAllowedNavigation, isExternalWebUrl, isSafeExternalUrl };
