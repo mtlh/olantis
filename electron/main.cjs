@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const path = require("node:path");
-const { app, BrowserWindow, Menu, WebContentsView, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, WebContentsView, ipcMain, net, session, shell } = require("electron");
 const { isAllowedNavigation, isSafeExternalUrl } = require("./url-policy.cjs");
 const { resolveEntryUrl } = require("./entry-url.cjs");
+const { RELEASES_API_URL, normalizeReleaseFeed } = require("./release-feed.cjs");
 
 const DEFAULT_APP_URL = "https://olantis.vercel.app";
 const APP_URL = process.env.OLANTIS_ELECTRON_URL || DEFAULT_APP_URL;
@@ -24,16 +25,10 @@ const iconPath = app.isPackaged
 // helper is a no-op otherwise, so the shipped app pays nothing for it.
 const STARTUP_TRACE = Boolean(Number(process.env.OLANTIS_STARTUP_TRACE || 0));
 const STARTUP_TRACE_FILE = process.env.OLANTIS_STARTUP_TRACE_FILE || "";
-// Dev-only switch for reviewing the update flow without publishing a release:
-// OLANTIS_UPDATE_PREVIEW=available|downloading|ready|error seeds the sidebar's
-// update state in an unpackaged shell. A packaged app ignores it.
-const UPDATE_PREVIEW_STATE = app.isPackaged ? "" : process.env.OLANTIS_UPDATE_PREVIEW || "";
-const UPDATE_PREVIEW_NOTES = `## What's Changed
-* feat: show the update changelog before relaunching by @mtlh in https://github.com/mtlh/olantis/pull/131
-* fix: keep sidebar selections instant by @mtlh in https://github.com/mtlh/olantis/pull/129
-* chore: upgrade all dependencies to latest by @mtlh in https://github.com/mtlh/olantis/pull/130
-
-**Full Changelog**: https://github.com/mtlh/olantis/compare/desktop-136...desktop-137`;
+// Dev-only switch for reviewing the recent-changes panel without hitting
+// GitHub: OLANTIS_CHANGES_PREVIEW=1 seeds a small release feed in an
+// unpackaged shell. A packaged app ignores it.
+const CHANGES_PREVIEW = !app.isPackaged && Boolean(Number(process.env.OLANTIS_CHANGES_PREVIEW || 0));
 // Wait this long after DOM ready before reading the page's paint timings: the
 // first frame of a freshly revealed view is composited after the load event.
 const PAINT_METRICS_DELAY_MS = 500;
@@ -86,10 +81,6 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow;
   let appView;
   let appRevealed = false;
-  const { createUpdateState, nextCheckDelayMs, reduceUpdate, toUpdateStatusPayload } = require("./update-machine.cjs");
-  // Surfaced in the app's update control through app-preload.cjs.
-  let updateState = createUpdateState({ currentVersion: app.getVersion(), enabled: app.isPackaged });
-  let updaterInstance;
 
   app.on("second-instance", () => {
     if (!mainWindow) return;
@@ -265,29 +256,21 @@ if (!app.requestSingleInstanceLock()) {
 
   function appViewWindowFor(event) {
     if (!appView || appView.webContents.isDestroyed() || event.sender !== appView.webContents) return false;
-    // The update bridge belongs to the app page itself, not to a frame it
-    // embeds: a third-party iframe must not read or trigger an install.
+    // The recent-changes bridge belongs to the app page itself, not to a frame
+    // it embeds: a third-party iframe must not read the release feed.
     return event.senderFrame === appView.webContents.mainFrame;
   }
 
-  ipcMain.handle("olantis:update:status", (event) =>
-    toUpdateStatusPayload(appViewWindowFor(event) ? updateState : createUpdateState({ enabled: false })),
-  );
-  // Manual "check for updates" from the sidebar. The periodic check keeps
-  // running on its own; this just lets someone ask early. It resolves once the
-  // check finishes, which is exactly how long the control spins.
-  ipcMain.handle("olantis:update:check", async (event) => {
-    if (!appViewWindowFor(event) || !updaterInstance) return toUpdateStatusPayload(updateState);
+  // Manual "refresh" from the sidebar. It only reads recent published changes:
+  // there is no download, no install and no way to restart the app from here.
+  ipcMain.handle("olantis:changes:check", async (event) => {
+    if (!appViewWindowFor(event)) return emptyChangesPayload();
     try {
-      await updaterInstance.checkForUpdates();
+      return await fetchRecentChanges();
     } catch (error) {
-      console.error("[updater] check failed:", error?.message ?? error);
+      logError("recent changes check failed", { message: errorMessage(error) });
+      throw new Error("Could not reach GitHub releases.");
     }
-    return toUpdateStatusPayload(updateState);
-  });
-  ipcMain.on("olantis:update:restart", (event) => {
-    if (!appViewWindowFor(event)) return;
-    installUpdate();
   });
 
   function navigationHistory() {
@@ -376,7 +359,7 @@ if (!app.requestSingleInstanceLock()) {
     trace("view:create");
     appView = new WebContentsView({
       webPreferences: {
-        // Only the update bridge is exposed to the remote page.
+        // Only the recent-changes bridge is exposed to the remote page.
         preload: path.join(__dirname, "app-preload.cjs"),
         contextIsolation: true,
         nodeIntegration: false,
@@ -539,9 +522,6 @@ if (!app.requestSingleInstanceLock()) {
       );
       menu.popup({ window: mainWindow });
     });
-    // A reload starts with an empty renderer world, so hand it the update state
-    // the shell already knows about.
-    appView.webContents.on("did-finish-load", sendUpdateStatus);
 
     if (STARTUP_TRACE) {
       appView.webContents.on("did-start-loading", () => trace("view:did-start-loading"));
@@ -721,186 +701,63 @@ if (!app.requestSingleInstanceLock()) {
     if (smokeTest) void runSmokeTest(shellReady, appReady);
   }
 
-  function sendUpdateStatus() {
-    if (!appView || appView.webContents.isDestroyed()) return;
-    appView.webContents.send("olantis:update:status", toUpdateStatusPayload(updateState));
-  }
-
-  /** Fold one updater event into the reducer, then tell the page what changed. */
-  function dispatchUpdate(event) {
-    updateState = reduceUpdate(updateState, event);
-    sendUpdateStatus();
+  function emptyChangesPayload() {
+    return { currentVersion: app.getVersion(), releases: [], checkedAt: null };
   }
 
   /**
-   * Quit, apply the downloaded build and relaunch. This only runs when someone
-   * clicks the sidebar's restart control: there is no timer that forces it.
+   * A fixed feed for reviewing the panel in an unpackaged shell without hitting
+   * GitHub. Screenshots and manual checks use OLANTIS_CHANGES_PREVIEW=1; a
+   * packaged app can never be steered by the env var.
    */
-  function installUpdate() {
-    if (updateState.status !== "downloaded" || !updaterInstance) return;
-    let launched = false;
-    try {
-      launched = updaterInstance.quitAndInstall(true, true);
-    } catch (error) {
-      console.error("[updater] install failed:", error?.message ?? error);
-    }
-    // A false return means the installer never started, but the build is still
-    // on disk, so the control offers another restart instead of stranding it.
-    if (!launched) dispatchUpdate({ type: "install-failed", at: Date.now() });
+  function previewChanges() {
+    return {
+      currentVersion: app.getVersion(),
+      checkedAt: new Date().toISOString(),
+      releases: [
+        {
+          version: "0.1.137",
+          title: "Olantis Desktop 137",
+          publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          url: "https://github.com/mtlh/olantis/releases",
+          notes: [
+            "feat: show recent changes on a manual refresh",
+            "fix: never restart the desktop app for an update",
+            "fix: keep portfolio prices fresh after a sync",
+          ],
+        },
+        {
+          version: "0.1.136",
+          title: "Olantis Desktop 136",
+          publishedAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+          url: "https://github.com/mtlh/olantis/releases",
+          notes: [
+            "feat: collapse the sidebar to icons",
+            "fix: preserve the selected holding across pages",
+          ],
+        },
+      ],
+    };
   }
 
-  function startAutoUpdates() {
-    // Auto-updates are resolved by electron-updater from the published GitHub
-    // release (see build.publish in package.json); skip them in dev runs.
-    if (!app.isPackaged) return;
-
-    let updater;
-    try {
-      trace("updater:require-start");
-      ({ autoUpdater: updater } = require("electron-updater"));
-      trace("updater:required");
-    } catch (error) {
-      console.error("[updater] electron-updater is unavailable:", error?.message ?? error);
-      dispatchUpdate({ type: "disable" });
-      return;
-    }
-
-    updaterInstance = updater;
-    updater.logger = console;
-    // Download in the background and install on the next quit. Nothing relaunches
-    // the app underneath someone who is reading their portfolio.
-    updater.autoDownload = true;
-    updater.autoInstallOnAppQuit = true;
-
-    const dispatch = (event) => dispatchUpdate({ ...event, at: Date.now() });
-    updater.on("error", (error) => {
-      console.error("[updater]", error?.message ?? error);
-      // The reducer decides whether this was a check or a download failure.
-      dispatch({ type: "check-failed" });
+  /**
+   * Read the public release feed. Nothing is downloaded or installed: the
+   * desktop shell only changes when the Electron code does, while the deployed
+   * site updates on its own, so the panel is a changelog rather than an
+   * updater.
+   */
+  async function fetchRecentChanges() {
+    if (CHANGES_PREVIEW) return previewChanges();
+    const response = await net.fetch(RELEASES_API_URL, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "Olantis-Desktop",
+      },
+      signal: AbortSignal.timeout(10_000),
     });
-    updater.on("checking-for-update", () => dispatch({ type: "check-start" }));
-    updater.on("update-available", (info) =>
-      dispatch({
-        type: "update-available",
-        version: info?.version ?? null,
-        // The GitHub release body is what the changelog panel lists.
-        releaseNotes: info?.releaseNotes ?? null,
-        releaseDate: info?.releaseDate ?? null,
-      }),
-    );
-    updater.on("update-not-available", () => dispatch({ type: "no-update" }));
-    updater.on("download-progress", (progress) => dispatch({ type: "download-progress", percent: progress?.percent ?? null }));
-    updater.on("update-downloaded", (info) =>
-      dispatch({
-        type: "download-complete",
-        version: info?.version ?? null,
-        releaseNotes: info?.releaseNotes ?? null,
-        releaseDate: info?.releaseDate ?? null,
-      }),
-    );
-
-    // Exponential backoff instead of a fixed six-hour poll: 5m, 15m, 1h, then a
-    // capped 6h, with jitter. A check that completes resets the schedule, and a
-    // background check is skipped while the machine is offline.
-    let checkAttempt = 0;
-
-    function scheduleNextCheck() {
-      const delay = nextCheckDelayMs(checkAttempt);
-      setTimeout(runScheduledCheck, delay).unref?.();
-      trace("updater:next-check", { delay, attempt: checkAttempt });
-    }
-
-    function runScheduledCheck() {
-      if (!require("electron").net.isOnline()) {
-        trace("updater:check-skipped-offline");
-        scheduleNextCheck();
-        return;
-      }
-      checkAttempt += 1;
-      void updater
-        .checkForUpdates()
-        .then(
-          // Reaching the feed is the success the backoff resets on, whether or
-          // not it found a new build.
-          () => {
-            checkAttempt = 0;
-          },
-          (error) => {
-            console.error("[updater] check failed:", error?.message ?? error);
-          },
-        )
-        .then(scheduleNextCheck);
-    }
-
-    // The first check runs immediately; everything after it is scheduled.
-    void updater.checkForUpdates().catch((error) => console.error("[updater] check failed:", error?.message ?? error));
-    scheduleNextCheck();
-  }
-
-  /**
-   * Paint the update flow in an unpackaged shell so its changelog, progress and
-   * restart states can be reviewed without publishing a release. Like the real
-   * updater this is skipped in packaged builds.
-   */
-  function startUpdatePreview() {
-    if (!UPDATE_PREVIEW_STATE) return;
-    const version = "0.1.137";
-    const steps = {
-      available: [{ type: "update-available", version }],
-      downloading: [
-        { type: "update-available", version },
-        { type: "download-progress", percent: 63 },
-      ],
-      ready: [
-        { type: "update-available", version },
-        { type: "download-progress", percent: 100 },
-        { type: "download-complete", version },
-      ],
-      error: [
-        { type: "update-available", version },
-        { type: "check-failed" },
-      ],
-    }[UPDATE_PREVIEW_STATE];
-    if (!steps) return;
-    for (const step of steps) {
-      dispatchUpdate({
-        ...step,
-        releaseNotes: UPDATE_PREVIEW_NOTES,
-        releaseDate: new Date().toISOString(),
-        at: Date.now(),
-      });
-    }
-  }
-
-  /**
-   * Start the updater only once the app has had its first paint. Requiring
-   * electron-updater pulls in ~200ms of synchronous module loading, and its
-   * first check competes with the launch itself for disk and network — both
-   * were landing on the critical path when this ran straight from whenReady.
-   */
-  function startAutoUpdatesWhenIdle() {    if (!app.isPackaged) return;
-
-    let started = false;
-    const start = () => {
-      if (started) return;
-      started = true;
-      startAutoUpdates();
-    };
-
-    if (!appView) {
-      start();
-      return;
-    }
-    const idle = () => {
-      const handle = setTimeout(start, 1500);
-      handle.unref?.();
-    };
-    if (appView.webContents.isLoadingMainFrame()) appView.webContents.once("did-finish-load", idle);
-    else idle();
-    // The app page can stall (offline, sign-in); never hold the updater back
-    // forever, and never let it land inside the first fifth of a second.
-    const fallback = setTimeout(start, 6000);
-    fallback.unref?.();
+    if (!response.ok) throw new Error(`GitHub responded with ${response.status}`);
+    const releases = normalizeReleaseFeed(await response.json());
+    return { currentVersion: app.getVersion(), releases, checkedAt: new Date().toISOString() };
   }
 
   app.whenReady().then(() => {
@@ -937,8 +794,6 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(platformMenu ? Menu.buildFromTemplate(platformMenu) : null);
     installWindowControls();
     trace("app:window-installed");
-    startUpdatePreview();
-    startAutoUpdatesWhenIdle();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) installWindowControls();
     });

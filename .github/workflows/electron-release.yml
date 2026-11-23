@@ -13,7 +13,6 @@ on:
       - "public/brand/**"
       - "scripts/electron-dev.mjs"
       - "scripts/run-electron-builder.mjs"
-      - "scripts/verify-electron-update-manifest.mjs"
       - "package.json"
       - "package-lock.json"
   # Manual escape hatch for rebuilding installers from an unchanged master.
@@ -83,8 +82,6 @@ jobs:
             release/*.exe
             release/*.AppImage
             release/*.deb
-            release/*.blockmap
-            release/latest*.yml
           )
           if [ ${#files[@]} -eq 0 ]; then
             echo "No distributables found in release/" >&2

@@ -99,52 +99,42 @@ test("the startup mark is removed once the app view is revealed", () => {
   assert.match(read("electron/shell.js"), /getElementById\("splash"\)\?\.remove\(\)/);
 });
 
-test("downloaded updates are handed to the app instead of a native dialog", () => {
-  assert.doesNotMatch(main, /showMessageBox/, "a background update must not block the window");
-  assert.match(main, /preload: path\.join\(__dirname, "app-preload\.cjs"\)/, "the app view needs the update bridge");
-  // The download is shown in the sidebar and installed on the next quit, or
-  // straight away when the restart control is clicked: no prompt, no timer.
-  assert.match(
-    main,
-    /"update-downloaded", \(info\) =>\s*dispatch\(\{[\s\S]*?type: "download-complete"[\s\S]*?version: info\?\.version \?\? null[\s\S]*?releaseNotes: info\?\.releaseNotes \?\? null/,
-    "a downloaded update must carry its changelog into the app",
-  );
-  assert.match(main, /releaseNotes: info\?\.releaseNotes \?\? null/);
-  assert.doesNotMatch(main, /setTimeout\(installUpdate/, "a download must not force a relaunch");
-  assert.match(main, /autoInstallOnAppQuit = true/);
-  assert.match(main, /ipcMain\.handle\("olantis:update:status"/);
-  assert.match(main, /ipcMain\.on\("olantis:update:restart"/);
-  assert.match(main, /quitAndInstall\(true, true\)/, "restart keeps the normal install path");
+test("the shell never updates or restarts itself", () => {
+  assert.doesNotMatch(main, /electron-updater/, "no auto-updater module is loaded");
+  assert.doesNotMatch(main, /quitAndInstall/, "nothing relaunches the app");
+  assert.doesNotMatch(main, /autoInstallOnAppQuit/, "nothing installs behind the user's back");
+  assert.doesNotMatch(main, /olantis:update:restart/, "the page cannot trigger a restart");
+  assert.doesNotMatch(main, /showMessageBox/, "the shell never blocks the window with an update prompt");
+  // The recent-changes read is the only thing bridged into the app page.
+  assert.match(main, /net\.fetch\(RELEASES_API_URL/);
+  assert.match(main, /ipcMain\.handle\("olantis:changes:check"/);
 
   const appPreload = read("electron/app-preload.cjs");
   assert.match(appPreload, /exposeInMainWorld\("olantisDesktop"/);
-  assert.match(appPreload, /"olantis:update:status"/);
-  assert.match(appPreload, /"olantis:update:restart"/);
+  assert.match(appPreload, /recentChanges: \(\) => ipcRenderer\.invoke\("olantis:changes:check"\)/);
+  assert.doesNotMatch(appPreload, /restartToUpdate|checkForUpdates/);
 });
 
-test("the update control shows the changelog before the explicit restart", () => {
+test("the refresh control shows recent releases with timestamps", () => {
   const sidebar = read("src/components/Sidebar.tsx");
-  const panel = read("src/components/DesktopUpdatePanel.tsx");
+  const panel = read("src/components/DesktopChangesPanel.tsx");
 
-  assert.match(sidebar, /const updateButton = update\.desktop \?/, "the web app must not render an updater");
-  assert.match(sidebar, /update\.offered/, "an offered update opens its changelog instead of restarting");
-  assert.match(sidebar, /DesktopUpdatePanel/, "the changelog panel is mounted by the update control");
-  assert.match(sidebar, /UpdateProgressRing/, "the icon shows the download progress");
-  assert.match(panel, /What&apos;s changed/);
-  assert.match(panel, /notes\.map/, "the commits are listed");
-  assert.match(panel, /Restart to update/, "a downloaded build waits for an explicit restart");
-  assert.match(panel, /Try again/, "a failed update can be retried from the panel");
+  assert.match(sidebar, /const changesButton = changes\.desktop \?/, "the web app must not render a desktop control");
+  assert.match(sidebar, /DesktopChangesPanel/, "the changelog panel is mounted by the refresh control");
+  assert.match(sidebar, /onOpenChange=\{\(open\) => \{ if \(open\) checkChanges\(\); \}\}/, "opening the control checks the feed");
+  assert.match(panel, /Recent changes/);
+  assert.match(panel, /releases\.map/, "the recent releases are listed");
+  assert.match(panel, /fmtDateTime\(release\.publishedAt\)/, "each release carries its timestamp");
   assert.match(panel, /View release/);
-  assert.doesNotMatch(sidebar, /Restarting to install/, "nothing relaunches on its own");
+  assert.doesNotMatch(panel, /Restart to update/, "nothing relaunches on its own");
 });
 
-test("the update flow can be previewed in an unpackaged shell only", () => {
-  // Lets a dev run (and screenshots) paint the changelog without publishing an
-  // installer, while a packaged app can never be steered by the env var.
-  assert.match(main, /const UPDATE_PREVIEW_STATE = app\.isPackaged \? "" : process\.env\.OLANTIS_UPDATE_PREVIEW/);
-  assert.match(main, /function startUpdatePreview\(\)/);
-  assert.match(main, /startUpdatePreview\(\);/);
-  assert.match(main, /if \(!UPDATE_PREVIEW_STATE\) return;/);
+test("the recent-changes panel can be previewed in an unpackaged shell only", () => {
+  // Lets a dev run (and screenshots) paint the panel without hitting GitHub,
+  // while a packaged app can never be steered by the env var.
+  assert.match(main, /const CHANGES_PREVIEW = !app\.isPackaged && Boolean\(Number\(process\.env\.OLANTIS_CHANGES_PREVIEW/);
+  assert.match(main, /function previewChanges\(\)/);
+  assert.match(main, /if \(CHANGES_PREVIEW\) return previewChanges\(\);/);
 });
 
 test("a first renderer failure schedules a short recovery reload", () => {

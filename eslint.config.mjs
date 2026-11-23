@@ -18,7 +18,6 @@ const LEGACY_EFFECT_FILES = [
   "src/components/dashboard/useStaleHoldings.ts",
   "src/components/ui/toast.tsx",
   "src/components/useBrandIconWarmup.ts",
-  "src/components/useDesktopUpdate.ts",
   "src/lib/store.ts",
 ];
 

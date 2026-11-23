@@ -7,6 +7,7 @@ import {
   filterByRange,
   fmtDayMonth,
   fmtGBP,
+  fmtDateTime,
   fmtMoney,
   fmtPrice,
   fmtSnapshotDate,
@@ -253,6 +254,13 @@ test("cached date formatters match the uncached Intl output", () => {
   const ts = 1767225600;
   assert.equal(fmtTimestamp(ts, "en-GB"), new Date(ts * 1000).toLocaleString("en-GB"));
   assert.equal(fmtTimestamp(ts, "en-US"), new Date(ts * 1000).toLocaleString("en-US"));
+
+  const iso = "2026-11-23T13:08:32Z";
+  assert.equal(
+    fmtDateTime(iso, "en-GB"),
+    new Intl.DateTimeFormat("en-GB", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)),
+  );
+  assert.equal(fmtDateTime("nope"), "nope");
 });
 
 test("count labels and shares use one pluralisation and percent rule", () => {

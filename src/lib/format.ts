@@ -260,6 +260,19 @@ export function fmtTimestamp(ts: number, locale = "en-GB"): string {
   }).format(new Date(ts * 1000));
 }
 
+/** ISO timestamp → "22 Nov 2026, 19:58" in the user's locale. */
+export function fmtDateTime(iso: string, locale = "en-GB"): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return dateFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function fmtPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
