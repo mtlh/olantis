@@ -114,11 +114,9 @@ export function useDashboardSelection() {
 
   const select = useCallback((next: DashboardSelection) => apply(next, "push"), [apply]);
 
-  const clear = useCallback(() => select(EMPTY_SELECTION), [select]);
-
   // Deleting the item the URL points at is not a navigation the user made, so
   // it rewrites the current entry instead of leaving a dead one behind.
   const reset = useCallback(() => apply(EMPTY_SELECTION, "replace"), [apply]);
 
-  return { selection, select, clear, reset };
+  return { selection, select, reset };
 }

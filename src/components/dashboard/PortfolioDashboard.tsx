@@ -18,7 +18,6 @@ type PortfolioDashboardProps = {
   gain: number;
   gainPct: number;
   staleCount: number;
-  onBack: () => void;
   onMove: () => void;
   onAddHolding: () => void;
   onDelete: () => void;
@@ -35,19 +34,14 @@ export function PortfolioDashboard({
   gain,
   gainPct,
   staleCount,
-  onBack,
   onMove,
   onAddHolding,
   onDelete,
   children,
 }: PortfolioDashboardProps) {
-  const parentName = portfolio.providerId
-    ? providers.find((provider) => provider.id === portfolio.providerId)?.name
-    : portfolio.accountId ? accounts.find((account) => account.id === portfolio.accountId)?.name : null;
   const provider = portfolio.providerId
     ? providers.find((item) => item.id === portfolio.providerId) ?? null
     : null;
-  const backLabel = parentName ?? "Overview";
   const holdingCount = portfolio.holdings.length;
   const latestRefresh = Math.max(...portfolio.holdings.map((holding) => holding.lastRefreshedAt ?? 0), 0) || null;
   const gainTone = gain >= 0 ? "text-emerald-400" : "text-red-400";
@@ -55,7 +49,6 @@ export function PortfolioDashboard({
   return (
     <DashboardLevel label={`${portfolio.name} portfolio`}>
       <PageHeader
-        back={{ label: backLabel, onClick: onBack }}
         icon={provider && <ProviderIcon provider={provider} size={28} />}
         title={portfolio.name}
         titleAdornment={portfolio.accountId && (

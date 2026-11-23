@@ -39,7 +39,6 @@ type ProviderHoldingSummary = {
 type ProviderDashboardProps = {
   name: string;
   icon?: string | null;
-  accountName: string;
   color: string;
   dateFormat: string;
   portfolios: ProviderPortfolioSummary[];
@@ -53,7 +52,6 @@ type ProviderDashboardProps = {
   cost: number;
   gain: number;
   gainPct: number;
-  onBack: () => void;
   onRename: (name: string) => Promise<void>;
   onNewPortfolio: () => void;
   onDelete: () => void;
@@ -66,7 +64,6 @@ const NOOP = () => {};
 export function ProviderDashboard({
   name,
   icon,
-  accountName,
   color,
   dateFormat,
   portfolios,
@@ -80,7 +77,6 @@ export function ProviderDashboard({
   cost,
   gain,
   gainPct,
-  onBack,
   onRename,
   onNewPortfolio,
   onDelete,
@@ -102,7 +98,6 @@ export function ProviderDashboard({
   return (
     <DashboardLevel label={`${name} provider`}>
       <PageHeader
-        back={{ label: accountName, onClick: onBack }}
         icon={<ProviderIcon provider={{ name, icon }} size={28} />}
         title={name}
         description={
