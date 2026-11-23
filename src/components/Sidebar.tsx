@@ -584,19 +584,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
         {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />, "Savings targets")}
         {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
 
-        {/* The relative label is computed from the server's clock and again from
-            the browser's, so a minute boundary between the two renders must not
-            abort hydration of this tree (which also mounts the update control). */}
-        <span
-          className="ml-auto min-w-0 truncate pl-1 text-right text-[11px] text-zinc-400"
-          title={lastRefreshLabel ? `Tickers updated ${lastRefreshLabel}` : "Tickers not updated yet"}
-          suppressHydrationWarning
-        >
-          {lastRefreshLabel
-            ? <>Updated <span className="tabular-nums text-zinc-400" suppressHydrationWarning>{lastRefreshLabel}</span></>
-            : "Not updated yet"}
-        </span>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {updateButton}
           {signOutLink}
         </div>
@@ -1225,6 +1213,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     );
   };
 
+  const lastRefreshLabel = lastRefresh ? `Updated ${fmtRelative(lastRefresh, settings.dateFormat)}` : "Not updated yet";
+
   const renderSidebar = (rail: boolean, isDesktop = true) => (
     <>
       <div className="px-5 py-5 border-b flex items-center justify-between xl:hidden" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
@@ -1282,9 +1272,19 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
         {rail ? <div className="mt-3">{renderRailTree()}</div> : (
         <div className="mt-3">
-          <div className="flex items-center justify-between px-1 mb-2">
-            <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-400">Portfolios</span>
-            <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-2 px-1 mb-2">
+            <span className="shrink-0 text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-400">Portfolios</span>
+            {/* The relative label is computed from the server's clock and again from
+                the browser's, so a minute boundary between the two renders must not
+                abort hydration of this tree (which also mounts the edit controls). */}
+            <span
+              className="min-w-0 flex-1 truncate text-[10px] tabular-nums text-zinc-500"
+              title={lastRefresh ? `Tickers updated ${fmtRelative(lastRefresh, settings.dateFormat)}` : "Tickers not updated yet"}
+              suppressHydrationWarning
+            >
+              {lastRefreshLabel}
+            </span>
+            <div className="flex shrink-0 items-center gap-0.5">
               <Button variant="ghost" size="icon-sm" onClick={() => setEditMode(v => !v)} aria-pressed={editMode} aria-label="Toggle edit mode" title={editMode ? "Hide edit controls" : "Show edit controls"} className={editMode ? "bg-white/10 text-white hover:bg-white/15" : "text-zinc-400 hover:text-zinc-200"}><Pencil className="w-3.5 h-3.5" /></Button>
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Create new" title="Create new" className="text-zinc-400 hover:text-zinc-200"><Plus className="w-4 h-4" /></Button>} />
