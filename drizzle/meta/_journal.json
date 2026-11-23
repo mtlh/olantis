@@ -36,6 +36,13 @@
       "when": 1794655267069,
       "tag": "0005_account_provider_icons",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795454000812,
+      "tag": "0006_dashboards",
+      "breakpoints": true
     }
   ]
 }

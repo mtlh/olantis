@@ -1,4 +1,5 @@
-import { pgTable, text, numeric, integer, primaryKey, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, numeric, integer, primaryKey, uniqueIndex, index, jsonb } from "drizzle-orm/pg-core";
+import type { DashboardWidget } from "@/lib/dashboards";
 
 /**
  * Money and share counts use `numeric` (unlimited-precision decimal) rather
@@ -163,6 +164,21 @@ export const goals = pgTable("goals", {
   targetDate: text("target_date").notNull(),
   createdAt: integer("created_at").notNull(),
 }, (t) => ({ userIdIdx: index("goals_user_id_idx").on(t.userId) }));
+
+/**
+ * User-built dashboards. `widgets` is an ordered, validated layout (see
+ * lib/dashboards.ts); it is JSON rather than a child table because a layout is
+ * always read and written as one unit and never queried by widget.
+ */
+export const dashboards = pgTable("dashboards", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  color: text("color"),
+  widgets: jsonb("widgets").$type<DashboardWidget[]>().notNull(),
+  sortOrder: integer("sort_order"),
+  createdAt: integer("created_at").notNull(),
+}, (t) => ({ userIdIdx: index("dashboards_user_id_idx").on(t.userId) }));
 
 /**
  * Daily closes for the market benchmarks the performance chart compares

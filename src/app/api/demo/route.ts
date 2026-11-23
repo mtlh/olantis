@@ -1,10 +1,11 @@
 ﻿import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, holdingSnapshots, userSettings, goals, watchlistItems } from "@/lib/db/schema";
+import { accounts, providers, portfolios, holdings, snapshots, portfolioSnapshots, holdingSnapshots, userSettings, goals, watchlistItems, dashboards } from "@/lib/db/schema";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { DEMO_COOKIE, demoUserId, newDemoSessionId } from "@/lib/auth";
 import { clearDemo } from "@/lib/demo-cleanup";
+import { createDashboardWidget } from "@/lib/dashboards";
 import { buildDemoHistory, demoHistoryIncomplete, weeklyDates, DEMO_HISTORY_YEARS, type DemoHistoryHolding } from "@/lib/demo-history";
 import { loadDemoMarketPath, topUpDemoHistory } from "@/lib/demo-history-store";
 import { getLatestFxRates } from "@/lib/fx";
@@ -76,8 +77,47 @@ async function backfillDemoSectors(userId: string) {
   await db.execute(sql`UPDATE holdings SET sector = v.sector FROM (VALUES ${sql.join(updates.map((row) => sql`(${row.id}, ${row.sector})`), sql`, `)}) AS v(id, sector) WHERE holdings.id = v.id`);
 }
 
+/**
+ * Two starting layouts, so the demo shows both what a dashboard can contain and
+ * that they are a per-user view rather than another data source.
+ */
+function demoDashboardRows(userId: string, now: number): Array<typeof dashboards.$inferInsert> {
+  return [
+    {
+      id: crypto.randomUUID(),
+      userId,
+      name: "Snapshot",
+      color: "#60a5fa",
+      sortOrder: 1,
+      createdAt: now,
+      widgets: [
+        createDashboardWidget("overview", "full"),
+        createDashboardWidget("chart", "full"),
+        createDashboardWidget("allocation", "half"),
+        createDashboardWidget("holdings", "half"),
+      ],
+    },
+    {
+      id: crypto.randomUUID(),
+      userId,
+      name: "Retirement",
+      color: "#a78bfa",
+      sortOrder: 2,
+      createdAt: now + 1,
+      widgets: [
+        createDashboardWidget("overview", "full"),
+        createDashboardWidget("goal", "half"),
+        createDashboardWidget("freshness", "half"),
+        createDashboardWidget("accounts", "full"),
+        createDashboardWidget("trades", "full"),
+      ],
+    },
+  ];
+}
+
 async function seedDemo(userId: string) {
   const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
 
   // Fast path for returning demo visitors: one round trip decides whether the
   // tenant already exists and whether its history is complete, instead of
@@ -100,11 +140,13 @@ async function seedDemo(userId: string) {
       })
       .from(holdings)
       .where(eq(holdings.userId, userId)),
+    db.select({ id: dashboards.id }).from(dashboards).where(eq(dashboards.userId, userId)),
   ]);
-  const [existing, historyCounts, existingHoldings] = batch as unknown as [
+  const [existing, historyCounts, existingHoldings, existingDashboards] = batch as unknown as [
     Array<{ id: string }>,
     Array<{ holdingId: string; points: number }>,
     DemoHistoryHolding[],
+    Array<{ id: string }>,
   ];
   if (existing.length > 0) {
     // Repair anything a tenant seeded by an older build is missing: per-holding
@@ -119,6 +161,11 @@ async function seedDemo(userId: string) {
           .then((fx) => topUpDemoHistory(userId, eligible, points, { ...DEFAULT_FX_RATES, ...fx.rates }))
           .catch(() => false),
       );
+    }
+    // A tenant seeded before custom dashboards existed still gets the two
+    // starting layouts, so the sidebar section is populated on return visits.
+    if (existingDashboards.length === 0) {
+      repairs.push(Promise.resolve(db.insert(dashboards).values(demoDashboardRows(userId, now))).catch(() => {}));
     }
     await Promise.all(repairs);
     return;
@@ -142,7 +189,6 @@ async function seedDemo(userId: string) {
     { symbol: "TSLA", name: "Tesla, Inc.", exchange: "NASDAQ", currency: "USD" },
   ].filter((item) => !existingSymbols.has(item.symbol));
 
-  const now = Math.floor(Date.now() / 1000);
   const accHousehold: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Household", icon: "users", createdAt: now };
   const accPersonal: typeof accounts.$inferInsert = { id: crypto.randomUUID(), userId, name: "Personal", icon: "user", createdAt: now };
 
@@ -183,6 +229,7 @@ async function seedDemo(userId: string) {
   // Side rows don't depend on the account tree, so start them immediately and
   // let the four dependent waves below run in the foreground.
   const sideWrites: Array<Promise<unknown>> = [];
+  sideWrites.push(db.insert(dashboards).values(demoDashboardRows(userId, now)));
   if (existingGoals.length === 0) {
     // Two milestones so the demo shows how several goals share one portfolio.
     const nearDate = new Date();
