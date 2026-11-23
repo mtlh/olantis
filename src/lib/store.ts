@@ -183,6 +183,39 @@ function applyPatches<T extends { id: string }>(rows: T[], patches: Partial<Reco
   });
 }
 
+/**
+ * A settings save is accepted by the server but only the hook call that issued
+ * it holds the fresh row — settings, the sidebar and the charts each call
+ * useSettings() and keep their own state. Toggling "Custom dashboards" used to
+ * leave the sidebar on its bootstrapped value until a reload. Broadcast the
+ * accepted preferences here and layer them over each hook's own copy.
+ */
+type SettingsOverlay = Partial<Pick<AppSettings, "currency" | "dateFormat" | "defaultRange" | "showTradeMarkers" | "showCustomDashboards">>;
+
+const EMPTY_SETTINGS_OVERLAY: SettingsOverlay = {};
+let settingsOverlay: SettingsOverlay = EMPTY_SETTINGS_OVERLAY;
+const settingsListeners = new Set<() => void>();
+
+function subscribeSettingsOverlay(listener: () => void) {
+  settingsListeners.add(listener);
+  return () => {
+    settingsListeners.delete(listener);
+  };
+}
+
+function readSettingsOverlay() {
+  return settingsOverlay;
+}
+
+function publishSettingsOverlay(next: SettingsOverlay) {
+  settingsOverlay = next;
+  for (const listener of settingsListeners) listener();
+}
+
+function useSettingsOverlay(): SettingsOverlay {
+  return useSyncExternalStore(subscribeSettingsOverlay, readSettingsOverlay, () => EMPTY_SETTINGS_OVERLAY);
+}
+
 type AccountPayload = { id: string; name?: string; color?: string | null; icon?: string | null };
 type ProviderPayload = { id: string; name?: string; color?: string | null; icon?: string | null; accountId?: string };
 type HoldingsBody = { id?: string; portfolioId?: string | null; providerId?: string | null; accountId?: string | null; symbol: string; name: string; shares: number; avgPrice: number; currentPrice: number; currency: string; sector?: string | null; purchaseDate?: string; exchange?: string };
@@ -656,13 +689,15 @@ export function useTransactions(portfolioId?: string | null, symbol?: string | n
  */
 export function useSettings() {
   const boot = useWorkspaceBootstrap();
-  const [settings, setSettings] = useState<AppSettings>(() => boot
+  const [loadedSettings, setSettings] = useState<AppSettings>(() => boot
     ? {
         ...normalizeSettings(boot.settings),
         fxRates: { ...DEFAULT_FX_RATES, ...boot.fx.rates },
         fxDate: boot.fx.date,
       }
     : DEFAULT_SETTINGS);
+  const overlay = useSettingsOverlay();
+  const settings = useMemo<AppSettings>(() => ({ ...loadedSettings, ...overlay }), [loadedSettings, overlay]);
   const [ready, setReady] = useState(Boolean(boot));
 
   const refresh = useCallback(async () => {
@@ -681,13 +716,38 @@ export function useSettings() {
   const save = useCallback(
     async (patch: Partial<AppSettings>) => {
       const body: Record<string, unknown> = {};
-      if (patch.currency !== undefined) body.currency = patch.currency;
-      if (patch.dateFormat !== undefined) body.dateFormat = patch.dateFormat;
-      if (patch.defaultRange !== undefined) body.defaultRange = patch.defaultRange;
-      if (patch.showTradeMarkers !== undefined) body.showTradeMarkers = patch.showTradeMarkers ? 1 : 0;
-      if (patch.showCustomDashboards !== undefined) body.showCustomDashboards = patch.showCustomDashboards ? 1 : 0;
-      await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
-      await refresh();
+      const overlayPatch: SettingsOverlay = {};
+      if (patch.currency !== undefined) {
+        body.currency = patch.currency;
+        overlayPatch.currency = patch.currency;
+      }
+      if (patch.dateFormat !== undefined) {
+        body.dateFormat = patch.dateFormat;
+        overlayPatch.dateFormat = patch.dateFormat;
+      }
+      if (patch.defaultRange !== undefined) {
+        body.defaultRange = patch.defaultRange;
+        overlayPatch.defaultRange = patch.defaultRange;
+      }
+      if (patch.showTradeMarkers !== undefined) {
+        body.showTradeMarkers = patch.showTradeMarkers ? 1 : 0;
+        overlayPatch.showTradeMarkers = patch.showTradeMarkers;
+      }
+      if (patch.showCustomDashboards !== undefined) {
+        body.showCustomDashboards = patch.showCustomDashboards ? 1 : 0;
+        overlayPatch.showCustomDashboards = patch.showCustomDashboards;
+      }
+      // Publish before the request so every subscriber repaints together; a
+      // rejected save restores the previous values and rethrows to the caller.
+      const previousOverlay = settingsOverlay;
+      publishSettingsOverlay({ ...previousOverlay, ...overlayPatch });
+      try {
+        await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
+        await refresh();
+      } catch (error) {
+        publishSettingsOverlay(previousOverlay);
+        throw error;
+      }
     },
     [refresh]
   );
