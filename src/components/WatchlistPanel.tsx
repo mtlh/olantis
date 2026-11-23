@@ -305,7 +305,7 @@ export function WatchlistPanel() {
             position="middle"
             label="Tracking"
             value={items.length}
-            sub={items.length === 1 ? "symbol" : "symbols"}
+            sub={`${items.length === 1 ? "Symbol" : "Symbols"} watched`}
           />
 
           <Metric
@@ -314,7 +314,7 @@ export function WatchlistPanel() {
             value={
               <>
                 {pricedCount}
-                <span className="ml-1.5 text-[11px] font-normal text-zinc-400 sm:text-xs">of {items.length}</span>
+                <span className="ml-1 text-sm font-normal text-zinc-400">of {items.length}</span>
               </>
             }
             sub={pricedCount === items.length ? "All up to date" : "Awaiting quotes"}

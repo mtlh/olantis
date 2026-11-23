@@ -203,12 +203,8 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
           position="tight-middle"
           label="Unrealized gain"
           tone={gainTone}
-          value={
-            <>
-              <span className="whitespace-nowrap">{gain >= 0 ? "+" : ""}{fmtGBP(gain)}</span>
-              <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(pct)}</span>
-            </>
-          }
+          value={<>{gain >= 0 ? "+" : ""}{fmtGBP(gain)}</>}
+          sub={fmtPct(pct)}
         />
 
         <Metric

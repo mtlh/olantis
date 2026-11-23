@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 
 /** Shared type rhythm for the label above a metric value. */
 export const METRIC_LABEL = "text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-400";
-/** Shared type rhythm for the supporting line under a metric value. */
-export const METRIC_SUB = "mt-2 text-[11px] text-zinc-400";
+/** Shared type rhythm for the supporting line under a metric label. */
+export const METRIC_SUB = "mt-1.5 text-[11px] leading-snug text-zinc-400";
 
 export type MetricStripVariant =
   | "overview"
@@ -52,17 +52,17 @@ const POSITION_CLASSES: Record<MetricPosition, string> = {
 
 /** The three value sizes used across dashboards. */
 const VALUE_CLASSES = {
-  hero: "mt-2 text-[38px] font-semibold leading-none tracking-tight tabular-nums sm:text-[42px]",
-  default: "mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl",
-  compact: "mt-2 text-2xl font-semibold leading-none tracking-tight tabular-nums",
+  hero: "mt-auto pt-4 text-[38px] font-semibold leading-none tracking-tight tabular-nums sm:text-[42px]",
+  default: "mt-auto pt-4 text-xl font-semibold leading-none tracking-tight tabular-nums sm:text-2xl",
+  compact: "mt-auto pt-4 text-2xl font-semibold leading-none tracking-tight tabular-nums",
 } as const;
 
 type MetricStripProps = ComponentProps<"div"> & { variant?: MetricStripVariant };
 
 /**
  * The hairline metric band every dashboard level leads with. Children should be
- * `Metric` (or `MetricSkeleton` while loading) so the label/value/sub rhythm and
- * the vertical dividers stay identical across pages.
+ * `Metric` (or `MetricSkeleton` while loading) so the label/caption/value rhythm
+ * and the vertical dividers stay identical across pages.
  */
 export function MetricStrip({ variant = "overview", className, children, ...props }: MetricStripProps) {
   return (
@@ -74,8 +74,9 @@ export function MetricStrip({ variant = "overview", className, children, ...prop
 
 type MetricProps = {
   label: ReactNode;
-  value: ReactNode;
+  /** Supporting line, rendered under the label and above the primary value. */
   sub?: ReactNode;
+  value: ReactNode;
   /** Text colour for the value, usually `signedTone(...)`. */
   tone?: string;
   size?: keyof typeof VALUE_CLASSES;
@@ -89,10 +90,15 @@ type MetricProps = {
   title?: string;
 };
 
+/**
+ * One number in the band. The label and its supporting line form a caption block
+ * at the top; the primary value sits on a shared baseline at the bottom so every
+ * column lines up whatever the caption length.
+ */
 export function Metric({
   label,
-  value,
   sub,
+  value,
   tone = "text-white",
   size = "default",
   position = "none",
@@ -105,11 +111,13 @@ export function Metric({
 }: MetricProps) {
   return (
     <div className={cn("min-w-0", wide && "col-span-2 lg:col-span-1", POSITION_CLASSES[position], className)}>
-      <div className={cn(METRIC_LABEL, labelClassName)} title={typeof label === "string" ? title : undefined}>{label}</div>
-      <div className={cn(VALUE_CLASSES[size], tone, valueClassName)}>{value}</div>
-      {sub != null && (
-        <div className={cn(METRIC_SUB, subClassName)} title={typeof sub === "string" ? sub : undefined}>{sub}</div>
-      )}
+      <div className="flex h-full min-w-0 flex-col">
+        <div className={cn(METRIC_LABEL, labelClassName)} title={typeof label === "string" ? title : undefined}>{label}</div>
+        {sub != null && (
+          <div className={cn(METRIC_SUB, subClassName)} title={typeof sub === "string" ? sub : undefined}>{sub}</div>
+        )}
+        <div className={cn(VALUE_CLASSES[size], tone, valueClassName)}>{value}</div>
+      </div>
     </div>
   );
 }
@@ -127,9 +135,13 @@ export function MetricSkeleton({
 }) {
   return (
     <div className={cn("min-w-0", wide && "col-span-2 lg:col-span-1", POSITION_CLASSES[position], className)}>
-      <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
-      <Skeleton className={emphasis ? "mt-2 h-[38px] w-28 bg-white/[0.09] sm:h-[42px]" : "mt-2 h-7 w-20 bg-white/[0.05] sm:h-8"} />
-      <Skeleton className="mt-2 h-2.5 w-16 bg-white/[0.04]" />
+      <div className="flex h-full min-w-0 flex-col">
+        <Skeleton className="h-2.5 w-20 bg-white/[0.05]" />
+        <Skeleton className="mt-1.5 h-2.5 w-16 bg-white/[0.04]" />
+        <div className="mt-auto pt-4">
+          <Skeleton className={emphasis ? "h-[38px] w-28 bg-white/[0.09] sm:h-[42px]" : "h-7 w-20 bg-white/[0.05] sm:h-8"} />
+        </div>
+      </div>
     </div>
   );
 }
