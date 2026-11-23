@@ -100,13 +100,8 @@ export function PortfolioDashboard({
           position="middle"
           label="Unrealized gain"
           tone={gainTone}
-          value={
-            <>
-              {gain >= 0 ? "+" : "−"}{fmtGBP(Math.abs(gain))}
-              <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(gainPct)}</span>
-            </>
-          }
-          sub="Current positions"
+          value={<>{gain >= 0 ? "+" : "−"}{fmtGBP(Math.abs(gain))}</>}
+          sub={fmtPct(gainPct)}
         />
 
         <Metric

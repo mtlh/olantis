@@ -84,25 +84,21 @@ export function MainDashboard({
             position="middle"
             label="Unrealized gain"
             tone={gainTone}
-            value={
-              <>
-                {totalGain >= 0 ? "+" : ""}{fmtGBP(totalGain)}
-                <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{fmtPct(totalGainPct)}</span>
-              </>
-            }
+            value={<>{totalGain >= 0 ? "+" : ""}{fmtGBP(totalGain)}</>}
+            sub={fmtPct(totalGainPct)}
           />
 
           <Metric
             position="middle"
             label={`Change · ${range}`}
             tone={periodChange ? changeTone : "text-zinc-400"}
-            value={periodChange ? (
+            value={periodChange ? `${periodChange.amount >= 0 ? "+" : "−"}${fmtGBP(Math.abs(periodChange.amount))}` : "—"}
+            sub={periodChange ? (
               <>
-                {periodChange.amount >= 0 ? "+" : "−"}{fmtGBP(Math.abs(periodChange.amount))}
-                <span className="ml-1.5 text-[11px] font-normal opacity-70 sm:text-xs">{periodChange.percent == null ? "" : fmtPct(periodChange.percent)}</span>
+                {periodChange.percent != null && <>{fmtPct(periodChange.percent)} · </>}
+                Since {fmtSnapshotDate(periodChange.fromDate)}
               </>
-            ) : "—"}
-            sub={periodChange ? `Since ${fmtSnapshotDate(periodChange.fromDate)}` : "More history needed"}
+            ) : "More history needed"}
           />
 
           <Metric
