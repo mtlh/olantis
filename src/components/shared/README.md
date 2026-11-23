@@ -10,7 +10,7 @@ dialog markup. Screen-specific composites stay in
 | Component | Use it for |
 | --- | --- |
 | `PageHeader` | The title row at every level: icon, title, actions, description, mobile metadata. |
-| `MetricStrip` / `Metric` / `MetricSkeleton` | The hairline label/value/sub band that leads every dashboard screen. Pick a `variant` for the column layout and a `position` for the dividers. |
+| `MetricStrip` / `Metric` / `MetricSkeleton` | The hairline label/caption/value band that leads every dashboard screen. Captions sit under the label and the primary value is bottom-aligned, so numbers line up across columns. Pick a `variant` for the column layout and a `position` for the dividers. |
 | `MetricStripSkeleton` | The loading frame for an overview metric band. |
 | `SectionHeading` | The heading row above lists, tables and panels (`title`, optional `meta` count, optional `action`, optional divider). |
 | `EmptyState` | "Nothing here yet" blocks inside tables and drill-downs. |
