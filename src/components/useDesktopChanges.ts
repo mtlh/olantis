@@ -32,6 +32,11 @@ export type DesktopChangesPayload = {
   update: DesktopUpdate | null;
 };
 
+/** True when a checked feed has anything worth opening the panel for. */
+export function hasChangesToShow(payload: DesktopChangesPayload): boolean {
+  return payload.releases.length > 0 || payload.update !== null;
+}
+
 type DesktopBridge = {
   recentChanges?: () => Promise<unknown>;
 };
@@ -139,18 +144,23 @@ export function useDesktopChanges() {
     releases: changes.releases,
     /** A newer shell build with its platform installer, or null. */
     update: changes.update,
-    /** Ask the shell for recent published changes. False when there is no bridge (web). */
-    check: async () => {
+    /**
+     * Ask the shell for recent published changes. Resolves with the normalized
+     * payload, or null when there is no bridge (web) or the read failed.
+     */
+    check: async (): Promise<DesktopChangesPayload | null> => {
       const bridge = desktopBridge();
-      if (!bridge?.recentChanges) return false;
+      if (!bridge?.recentChanges) return null;
       setState("checking");
       try {
-        setChanges(normalizeChangesPayload(await bridge.recentChanges()));
+        const payload = normalizeChangesPayload(await bridge.recentChanges());
+        setChanges(payload);
         setState("ready");
+        return payload;
       } catch {
         setState("error");
+        return null;
       }
-      return true;
     },
   };
 }

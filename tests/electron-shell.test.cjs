@@ -127,11 +127,18 @@ test("a download is offered only when the shell itself changed", () => {
 test("the refresh control shows recent releases with timestamps", () => {
   const sidebar = read("src/components/Sidebar.tsx");
   const panel = read("src/components/DesktopChangesPanel.tsx");
+  const changes = read("src/components/useDesktopChanges.ts");
+
+  assert.match(changes, /export function hasChangesToShow/, "one rule decides whether the panel is worth opening");
+  assert.match(changes, /payload\.releases\.length > 0 \|\| payload\.update !== null/, "an update offer alone still counts");
 
   assert.match(sidebar, /const changesButton = changes\.desktop \?/, "the web app must not render a desktop control");
   assert.match(sidebar, /DesktopChangesPanel/, "the changelog panel is mounted by the refresh control");
   assert.match(sidebar, /update=\{changes\.update\}/, "the panel receives the validated build offer");
-  assert.match(sidebar, /onOpenChange=\{\(open\) => \{ if \(open\) checkChanges\(\); \}\}/, "opening the control checks the feed");
+  assert.match(sidebar, /open=\{changesOpen\}/, "the panel's open state is driven by the check");
+  assert.match(sidebar, /details\.reason === "trigger-press"/, "pressing the control checks before opening");
+  assert.match(sidebar, /details\.cancel\(\)/, "the empty feed cannot flash the panel open");
+  assert.match(sidebar, /hasChangesToShow\(payload\)/, "an empty feed leaves the control with only its spin");
   assert.match(panel, /Recent changes/);
   assert.match(panel, /releases\.map/, "the recent releases are listed");
   assert.match(panel, /fmtDateTime\(release\.publishedAt\)/, "each release carries its timestamp");
