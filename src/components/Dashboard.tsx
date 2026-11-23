@@ -626,7 +626,7 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   // Seeded once from the URL so deep links open the right view, then owned by
   // React state: selecting mirrors the URL with a history entry instead of
   // waiting on an RSC round trip.
-  const { selection, select, clear: clearSelection, reset: resetSelection } = useDashboardSelection();
+  const { selection, select, reset: resetSelection } = useDashboardSelection();
   const { portfolioId: activeId, providerId: providerFromUrl, accountId: accountFromUrl, holdingId: holdingFromUrl } = selection;
   const { accounts, create: createAccount, remove: removeAccount, rename: renameAccount, ready: accountsReady, error: accountsError, refresh: refreshAccounts } = useAccounts();
 
@@ -1082,7 +1082,6 @@ range={range}
               cost={accountData.cost}
               gain={accountData.gain}
               gainPct={accountData.gainPct}
-              onBack={clearSelection}
               onRename={(name) => handleRenameAccount(activeAccount.id, name)}
               onNewPortfolio={() => openWizard(activeAccount.id, null)}
               onDelete={() => requestDeleteAccount(activeAccount)}
@@ -1097,7 +1096,6 @@ range={range}
             <ProviderDashboard
               name={activeProvider.name}
               icon={activeProvider.icon}
-              accountName={accounts.find((account) => account.id === activeProvider.accountId)?.name ?? "Account"}
               color={providerData.color ?? palette.at(0)?.value ?? "#60a5fa"}
               dateFormat={settings.dateFormat}
               portfolios={providerData.portfolioSummaries}
@@ -1111,7 +1109,6 @@ range={range}
               cost={providerData.cost}
               gain={providerData.gain}
               gainPct={providerData.gainPct}
-              onBack={() => activeProvider.accountId ? selectAccount(activeProvider.accountId) : clearSelection()}
               onRename={(name) => handleRenameProvider(activeProvider.id, name)}
               onNewPortfolio={() => openWizard(activeProvider.accountId, activeProvider.id)}
               onDelete={() => requestDeleteProvider(activeProvider)}
@@ -1132,12 +1129,6 @@ range={range}
               gain={activeGain}
               gainPct={activeGainPct}
               staleCount={staleCounts.portfolio}
-              onBack={() => {
-                const parentProvider = providers.find((provider) => provider.id === active.providerId);
-                if (parentProvider) selectProvider(parentProvider.id);
-                else if (active.accountId) selectAccount(active.accountId);
-                else clearSelection();
-              }}
               onMove={() => openEditPortfolio(active)}
               onAddHolding={openAdd}
                onDelete={() => requestDeletePortfolio(active)}
