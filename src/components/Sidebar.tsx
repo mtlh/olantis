@@ -1,8 +1,8 @@
 "use client";
-import { type Portfolio, type Account, type Provider, type Holding, useSettings, applyWorkspaceOrder } from "@/lib/store";
+import { type Portfolio, type Account, type Provider, type Holding, type SavedDashboard, useSettings, applyWorkspaceOrder } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen, Wallet, Activity, Coins } from "lucide-react";
+import { LayoutDashboard, LayoutGrid, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen, Wallet, Activity, Coins } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -625,17 +625,20 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
   );
 }
 
-export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeletePortfolio }: {
-  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; activeId: string | null; activeHoldingId?: string | null; activeProviderId?: string | null; activeAccountId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectAccount?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
+export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, holdings, dashboards = [], activeId, activeHoldingId, activeProviderId, activeAccountId, onSelect, onSelectProvider, onSelectAccount, onSelectHolding, onCreateAccount, onOpenWizard, onRefresh, isDemo, accountsReady, portfoliosReady, dashboardsReady, onRenameAccount, onRenameProvider, onRenamePortfolio, onDeleteAccount, onDeletePortfolio, onCreateDashboard, onEditDashboard, onDeleteDashboard }: {
+  accounts: Account[]; providers: Provider[]; portfolios: Portfolio[]; holdings?: Holding[]; dashboards?: SavedDashboard[]; activeId: string | null; activeHoldingId?: string | null; activeProviderId?: string | null; activeAccountId?: string | null; onSelect: (id: string | null) => void; onSelectProvider?: (id: string) => void; onSelectAccount?: (id: string) => void; onSelectHolding?: (h: Holding) => void;
   onCreateAccount: (name: string) => Promise<unknown>;
   onOpenWizard: (accountId: string | null, providerId?: string | null) => void;
   onRefresh?: () => Promise<void>;
-  isDemo?: boolean; accountsReady?: boolean; portfoliosReady?: boolean;
+  isDemo?: boolean; accountsReady?: boolean; portfoliosReady?: boolean; dashboardsReady?: boolean;
   onRenameAccount?: (id: string, name: string) => Promise<void>;
   onRenameProvider?: (id: string, name: string) => Promise<void>;
   onRenamePortfolio?: (id: string, patch: { name?: string; type?: string; accountId?: string | null; providerId?: string | null }) => Promise<void>;
   onDeleteAccount?: (a: Account) => void;
   onDeletePortfolio?: (p: Portfolio) => void;
+  onCreateDashboard?: () => void;
+  onEditDashboard?: (dashboard: SavedDashboard) => void;
+  onDeleteDashboard?: (dashboard: SavedDashboard) => void;
 }) {
   const { toast } = useToast();
   const [showAccountDialog, setShowAccountDialog] = useState(false);
@@ -665,6 +668,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const pathname = usePathname();
+  const activeDashboardId = pathname.startsWith("/dashboards/") ? pathname.split("/").filter(Boolean)[1] ?? null : null;
   const [draggingRow, setDraggingRow] = useState<{ group: string; index: number } | null>(null);
   const [dropRow, setDropRow] = useState<{ group: string; index: number } | null>(null);
 
@@ -1323,6 +1328,85 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
   const lastRefreshLabel = lastRefresh ? `Updated ${fmtRelative(lastRefresh, settings.dateFormat)}` : "Not updated yet";
 
+  // Custom dashboards live below the account tree: they are a saved view of the
+  // same workspace, not another data source, so they never appear among
+  // accounts, providers or portfolios.
+  const renderDashboardSection = () => (
+    <div className="mt-4 border-t border-white/[0.06] pt-3" aria-label="Custom dashboards">
+      <div className="mb-1.5 flex items-center gap-1 px-1">
+        <Link
+          href="/dashboards"
+          onClick={() => setMobileOpen(false)}
+          className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400 transition-colors hover:text-zinc-200"
+        >
+          Dashboards
+        </Link>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onCreateDashboard}
+          aria-label="Create dashboard"
+          title="Create dashboard"
+          className="ml-auto shrink-0 text-zinc-400 hover:text-white"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {dashboardsReady === false ? (
+        <div className="space-y-1">
+          {[1, 2].map((index) => <Skeleton key={index} className="h-7 rounded-lg bg-white/5" />)}
+        </div>
+      ) : dashboards.length === 0 ? (
+        <button
+          type="button"
+          onClick={onCreateDashboard}
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+        >
+          <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
+          Build a dashboard
+        </button>
+      ) : (
+        <div className="space-y-0.5">
+          {dashboards.map((dashboard) => {
+            const active = activeDashboardId === dashboard.id;
+            return (
+              <div
+                key={dashboard.id}
+                className={`group/dashboard flex items-center gap-0.5 rounded-lg pr-1 transition-colors ${active ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"}`}
+              >
+                <Link
+                  href={`/dashboards/${dashboard.id}`}
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={active ? "page" : undefined}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pl-2 pr-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                >
+                  <span
+                    aria-hidden
+                    className="h-1.5 w-1.5 shrink-0 rounded-full ring-2 ring-white/[0.06]"
+                    style={{ background: dashboard.color ?? "#71717a" }}
+                  />
+                  <span className={`min-w-0 flex-1 truncate text-[12px] ${active ? "text-white" : "text-zinc-300"}`}>{dashboard.name}</span>
+                  <span className="shrink-0 text-[10px] tabular-nums text-zinc-500">{dashboard.widgets.length}</span>
+                </Link>
+                {editMode && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`${dashboard.name} actions`} className="text-zinc-400 hover:text-white"><MoreVertical className="h-3.5 w-3.5" /></Button>} />
+                    <DropdownMenuContent className="bg-zinc-900 border-white/10 text-white min-w-40">
+                      <DropdownMenuItem onClick={() => onEditDashboard?.(dashboard)}><Move className="w-3.5 h-3.5" />Edit layout</DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-white/10" />
+                      <DropdownMenuItem variant="destructive" onClick={() => onDeleteDashboard?.(dashboard)}><Trash2 className="w-3.5 h-3.5" />Delete dashboard</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   const renderSidebar = (rail: boolean, isDesktop = true) => (
     <>
       <div className="px-5 py-5 border-b flex items-center justify-between xl:hidden" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
@@ -1378,7 +1462,37 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           </div>
         )}
 
-        {rail ? <div className="mt-3">{renderRailTree()}</div> : (
+        {rail ? (
+          <>
+            <div className="mt-3">{renderRailTree()}</div>
+            <div className="mt-2 flex flex-col items-center gap-1 border-t border-white/[0.06] pt-2">
+              {dashboards.map((dashboard) => (
+                <RailButton
+                  key={dashboard.id}
+                  icon={<LayoutGrid className="h-[17px] w-[17px]" />}
+                  label={dashboard.name}
+                  subtitle={`${dashboard.widgets.length} ${dashboard.widgets.length === 1 ? "widget" : "widgets"}`}
+                  rows={[{ label: "Widgets", value: String(dashboard.widgets.length), icon: <LayoutGrid className="h-3 w-3" /> }]}
+                  href={`/dashboards/${dashboard.id}`}
+                  active={activeDashboardId === dashboard.id}
+                  color={dashboard.color ?? undefined}
+                  onClick={() => setMobileOpen(false)}
+                />
+              ))}
+              <RailTip title="New dashboard" subtitle="Pick your own widgets">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onCreateDashboard}
+                  aria-label="Create dashboard"
+                  className="text-zinc-400 hover:text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </RailTip>
+            </div>
+          </>
+        ) : (
         <div className="mt-3">
           <div className="flex items-center gap-2 px-1 mb-2">
             <span className="shrink-0 text-[10px] font-semibold tracking-[0.14em] uppercase text-zinc-400">Portfolios</span>
@@ -1536,6 +1650,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           )}
         </div>
         )}
+
+        {!rail && renderDashboardSection()}
 
       </nav>
       <SidebarToolRow

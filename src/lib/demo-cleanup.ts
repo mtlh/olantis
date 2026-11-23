@@ -2,6 +2,7 @@ import { and, eq, like, lt } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   accounts,
+  dashboards,
   goals,
   holdingSnapshots,
   holdings,
@@ -48,6 +49,7 @@ export async function clearDemo(userId: string) {
     deleteQuietly(() => db.delete(providers).where(eq(providers.userId, userId))),
     deleteQuietly(() => db.delete(goals).where(eq(goals.userId, userId))),
     deleteQuietly(() => db.delete(watchlistItems).where(eq(watchlistItems.userId, userId))),
+    deleteQuietly(() => db.delete(dashboards).where(eq(dashboards.userId, userId))),
   ]);
   await Promise.all([
     deleteQuietly(() => db.delete(accounts).where(eq(accounts.userId, userId))),

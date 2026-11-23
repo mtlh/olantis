@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useEffectEvent, useState, useCallback, useRef, useMemo, useSyncExternalStore } from "react";
 import { DEFAULT_FX_RATES, holdingValueGBP, type FxRates, type ValueChange } from "@/lib/format";
+import type { DashboardWidget } from "@/lib/dashboards";
 import { DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "@/lib/settings";
 
 export { DEFAULT_SETTINGS, normalizeSettings, type AppSettings };
@@ -35,6 +36,15 @@ export type SnapResponse = {
 };
 export type Transaction = { id: string; userId?: string; portfolioId?: string | null; holdingId?: string | null; symbol: string; name?: string; type: "buy" | "sell"; shares: number; price: number; date: string; note?: string | null; createdAt: number };
 export type Goal = { id: string; name: string; targetValue: number; targetDate: string };
+export type SavedDashboard = {
+  id: string;
+  name: string;
+  color: string | null;
+  widgets: DashboardWidget[];
+  sortOrder?: number | null;
+  userId?: string;
+  createdAt?: number;
+};
 
 /**
  * Workspace data resolved on the server (see lib/bootstrap.ts) and handed to
@@ -682,4 +692,49 @@ export function useSettings() {
   );
 
   return { settings, ready, save, refresh, setSettings };
+}
+
+/**
+ * Custom dashboards, loaded after paint like goals and transactions so the
+ * first HTML stays small. The API remains the source of truth for ordering;
+ * the local rows only exist to paint a create/edit/delete immediately.
+ */
+export function useDashboards() {
+  const [rows, setRows] = useState<SavedDashboard[]>([]);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      setRows(parseList<SavedDashboard>(await api("/api/dashboards")));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load dashboards");
+    }
+    setReady(true);
+  }, []);
+  useAsyncInit(refresh);
+
+  const dashboards = useMemo(
+    () => [...rows].sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999) || (a.createdAt ?? 0) - (b.createdAt ?? 0)),
+    [rows],
+  );
+
+  const create = useCallback(async (name: string, widgets: DashboardWidget[], color: string | null = null) => {
+    const r = await api("/api/dashboards", { method: "POST", body: JSON.stringify({ name, widgets, color }) }) as { id: string };
+    const created: SavedDashboard = { id: r.id, name, color, widgets, sortOrder: null, createdAt: Math.floor(Date.now() / 1000) };
+    setRows((prev) => [...prev, created]);
+    return created;
+  }, []);
+
+  const update = useCallback(async (id: string, next: { name: string; widgets: DashboardWidget[]; color: string | null }) => {
+    await api("/api/dashboards", { method: "POST", body: JSON.stringify({ id, ...next }) });
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...next } : row)));
+  }, []);
+
+  const remove = useCallback(async (id: string) => {
+    await api(`/api/dashboards?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    setRows((prev) => prev.filter((row) => row.id !== id));
+  }, []);
+
+  return { dashboards, ready, error, create, update, remove, refresh };
 }

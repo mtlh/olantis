@@ -1,5 +1,5 @@
 "use client";
-import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings, useWorkspaceBootstrap, type Account, type Holding, type Portfolio, type Provider } from "@/lib/store";
+import { usePortfolios, useSnapshots, useAccounts, useTransactions, useProviders, useHoldings, useSettings, useDashboards, useWorkspaceBootstrap, type Account, type Holding, type Portfolio, type Provider, type SavedDashboard } from "@/lib/store";
 import { Sidebar } from "./Sidebar";
 import { useMemo, useState, useCallback, useDeferredValue } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -26,6 +26,7 @@ import { resolvePortfolioColor } from "@/lib/colors";
 import { usePalette } from "@/lib/palette";
 import { fmtPrice, holdingValueGBP, holdingCostGBP, plural, todayISODate, valueChangeOverRange } from "@/lib/format";
 import type { ChartRange } from "@/components/dashboard/shared/ChartRangeSelector";
+import type { DashboardDraft } from "@/components/dashboard/DashboardCreatorDialog";
 import type { HoldingFormData } from "@/components/dashboard/HoldingDialog";
 import { MetricStripSkeleton } from "@/components/shared/MetricStrip";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -59,6 +60,9 @@ const HoldingDialog = dynamic(() => import("@/components/dashboard/HoldingDialog
 const TradeDialog = dynamic(() => import("@/components/TradeDialog").then((module) => module.TradeDialog), { ssr: false });
 const AssignHoldingDialog = dynamic(() => import("@/components/dashboard/AssignHoldingDialog").then((module) => module.AssignHoldingDialog), { ssr: false });
 const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPortfolioDialog").then((module) => module.EditPortfolioDialog), { ssr: false });
+const DashboardCreatorDialog = dynamic(() => import("@/components/dashboard/DashboardCreatorDialog").then((module) => module.DashboardCreatorDialog), { ssr: false });
+const CustomDashboardView = dynamic(() => import("@/components/dashboard/CustomDashboard").then((module) => module.CustomDashboard), { loading: () => <ViewFallback /> });
+const CustomDashboardHome = dynamic(() => import("@/components/dashboard/CustomDashboardHome").then((module) => module.CustomDashboardHome), { loading: () => <ViewFallback /> });
 const DeleteConfirmationDialog = dynamic(() => import("@/components/dashboard/shared/DeleteConfirmationDialog").then((module) => module.DeleteConfirmationDialog), { ssr: false });
 // Recharts pulls ~100KB+ into the critical bundle. The overview and
 // portfolio charts load after first paint; the fallbacks below keep their
@@ -617,11 +621,20 @@ type DeleteRequest =
   | { kind: "portfolio"; item: Portfolio }
   | { kind: "holding"; item: Pick<Holding, "id" | "symbol"> };
 
-export type DashboardSection = "dashboard" | "watchlist" | "goals" | "performance" | "settings";
+export type DashboardSection = "dashboard" | "watchlist" | "goals" | "performance" | "settings" | "dashboards";
 
 export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: boolean; section?: DashboardSection }) {
   const pathname = usePathname();
-  const section = requestedSection ?? (pathname === "/performance" ? "performance" : pathname === "/watchlist" ? "watchlist" : pathname === "/goals" ? "goals" : pathname === "/settings" ? "settings" : "dashboard");
+  const section: DashboardSection = requestedSection ?? (
+    pathname.startsWith("/performance") ? "performance"
+    : pathname.startsWith("/watchlist") ? "watchlist"
+    : pathname.startsWith("/goals") ? "goals"
+    : pathname.startsWith("/settings") ? "settings"
+    : pathname.startsWith("/dashboards") ? "dashboards"
+    : "dashboard"
+  );
+  // /dashboards is the gallery; /dashboards/<id> opens one saved layout.
+  const activeDashboardId = section === "dashboards" ? pathname.split("/").filter(Boolean)[1] ?? null : null;
   const router = useRouter();
   // Seeded once from the URL so deep links open the right view, then owned by
   // React state: selecting mirrors the URL with a history entry instead of
@@ -640,10 +653,17 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   useBrandIconWarmup({ providers, portfolios, holdings: allHoldingsList });
   const { settings } = useSettings();
   const palette = usePalette();
+  const { dashboards, ready: dashboardsReady, error: dashboardsError, create: createDashboard, update: updateDashboard, remove: removeDashboard } = useDashboards();
+  const activeDashboard = useMemo(
+    () => (activeDashboardId ? dashboards.find((dashboard) => dashboard.id === activeDashboardId) ?? null : null),
+    [activeDashboardId, dashboards],
+  );
   const { snapshots, byPortfolio, byHolding, moverChanges } = useSnapshots(portfolios, directHoldings, settings.fxRates);
   const { toast } = useToast();
   const [tradeRequest, setTradeRequest] = useState<{ holding: Holding; type: "buy" | "sell" } | null>(null);
   const [wizardContext, setWizardContext] = useState<{ accountId: string | null; providerId: string | null } | null>(null);
+  const [dashboardEditor, setDashboardEditor] = useState<{ dashboard: SavedDashboard | null } | null>(null);
+  const [dashboardToDelete, setDashboardToDelete] = useState<SavedDashboard | null>(null);
   const [holdingDialog, setHoldingDialog] = useState<Holding | "new" | null>(null);
   // Derived rather than synced: the preference is the fallback and a manual
   // pick is an override tagged with the section it was made in. No effect writes
@@ -874,6 +894,37 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
     try { await removeProvider(id); await refreshPortfolios(); toast({title:"Provider deleted",variant:"success"});} catch(e: unknown){toast({title:"Delete failed",description:e instanceof Error ? e.message : String(e),variant:"error"});}
   };
 
+  const openCreateDashboard = useCallback(() => setDashboardEditor({ dashboard: null }), []);
+  const openEditDashboard = useCallback((dashboard: SavedDashboard) => setDashboardEditor({ dashboard }), []);
+  const handleSaveDashboard = useCallback(async (draft: DashboardDraft) => {
+    const editing = dashboardEditor?.dashboard ?? null;
+    try {
+      if (editing) {
+        await updateDashboard(editing.id, draft);
+        toast({ title: "Dashboard updated", description: draft.name, variant: "success" });
+        return;
+      }
+      const created = await createDashboard(draft.name, draft.widgets, draft.color);
+      toast({ title: "Dashboard created", description: draft.name, variant: "success" });
+      router.push(`/dashboards/${created.id}`);
+    } catch (error: unknown) {
+      toast({ title: "Could not save dashboard", description: error instanceof Error ? error.message : String(error), variant: "error" });
+      throw error;
+    }
+  }, [createDashboard, dashboardEditor, router, toast, updateDashboard]);
+  const confirmDeleteDashboard = useCallback(async () => {
+    if (!dashboardToDelete) return;
+    try {
+      await removeDashboard(dashboardToDelete.id);
+      if (activeDashboardId === dashboardToDelete.id) router.push("/dashboards");
+      toast({ title: "Dashboard deleted", description: dashboardToDelete.name, variant: "success" });
+    } catch (error: unknown) {
+      toast({ title: "Could not delete dashboard", description: error instanceof Error ? error.message : String(error), variant: "error" });
+      throw error;
+    }
+  }, [activeDashboardId, dashboardToDelete, removeDashboard, router, toast]);
+  const goToGoals = useCallback(() => router.push("/goals"), [router]);
+
   const openAdd = () => {
     setHoldingDialog("new");
   };
@@ -989,6 +1040,11 @@ export function Dashboard({ isDemo, section: requestedSection }: { isDemo?: bool
   return (
     <div className="flex min-h-screen">
       <Sidebar accounts={accounts} providers={providers} portfolios={portfolios} holdings={directHoldings} activeId={activeId} activeHoldingId={viewHolding?.id ?? null} activeProviderId={activeProvider?.id ?? null} activeAccountId={activeAccount?.id ?? null} onSelect={selectPortfolio} onSelectProvider={selectProvider} onSelectAccount={selectAccount} onSelectHolding={selectHolding} onCreateAccount={handleCreateAccount} onOpenWizard={openWizard} onRefresh={refreshAllHoldings} isDemo={isDemo} accountsReady={accountsReady} portfoliosReady={portfoliosReady} onRenameAccount={handleRenameAccount} onRenameProvider={handleRenameProvider} onRenamePortfolio={handleRenamePortfolio}
+        dashboards={dashboards}
+        dashboardsReady={dashboardsReady}
+        onCreateDashboard={openCreateDashboard}
+        onEditDashboard={openEditDashboard}
+        onDeleteDashboard={setDashboardToDelete}
         onDeleteAccount={requestDeleteAccount}
         onDeletePortfolio={requestDeletePortfolio} />
       <main id="main-content" className="flex-1 min-w-0 pt-12 xl:pt-0">
@@ -1026,6 +1082,52 @@ range={range}
               benchmark={benchmark}
               onBenchmarkChange={setBenchmark}
             />
+          ) : section === "dashboards" ? (
+            activeDashboard ? (
+              <CustomDashboardView
+                dashboard={activeDashboard}
+                totalValue={totalValue}
+                totalCost={totalCost}
+                totalGain={totalGain}
+                totalGainPct={totalGainPct}
+                periodChange={overviewPeriodChange}
+                range={range}
+                onRangeChange={pickRange}
+                chartData={chartData}
+                chartDots={chartDots}
+                overviewSeries={overviewSeries}
+                allocation={allocation}
+                allocMode={allocMode}
+                onAllocModeChange={setAllocMode}
+                emptyAllocationContent={emptyAllocationContent}
+                breakdown={overviewBreakdown}
+                insights={accountInsights}
+                periodMovers={periodMovers}
+                portfolios={portfolios}
+                directHoldings={directHoldings}
+                transactions={displayTx}
+                staleHoldings={staleHoldings}
+                fxRates={settings.fxRates}
+                dateFormat={settings.dateFormat}
+                showTradeMarkers={settings.showTradeMarkers}
+                onOpenAccount={selectAccount}
+                onOpenProvider={selectProvider}
+                onOpenPortfolio={selectPortfolio}
+                onSelectHolding={selectHolding}
+                onViewGoals={goToGoals}
+                onEdit={() => openEditDashboard(activeDashboard)}
+                onDelete={() => setDashboardToDelete(activeDashboard)}
+              />
+            ) : (
+              <CustomDashboardHome
+                dashboards={dashboards}
+                ready={dashboardsReady}
+                error={activeDashboardId && dashboardsReady ? "That dashboard could not be found." : dashboardsError}
+                onCreate={openCreateDashboard}
+                onEdit={openEditDashboard}
+                onDelete={setDashboardToDelete}
+              />
+            )
           ) : wizardContext ? (
             <CreatePortfolioWizard
               // Remounting is the reset: a new wizard context means fresh
@@ -1312,6 +1414,27 @@ range={range}
               confirmationText={deleteRequest.kind === "holding" ? undefined : deleteRequest.item.name}
               onOpenChange={(open) => { if (!open) setDeleteRequest(null); }}
               onConfirm={confirmDelete}
+            />
+          )}
+
+          {dashboardEditor && (
+            <DashboardCreatorDialog
+              key={dashboardEditor.dashboard?.id ?? "new-dashboard"}
+              dashboard={dashboardEditor.dashboard}
+              onOpenChange={(open) => { if (!open) setDashboardEditor(null); }}
+              onSubmit={handleSaveDashboard}
+            />
+          )}
+
+          {dashboardToDelete && (
+            <DeleteConfirmationDialog
+              title="Delete dashboard"
+              description={(
+                <>Delete <span className="text-white font-medium">{dashboardToDelete.name}</span>? Its layout is removed. Your accounts, portfolios and holdings are untouched.</>
+              )}
+              confirmLabel="Delete dashboard"
+              onOpenChange={(open) => { if (!open) setDashboardToDelete(null); }}
+              onConfirm={confirmDeleteDashboard}
             />
           )}
 
