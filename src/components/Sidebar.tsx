@@ -2,7 +2,7 @@
 import { type Portfolio, type Account, type Provider, type Holding, useSettings, applyWorkspaceOrder } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, ArrowDownToLine, RotateCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, ArrowDownToLine, RotateCw, PanelLeftClose, PanelLeftOpen, Wallet, Activity, Coins, Tag, Percent } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -264,14 +264,23 @@ function useDesktopLayout() {
   return useSyncExternalStore(subscribeDesktopLayout, readDesktopLayout, () => true);
 }
 
-type RailTipRow = { label: string; value: string };
+type RailTipRow = { label: string; value: string; icon?: ReactNode };
 // A collapsed rail row only shows an icon, so the card lists what the portfolio
 // actually holds instead of just an aggregate count. Rows that can navigate get
 // an `onSelect` and render as buttons.
-type RailTipHolding = { id: string; label: string; value: string; onSelect?: () => void };
+type RailTipHolding = {
+  id: string;
+  label: string;
+  value: string;
+  /** The fund/company name, shown under the ticker like the sidebar row. */
+  meta?: string;
+  icon?: ReactNode;
+  live?: boolean;
+  onSelect?: () => void;
+};
 // The owning account is one click away from the same card, so the rail does not
 // need an account icon of its own.
-type RailTipAccount = { name: string; onSelect: () => void };
+type RailTipAccount = { name: string; color?: string; icon?: string | null; onSelect: () => void };
 
 // Per-portfolio valuation is recomputed only when the portfolio data or the FX
 // rates change, not on every render of the tree.
@@ -282,9 +291,11 @@ const EMPTY_VALUATION: PortfolioValuation = { total: 0, holdings: [], values: ne
 // Icon-only rows need their detail somewhere. A portal keeps the card clear of
 // the sidebar's scroll container, which would otherwise clip it. The same card
 // also serves full-width rows in the expanded tree, anchoring to the row.
-function RailTip({ title, subtitle, rows, holdings, account, anchorClassName = "mx-auto block w-fit", children }: {
+function RailTip({ title, subtitle, icon, accentColor, rows, holdings, account, anchorClassName = "mx-auto block w-fit", children }: {
   title: string;
   subtitle?: string;
+  icon?: ReactNode;
+  accentColor?: string;
   rows?: RailTipRow[];
   holdings?: RailTipHolding[];
   account?: RailTipAccount;
@@ -294,12 +305,15 @@ function RailTip({ title, subtitle, rows, holdings, account, anchorClassName = "
   const anchorRef = useRef<HTMLSpanElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  // Row icons are optional; when any row has one every row reserves the slot so
+  // the values keep a single right edge.
+  const rowsWithIcons = rows?.some((row) => row.icon != null) ?? false;
 
   const show = useCallback(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
-    const width = 232;
+    const width = 252;
     const gap = 10;
     const left = rect.right + gap + width > window.innerWidth - 8
       ? Math.max(8, rect.left - width - gap)
@@ -307,17 +321,16 @@ function RailTip({ title, subtitle, rows, holdings, account, anchorClassName = "
     // Estimate the card height so it can be centred on the icon without a
     // transform (transformed fixed layers rasterise badly in some Chromium
     // screenshots and hurt text sharpness).
-    const estimatedHeight = 54
-      + (subtitle ? 16 : 0)
-      + (rows?.length ? 14 + rows.length * 18 : 0)
-      + (holdings?.length ? 32 + holdings.length * 18 : 0)
+    const estimatedHeight = 50
+      + (rows?.length ? 10 + rows.length * 24 : 0)
+      + (holdings?.length ? 34 + holdings.length * 32 : 0)
       + (account ? 34 : 0);
     const top = Math.max(8, Math.min(
       window.innerHeight - estimatedHeight - 8,
       Math.max(8, rect.top + rect.height / 2 - estimatedHeight / 2),
     ));
     setCoords({ top, left });
-  }, [account, holdings, rows, subtitle]);
+  }, [account, holdings, rows]);
 
   const cancelHide = useCallback(() => {
     if (hideTimerRef.current === null) return;
@@ -370,48 +383,75 @@ function RailTip({ title, subtitle, rows, holdings, account, anchorClassName = "
         <div
           role="dialog"
           aria-label={`${title} details`}
-          style={{ position: "fixed", top: coords.top, left: coords.left, width: 232 }}
-          className="z-[100] rounded-xl border border-white/10 bg-zinc-900 p-3 text-left shadow-2xl"
+          style={{ position: "fixed", top: coords.top, left: coords.left, width: 252 }}
+          className="z-[100] rounded-2xl border border-white/10 bg-zinc-950/95 p-2.5 text-left shadow-[0_24px_64px_-16px_rgba(0,0,0,0.9)] backdrop-blur-xl"
           onMouseEnter={cancelHide}
           onMouseLeave={scheduleHide}
           onFocusCapture={cancelHide}
           onBlurCapture={scheduleHide}
         >
-          <span aria-hidden className="absolute left-[-5px] top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-white/10 bg-zinc-900" />
-          <p className="truncate text-xs font-semibold text-zinc-100">{title}</p>
-          {subtitle && <p className="mt-0.5 truncate text-[10px] uppercase tracking-[0.12em] text-zinc-400">{subtitle}</p>}
+          <span aria-hidden className="absolute left-[-5px] top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-white/10 bg-zinc-950" />
+          <div className="flex items-center gap-2.5 px-1 pb-0.5">
+            {icon && (
+              <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border border-white/[0.08] bg-white/[0.05]">
+                {icon}
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-white">{title}</p>
+              {subtitle && <p className="mt-0.5 truncate text-[10px] text-zinc-400">{subtitle}</p>}
+            </div>
+            {accentColor && (
+              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full ring-2 ring-white/[0.08]" style={{ background: accentColor }} />
+            )}
+          </div>
           {rows && rows.length > 0 && (
-            <div className="mt-2 space-y-1 border-t border-white/[0.06] pt-2">
+            <div className="mt-2 space-y-px border-t border-white/[0.06] pt-1.5">
               {rows.map((row) => (
-                <div key={row.label} className="flex items-center justify-between gap-3 text-[11px]">
-                  <span className="text-zinc-400">{row.label}</span>
-                  <span className="tabular-nums text-zinc-300">{row.value}</span>
+                <div key={row.label} className="flex items-center gap-2 rounded-md px-1 py-1 text-[11px]">
+                  {rowsWithIcons && (
+                    <span aria-hidden className="grid h-3.5 w-3.5 shrink-0 place-items-center text-zinc-500">{row.icon}</span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-[10px] text-zinc-400">{row.label}</span>
+                  <span className="shrink-0 font-medium tabular-nums text-zinc-200">{row.value}</span>
                 </div>
               ))}
             </div>
           )}
           {holdings && holdings.length > 0 && (
-            <div className="mt-2 border-t border-white/[0.06] pt-2">
-              <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-400">Holdings</p>
-              <div className="space-y-1">
+            <div className="mt-2 border-t border-white/[0.06] pt-1.5">
+              <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500">Holdings</span>
+                <span className="text-[9px] tabular-nums text-zinc-500">{holdings.length}</span>
+              </div>
+              <div className="space-y-px">
                 {holdings.map((holding) => holding.onSelect ? (
                   <button
                     key={holding.id}
                     type="button"
                     onClick={holding.onSelect}
                     aria-label={`Open ${holding.label}`}
-                    className="group/holding -mx-1 flex w-[calc(100%+0.5rem)] items-center justify-between gap-3 rounded px-1 py-0.5 text-left text-[11px] transition-colors hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                    className="group/holding flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
                   >
-                    <span className="flex min-w-0 items-center gap-1">
-                      <span className="min-w-0 truncate text-zinc-300 group-hover/holding:text-white">{holding.label}</span>
-                      <ChevronRight className="h-3 w-3 shrink-0 text-zinc-500 group-hover/holding:text-zinc-300" aria-hidden />
+                    {holding.icon && <span className="grid h-5 w-5 shrink-0 place-items-center">{holding.icon}</span>}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-[11px] font-medium text-zinc-200 group-hover/holding:text-white">{holding.label}</span>
+                        {holding.live && <LiveBadge />}
+                      </span>
+                      {holding.meta && <span className="block truncate text-[9px] text-zinc-500">{holding.meta}</span>}
                     </span>
-                    <span className="shrink-0 tabular-nums text-zinc-300">{holding.value}</span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-zinc-300">{holding.value}</span>
+                    <ChevronRight className="h-3 w-3 shrink-0 text-zinc-600 transition-colors group-hover/holding:text-zinc-300" aria-hidden />
                   </button>
                 ) : (
-                  <div key={holding.id} className="flex items-center justify-between gap-3 text-[11px]">
-                    <span className="min-w-0 truncate text-zinc-400">{holding.label}</span>
-                    <span className="shrink-0 tabular-nums text-zinc-300">{holding.value}</span>
+                  <div key={holding.id} className="flex items-center gap-2 rounded-md px-1 py-1">
+                    {holding.icon && <span className="grid h-5 w-5 shrink-0 place-items-center">{holding.icon}</span>}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[11px] font-medium text-zinc-300">{holding.label}</span>
+                      {holding.meta && <span className="block truncate text-[9px] text-zinc-500">{holding.meta}</span>}
+                    </span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-zinc-300">{holding.value}</span>
                   </div>
                 ))}
               </div>
@@ -423,13 +463,16 @@ function RailTip({ title, subtitle, rows, holdings, account, anchorClassName = "
                 type="button"
                 onClick={account.onSelect}
                 aria-label={`Open account ${account.name}`}
-                className="group/account -mx-1 flex w-[calc(100%+0.5rem)] items-center justify-between gap-3 rounded px-1 py-1 text-[11px] text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                className="group/account flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
               >
-                <span>Account</span>
-                <span className="flex min-w-0 items-center gap-1">
-                  <span className="min-w-0 truncate text-zinc-300 group-hover/account:text-white">{account.name}</span>
-                  <ChevronRight className="h-3 w-3 shrink-0 text-zinc-500 group-hover/account:text-zinc-300" aria-hidden />
+                <span aria-hidden className="grid h-3.5 w-3.5 shrink-0 place-items-center text-zinc-500">
+                  {account.icon
+                    ? <EntityIcon icon={account.icon} size={14} color={account.color} />
+                    : <FolderOpen className="h-3.5 w-3.5" style={account.color ? { color: account.color } : undefined} />}
                 </span>
+                <span className="min-w-0 flex-1 truncate text-[10px] text-zinc-400">Account</span>
+                <span className="min-w-0 truncate text-[11px] font-medium text-zinc-200 group-hover/account:text-white">{account.name}</span>
+                <ChevronRight className="h-3 w-3 shrink-0 text-zinc-600 transition-colors group-hover/account:text-zinc-300" aria-hidden />
               </button>
             </div>
           )}
@@ -458,7 +501,7 @@ function RailButton({ icon, label, subtitle, rows, holdings, account, active, on
   const style = { color: color ?? undefined, borderColor: active ? "rgba(255,255,255,0.12)" : "transparent" };
 
   return (
-    <RailTip title={label} subtitle={subtitle} rows={rows} holdings={holdings} account={account}>
+    <RailTip title={label} subtitle={subtitle} icon={icon} accentColor={color} rows={rows} holdings={holdings} account={account}>
       {href ? (
         <Link href={href} onClick={onClick} aria-label={label} aria-current={active ? "page" : undefined} className={className} style={style}>
           {icon}
@@ -635,7 +678,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
             updateTipTitle,
             updateTipSubtitle,
             updateButton,
-            [{ label: "Tickers updated", value: lastRefreshLabel ?? "Not yet" }],
+            [{ label: "Tickers updated", value: lastRefreshLabel ?? "Not yet", icon: <RefreshCw className="h-3 w-3" /> }],
           )}
           {withTip(isDemo ? "Exit demo" : "Sign out", isDemo ? "Return to the landing page" : "End your session", signOutLink)}
         </div>
@@ -1151,13 +1194,13 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               // repeats the rail tooltip so a row still has a detail view
               // without leaving the sidebar.
               const tipRows: RailTipRow[] = [
-                { label: "Value", value: fmtGBP(holdingValue) },
-                { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
-                { label: "Avg price", value: fmtPrice(holding.avgPrice, holding.currency) },
+                { label: "Value", value: fmtGBP(holdingValue), icon: <Wallet className="h-3 w-3" /> },
+                { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }), icon: <Coins className="h-3 w-3" /> },
+                { label: "Avg price", value: fmtPrice(holding.avgPrice, holding.currency), icon: <Tag className="h-3 w-3" /> },
                 ...(live
-                  ? [{ label: "Price", value: fmtPrice(holding.currentPrice, holding.currency) }]
+                  ? [{ label: "Price", value: fmtPrice(holding.currentPrice, holding.currency), icon: <TrendingUp className="h-3 w-3" /> }]
                   : []),
-                { label: "Allocation", value: `${allocation.toFixed(1)}%` },
+                { label: "Allocation", value: `${allocation.toFixed(1)}%`, icon: <Percent className="h-3 w-3" /> },
               ];
               const row = (
                 <button key={holding.id} type="button" onClick={() => selectHolding(holding)} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
@@ -1178,7 +1221,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               // Touch layouts have no hover, and a card floating over the row
               // would just cover the list it belongs to.
               return desktopLayout ? (
-                <RailTip key={holding.id} title={holding.name} subtitle={holding.symbol} rows={tipRows} anchorClassName="block w-full">
+                <RailTip
+                  key={holding.id}
+                  title={holding.name}
+                  subtitle={holding.symbol}
+                  icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={20} />}
+                  rows={tipRows}
+                  anchorClassName="block w-full"
+                >
                   {row}
                 </RailTip>
               ) : row;
@@ -1299,7 +1349,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             icon={<Plus className="h-4 w-4" />}
             label={hasAccounts ? "New portfolio" : "New account"}
             subtitle={hasAccounts ? "No portfolios yet" : "No accounts yet"}
-            rows={[{ label: "Next", value: "Create one" }]}
+            rows={[{ label: "Next", value: "Create one", icon: <Plus className="h-3 w-3" /> }]}
             onClick={() => hasAccounts ? openWizard(accounts[0]?.id ?? null) : setShowAccountDialog(true)}
           />
         </div>
@@ -1322,18 +1372,23 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               label={portfolio.name}
               subtitle={portfolioContext(portfolio)}
               rows={[
-                { label: "Value", value: fmtGBP(valuation.total) },
-                { label: "Holdings", value: String(valuation.holdings.length) },
-                { label: "Type", value: portfolio.type },
+                { label: "Value", value: fmtGBP(valuation.total), icon: <Wallet className="h-3 w-3" /> },
+                { label: "Holdings", value: String(valuation.holdings.length), icon: <Layers className="h-3 w-3" /> },
+                { label: "Type", value: portfolio.type, icon: <Activity className="h-3 w-3" /> },
               ]}
               holdings={valuation.holdings.map((holding) => ({
                 id: holding.id,
                 label: holding.symbol,
                 value: fmtGBP(valuation.values.get(holding.id) ?? 0),
+                meta: holding.name,
+                icon: <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={18} />,
+                live: isLiveHolding(holding, portfolio.type),
                 onSelect: () => selectHolding(holding),
               }))}
               account={account ? {
                 name: account.name,
+                color: accColorFor(account),
+                icon: account.icon,
                 onSelect: () => { onSelectAccount?.(account.id); setMobileOpen(false); },
               } : undefined}
               active={selectedPath.portfolioId === portfolio.id}
@@ -1352,11 +1407,13 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               label={holding.name}
               subtitle={holding.symbol}
               rows={[
-                { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
-                { label: "Value", value: fmtGBP(holdingValueGBP(holding, settings.fxRates)) },
+                { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }), icon: <Coins className="h-3 w-3" /> },
+                { label: "Value", value: fmtGBP(holdingValueGBP(holding, settings.fxRates)), icon: <Wallet className="h-3 w-3" /> },
               ]}
               account={account ? {
                 name: account.name,
+                color: accColorFor(account),
+                icon: account.icon,
                 onSelect: () => { onSelectAccount?.(account.id); setMobileOpen(false); },
               } : undefined}
               active={activeHoldingId === holding.id}
@@ -1559,10 +1616,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                                 key={h.id}
                                 title={h.symbol}
                                 subtitle={h.name}
+                                icon={<BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={20} />}
                                 rows={[
-                                  { label: "Value", value: fmtGBP(directValue) },
-                                  { label: "Shares", value: h.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
-                                  { label: "Avg price", value: fmtPrice(h.avgPrice, h.currency) },
+                                  { label: "Value", value: fmtGBP(directValue), icon: <Wallet className="h-3 w-3" /> },
+                                  { label: "Shares", value: h.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }), icon: <Coins className="h-3 w-3" /> },
+                                  { label: "Avg price", value: fmtPrice(h.avgPrice, h.currency), icon: <Tag className="h-3 w-3" /> },
                                 ]}
                                 anchorClassName="block w-full"
                               >
