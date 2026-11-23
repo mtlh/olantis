@@ -264,7 +264,7 @@ async function seedDemo(userId: string) {
     }))).onConflictDoNothing());
   }
   sideWrites.push(db.insert(userSettings)
-    .values({ userId, currency: "GBP", dateFormat: "en-GB", defaultRange: "1Y", showTradeMarkers: 1, updatedAt: now })
+    .values({ userId, currency: "GBP", dateFormat: "en-GB", defaultRange: "1Y", showTradeMarkers: 1, showCustomDashboards: 0, updatedAt: now })
     .onConflictDoNothing());
 
   // Foreign keys force three sequential waves; everything else runs with the

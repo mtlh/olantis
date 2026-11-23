@@ -1465,32 +1465,34 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         {rail ? (
           <>
             <div className="mt-3">{renderRailTree()}</div>
-            <div className="mt-2 flex flex-col items-center gap-1 border-t border-white/[0.06] pt-2">
-              {dashboards.map((dashboard) => (
-                <RailButton
-                  key={dashboard.id}
-                  icon={<LayoutGrid className="h-[17px] w-[17px]" />}
-                  label={dashboard.name}
-                  subtitle={`${dashboard.widgets.length} ${dashboard.widgets.length === 1 ? "widget" : "widgets"}`}
-                  rows={[{ label: "Widgets", value: String(dashboard.widgets.length), icon: <LayoutGrid className="h-3 w-3" /> }]}
-                  href={`/dashboards/${dashboard.id}`}
-                  active={activeDashboardId === dashboard.id}
-                  color={dashboard.color ?? undefined}
-                  onClick={() => setMobileOpen(false)}
-                />
-              ))}
-              <RailTip title="New dashboard" subtitle="Pick your own widgets">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={onCreateDashboard}
-                  aria-label="Create dashboard"
-                  className="text-zinc-400 hover:text-white"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </RailTip>
-            </div>
+            {settings.showCustomDashboards && (
+              <div className="mt-2 flex flex-col items-center gap-1 border-t border-white/[0.06] pt-2">
+                {dashboards.map((dashboard) => (
+                  <RailButton
+                    key={dashboard.id}
+                    icon={<LayoutGrid className="h-[17px] w-[17px]" />}
+                    label={dashboard.name}
+                    subtitle={`${dashboard.widgets.length} ${dashboard.widgets.length === 1 ? "widget" : "widgets"}`}
+                    rows={[{ label: "Widgets", value: String(dashboard.widgets.length), icon: <LayoutGrid className="h-3 w-3" /> }]}
+                    href={`/dashboards/${dashboard.id}`}
+                    active={activeDashboardId === dashboard.id}
+                    color={dashboard.color ?? undefined}
+                    onClick={() => setMobileOpen(false)}
+                  />
+                ))}
+                <RailTip title="New dashboard" subtitle="Pick your own widgets">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={onCreateDashboard}
+                    aria-label="Create dashboard"
+                    className="text-zinc-400 hover:text-white"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </RailTip>
+              </div>
+            )}
           </>
         ) : (
         <div className="mt-3">
@@ -1651,7 +1653,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         </div>
         )}
 
-        {!rail && renderDashboardSection()}
+        {!rail && settings.showCustomDashboards && renderDashboardSection()}
 
       </nav>
       <SidebarToolRow

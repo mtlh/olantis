@@ -26,6 +26,7 @@ interface SettingsState {
   dateFormat: string;
   defaultRange: AppSettings["defaultRange"];
   showTradeMarkers: number;
+  showCustomDashboards: number;
 }
 
 const ROW_HINT = "mt-0.5 text-[11px] text-zinc-400";
@@ -290,6 +291,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
     dateFormat: settingsPatch?.dateFormat ?? appSettings.dateFormat,
     defaultRange: settingsPatch?.defaultRange ?? appSettings.defaultRange,
     showTradeMarkers: settingsPatch?.showTradeMarkers ?? (appSettings.showTradeMarkers ? 1 : 0),
+    showCustomDashboards: settingsPatch?.showCustomDashboards ?? (appSettings.showCustomDashboards ? 1 : 0),
   };
   const [saving, setSaving] = useState<string | null>(null);
   const [colorTab, setColorTab] = useState<"accounts" | "providers" | "portfolios">("accounts");
@@ -305,6 +307,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
       ...(patch.dateFormat !== undefined ? { dateFormat: patch.dateFormat } : {}),
       ...(patch.defaultRange !== undefined ? { defaultRange: patch.defaultRange } : {}),
       ...(patch.showTradeMarkers !== undefined ? { showTradeMarkers: patch.showTradeMarkers ? 1 : 0 } : {}),
+      ...(patch.showCustomDashboards !== undefined ? { showCustomDashboards: patch.showCustomDashboards ? 1 : 0 } : {}),
     }));
     try {
       await saveAppSettings(patch);
@@ -420,7 +423,7 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
               <ChartRangeSelector range={defaultRange} onRangeChange={(value) => saveSettings({ defaultRange: value })} segmented className="w-fit md:justify-self-end" />
             </div>
 
-            <div className="grid gap-2 py-3.5 pb-0 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
+            <div className="grid gap-2 py-3.5 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
               <div>
                 <p className="text-sm font-medium text-zinc-200">Trade markers</p>
                 <p className={ROW_HINT}>Buy and sell dots on portfolio charts.</p>
@@ -429,6 +432,18 @@ export function SettingsView({ isDemo }: { isDemo?: boolean }) {
                 value={settings.showTradeMarkers}
                 options={[{ value: 1, label: "On" }, { value: 0, label: "Off" }]}
                 onChange={(value) => saveSettings({ showTradeMarkers: value !== 0 })}
+              />
+            </div>
+
+            <div className="grid gap-2 py-3.5 pb-0 md:grid-cols-[minmax(0,1fr)_15rem] md:items-center md:gap-8">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Custom dashboards</p>
+                <p className={ROW_HINT}>Show saved dashboards in the sidebar. Off by default.</p>
+              </div>
+              <SegmentedToggle
+                value={settings.showCustomDashboards}
+                options={[{ value: 1, label: "On" }, { value: 0, label: "Off" }]}
+                onChange={(value) => saveSettings({ showCustomDashboards: value !== 0 })}
               />
             </div>
           </div>
