@@ -61,6 +61,8 @@ export const userSettings = pgTable("user_settings", {
   dateFormat: text("date_format"),
   defaultRange: text("default_range"),
   showTradeMarkers: integer("show_trade_markers"),
+  /** Opt-in sidebar section for user-built dashboards; off by default. */
+  showCustomDashboards: integer("show_custom_dashboards"),
   updatedAt: integer("updated_at").notNull(),
 });
 

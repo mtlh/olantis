@@ -5,6 +5,7 @@ export type AppSettings = {
   dateFormat: string;
   defaultRange: "1M" | "3M" | "1Y" | "MAX";
   showTradeMarkers: boolean;
+  showCustomDashboards: boolean;
   fxRates: FxRates;
   fxDate: string | null;
 };
@@ -14,6 +15,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dateFormat: "en-GB",
   defaultRange: "1Y",
   showTradeMarkers: true,
+  showCustomDashboards: false,
   fxRates: DEFAULT_FX_RATES,
   fxDate: null,
 };
@@ -31,6 +33,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     dateFormat: typeof r.dateFormat === "string" && r.dateFormat ? r.dateFormat : DEFAULT_SETTINGS.dateFormat,
     defaultRange: range,
     showTradeMarkers: r.showTradeMarkers == null ? DEFAULT_SETTINGS.showTradeMarkers : Number(r.showTradeMarkers) !== 0,
+    showCustomDashboards: r.showCustomDashboards == null ? DEFAULT_SETTINGS.showCustomDashboards : Number(r.showCustomDashboards) !== 0,
     fxRates: DEFAULT_FX_RATES,
     fxDate: null,
   };

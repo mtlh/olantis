@@ -10,7 +10,7 @@ export type Holding = { id: string; symbol: string; name: string; shares: number
 export type Portfolio = { id: string; name: string; type: "live" | "manual"; accountId: string | null; providerId: string | null; color: string | null; sortOrder?: number | null; holdings: Holding[]; userId?: string; createdAt?: number };
 export type Account = { id: string; name: string; color: string | null; icon: string | null; sortOrder?: number | null; userId?: string; createdAt?: number };
 export type Provider = { id: string; name: string; color: string | null; icon: string | null; accountId: string; sortOrder?: number | null; userId?: string; createdAt?: number };
-export type UserSettings = { userId: string; currency: string; dateFormat: string; defaultRange: string; showTradeMarkers: number };
+export type UserSettings = { userId: string; currency: string; dateFormat: string; defaultRange: string; showTradeMarkers: number; showCustomDashboards: number };
 export type Snapshot = { date: string; value: number };
 /** Per-range move of one holding, precomputed on the server (see lib/bootstrap.ts). */
 export type HoldingMoverChanges = {
@@ -685,6 +685,7 @@ export function useSettings() {
       if (patch.dateFormat !== undefined) body.dateFormat = patch.dateFormat;
       if (patch.defaultRange !== undefined) body.defaultRange = patch.defaultRange;
       if (patch.showTradeMarkers !== undefined) body.showTradeMarkers = patch.showTradeMarkers ? 1 : 0;
+      if (patch.showCustomDashboards !== undefined) body.showCustomDashboards = patch.showCustomDashboards ? 1 : 0;
       await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
       await refresh();
     },
