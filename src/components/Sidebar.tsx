@@ -36,7 +36,7 @@ const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPor
 import { Logo } from "@/components/Logo";
 import { BrandIcon, ProviderIcon } from "@/components/BrandIcon";
 import { EntityIcon } from "@/components/EntityIcon";
-import { useDesktopChanges } from "@/components/useDesktopChanges";
+import { useDesktopChanges, hasChangesToShow } from "@/components/useDesktopChanges";
 import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -498,8 +498,13 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
     )
   ) : navLink("/dashboard", "Dashboard", false, <LayoutDashboard className={TOOL_ICON_CLASS} />, "Portfolio overview");
 
-  const checkChanges = () => {
-    void changes.check();
+  const [changesOpen, setChangesOpen] = useState(false);
+
+  const checkChanges = async () => {
+    const payload = await changes.check();
+    // Nothing published means nothing to open: the icon spins, then rests. A
+    // failed read still opens the panel so its Try again action is reachable.
+    setChangesOpen(payload === null || hasChangesToShow(payload));
   };
 
   const changesLabel = changes.busy
@@ -523,7 +528,24 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
   // Desktop only: the deployed site updates on its own, so this control is a
   // manual read of recent releases. It never downloads, installs or restarts.
   const changesButton = changes.desktop ? (
-    <Popover onOpenChange={(open) => { if (open) checkChanges(); }}>
+    <Popover
+      open={changesOpen}
+      onOpenChange={(open, details) => {
+        // The button checks before opening, so a feed with nothing new leaves
+        // the popover closed and only the icon's spin as feedback.
+        if (details.reason === "trigger-press") {
+          if (open) {
+            // Hold the popover shut while the shell reads the feed.
+            details.cancel();
+            void checkChanges();
+          } else {
+            setChangesOpen(false);
+          }
+          return;
+        }
+        setChangesOpen(open);
+      }}
+    >
       <PopoverTrigger
         render={
           <Button
@@ -544,7 +566,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           checkedAt={changes.checkedAt}
           currentVersion={changes.currentVersion}
           update={changes.update}
-          onRetry={checkChanges}
+          onRetry={() => { void checkChanges(); }}
         />
       </PopoverContent>
     </Popover>
