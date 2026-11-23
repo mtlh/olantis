@@ -3,7 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { BrandIcon } from "@/components/BrandIcon";
-import { normalizeBrandName } from "@/lib/brands";
+import { createSearchQuery, matchesSearch } from "@/lib/search";
 import type { Provider } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -44,9 +44,9 @@ export function ProviderPicker({ id, value, onChange, providers, disabled, class
   }, [providers]);
 
   const filtered = useMemo(() => {
-    const term = normalizeBrandName(query);
-    if (!term) return options;
-    return options.filter((option) => normalizeBrandName(option.name).includes(term));
+    const search = createSearchQuery(query);
+    if (!search.tokens.length) return options;
+    return options.filter((option) => matchesSearch(search, option.name));
   }, [options, query]);
 
   useEffect(() => {

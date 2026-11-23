@@ -43,7 +43,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { resolvePortfolioColor } from "@/lib/colors";
 import { usePalette } from "@/lib/palette";
 import { fmtRelative, holdingValueGBP, fmtPrice, fmtGBP, isLiveHolding, holdingCurrency } from "@/lib/format";
+import { createSearchQuery, matchesSearch } from "@/lib/search";
 import { LiveBadge } from "@/components/shared/LiveBadge";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 interface SearchResult { symbol: string; name: string; exchange: string; price?: number | null; currency?: string | null }
 
@@ -820,25 +822,33 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   // Typing stays immediate while the (potentially large) account tree filters
   // in a lower-priority render.
   const deferredQuery = useDeferredValue(q);
-  const searchTerm = deferredQuery.trim().toLowerCase();
+  const search = useMemo(() => createSearchQuery(deferredQuery), [deferredQuery]);
+  const searchTerm = search.tokens.join(" ");
   const matchesHolding = useCallback(
-    (holding: Holding) => holding.symbol.toLowerCase().includes(searchTerm) || holding.name.toLowerCase().includes(searchTerm),
-    [searchTerm],
+    (holding: Holding) => matchesSearch(search, holding.symbol, holding.name),
+    [search],
   );
-  const matchesPortfolio = useCallback((portfolio: Portfolio) => {
-    if (portfolio.name.toLowerCase().includes(searchTerm) || portfolio.holdings.some(matchesHolding)) return true;
-    if (!searchTerm) return true;
-    const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name ?? "" : "";
+  // A portfolio matches on its own name/provider/account, or because one of its
+  // holdings matches. The distinction decides whether the whole portfolio or
+  // only the matching holdings stay visible.
+  const matchesPortfolioContext = useCallback((portfolio: Portfolio) => {
+    const providerName = portfolio.providerId ? providerById.get(portfolio.providerId)?.name : null;
     const accountId = accountIdForPortfolio(portfolio);
-    const accountName = accountId ? accountById.get(accountId)?.name ?? "" : "";
-    return providerName.toLowerCase().includes(searchTerm) || accountName.toLowerCase().includes(searchTerm);
-  }, [accountById, accountIdForPortfolio, matchesHolding, providerById, searchTerm]);
+    const accountName = accountId ? accountById.get(accountId)?.name : null;
+    return matchesSearch(search, portfolio.name, providerName, accountName);
+  }, [accountById, accountIdForPortfolio, providerById, search]);
+  const matchesPortfolio = useCallback(
+    (portfolio: Portfolio) => matchesPortfolioContext(portfolio) || portfolio.holdings.some(matchesHolding),
+    [matchesHolding, matchesPortfolioContext],
+  );
   const filteredAccounts = useMemo(() => sortByOrder(accounts.filter((account) => {
-    if (!searchTerm || account.name.toLowerCase().includes(searchTerm)) return true;
+    if (matchesSearch(search, account.name)) return true;
     return portfolios.some((portfolio) => accountIdForPortfolio(portfolio) === account.id && matchesPortfolio(portfolio))
       || directHoldings.some((holding) => accountIdForHolding(holding) === account.id && matchesHolding(holding));
-  })), [accountIdForHolding, accountIdForPortfolio, accounts, directHoldings, matchesHolding, matchesPortfolio, portfolios, searchTerm]);
+  })), [accountIdForHolding, accountIdForPortfolio, accounts, directHoldings, matchesHolding, matchesPortfolio, portfolios, search]);
   const filteredPortfolios = (list: Portfolio[], showAll = false) => sortByOrder(list.filter((portfolio) => !searchTerm || showAll || matchesPortfolio(portfolio)));
+  const visibleUnassigned = filteredPortfolios(unassigned);
+  const noSearchMatches = Boolean(searchTerm) && filteredAccounts.length === 0 && visibleUnassigned.length === 0;
   const accountIndex = useMemo(() => new Map(accounts.map((a, i) => [a.id, i])), [accounts]);
   const accountTotalsById = useMemo(() => {
     const totals = new Map<string, number>(accounts.map((account) => [account.id, 0]));
@@ -953,8 +963,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     const providerName = provider?.name ?? null;
     const isActive = activeId === portfolio.id;
     const selectedHolding = holdingsInValueOrder.some((holding) => holding.id === activeHoldingId);
+    const contextMatch = matchesPortfolioContext(portfolio);
+    // A portfolio that matched by name/provider/account keeps its full list;
+    // one that only matched through a holding shows just the matching ones.
+    const visibleHoldings = contextMatch ? holdingsInValueOrder : holdingsInValueOrder.filter(matchesHolding);
     const searchMatchesHolding = Boolean(searchTerm) && holdingsInValueOrder.some(matchesHolding);
-    const isOpen = expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding || searchMatchesHolding);
+    // A holding match must be visible, even if this portfolio was collapsed
+    // before the search started.
+    const isOpen = searchMatchesHolding || (expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding));
     const isDragging = drag != null && draggingRow?.group === drag.group && draggingRow.index === drag.index;
     const isDropTarget = drag != null
       && draggingRow?.group === drag.group
@@ -1010,7 +1026,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         </div>
         {isOpen && (
           <div className="ml-[2.375rem] border-l border-white/[0.06] pb-1.5 pl-2 pr-1">
-            {holdingsInValueOrder.length ? holdingsInValueOrder.map((holding) => {
+            {visibleHoldings.length ? visibleHoldings.map((holding) => {
               const holdingValue = values.get(holding.id) ?? 0;
               const allocation = total > 0 ? holdingValue / total * 100 : 0;
               const isHoldingActive = holding.id === activeHoldingId;
@@ -1152,6 +1168,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     const railPortfolios = sortByOrder(filteredPortfolios(portfolios));
     const railDirectHoldings = directHoldings.filter((holding) => !holding.portfolioId && (!searchTerm || matchesHolding(holding)));
     if (railPortfolios.length === 0 && railDirectHoldings.length === 0) {
+      if (searchTerm) {
+        return (
+          <div className="px-2 pt-2 text-center">
+            <p className="text-[10px] text-zinc-400">No matches for “{q.trim()}”.</p>
+            <Button variant="ghost" size="xs" className="mt-1 h-auto p-0 text-[10px] text-zinc-400 hover:text-white" onClick={() => setQ("")}>Clear search</Button>
+          </div>
+        );
+      }
       const hasAccounts = accounts.length > 0;
       return (
         <div className="pt-1">
@@ -1305,10 +1329,19 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
 
           {loading ? <div className="space-y-3">{[1,2,3].map(i=><Skeleton key={i} className="h-[92px] rounded-2xl bg-white/5"/>)}</div>
           : accounts.length === 0 && unassigned.length === 0 ? <Card className="p-6 text-center border-dashed bg-white/[0.02]"><p className="text-sm text-zinc-400">No portfolios yet</p><p className="text-xs text-zinc-400 mt-1">Create an account to start tracking portfolios</p><Button size="sm" className="mt-3" onClick={()=>setShowAccountDialog(true)}><Plus className="w-3.5 h-3.5"/>New account</Button></Card>
+          : noSearchMatches ? (
+            <EmptyState
+              size="sm"
+              className="rounded-xl border border-dashed border-white/10 bg-white/[0.02]"
+              title={`No matches for “${q.trim()}”`}
+              description="Search accounts, providers, portfolios, symbols or names."
+              action={<Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white" onClick={() => setQ("")}>Clear search</Button>}
+            />
+          )
           : (
           <div className="space-y-3">
             {filteredAccounts.map((acc, accountRowIndex) => {
-              const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
+              const accountNameMatches = matchesSearch(search, acc.name);
               const total = accountTotalsById.get(acc.id) ?? 0;
               const accountActive = activeAccountId === acc.id;
               const accColor = accColorFor(acc);
@@ -1413,14 +1446,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               );
             })}
 
-            {unassigned.length > 0 && (
+            {visibleUnassigned.length > 0 && (
               <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] overflow-hidden">
                 <div className="px-3 py-2 flex items-center justify-between">
                   <span className="text-[11px] font-semibold tracking-widest uppercase text-zinc-400">Unassigned</span>
                   <Button variant="ghost" size="icon-xs" onClick={() => openWizard(null)} aria-label="New portfolio"><Plus className="w-3.5 h-3.5" /></Button>
                 </div>
                 <div className="px-2 pb-2 space-y-1">
-                  {filteredPortfolios(unassigned).map((p, portfolioIndex, portfolioList) => renderPortfolioItem(p, {
+                  {visibleUnassigned.map((p, portfolioIndex, portfolioList) => renderPortfolioItem(p, {
                     group: "portfolios:unassigned",
                     list: portfolioList,
                     index: portfolioIndex,
