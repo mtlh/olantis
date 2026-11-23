@@ -2,7 +2,7 @@
 import { type Portfolio, type Account, type Provider, type Holding, useSettings, applyWorkspaceOrder } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, ArrowDownToLine, RotateCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, ArrowDownToLine, RotateCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -264,8 +264,12 @@ function useDesktopLayout() {
 
 type RailTipRow = { label: string; value: string };
 // A collapsed rail row only shows an icon, so the card lists what the portfolio
-// actually holds instead of just an aggregate count.
-type RailTipHolding = { id: string; label: string; value: string };
+// actually holds instead of just an aggregate count. Rows that can navigate get
+// an `onSelect` and render as buttons.
+type RailTipHolding = { id: string; label: string; value: string; onSelect?: () => void };
+// The owning account is one click away from the same card, so the rail does not
+// need an account icon of its own.
+type RailTipAccount = { name: string; onSelect: () => void };
 
 // Per-portfolio valuation is recomputed only when the portfolio data or the FX
 // rates change, not on every render of the tree.
@@ -276,15 +280,17 @@ const EMPTY_VALUATION: PortfolioValuation = { total: 0, holdings: [], values: ne
 // Icon-only rows need their detail somewhere. A portal keeps the card clear of
 // the sidebar's scroll container, which would otherwise clip it. The same card
 // also serves full-width rows in the expanded tree, anchoring to the row.
-function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto block w-fit", children }: {
+function RailTip({ title, subtitle, rows, holdings, account, anchorClassName = "mx-auto block w-fit", children }: {
   title: string;
   subtitle?: string;
   rows?: RailTipRow[];
   holdings?: RailTipHolding[];
+  account?: RailTipAccount;
   anchorClassName?: string;
   children: ReactNode;
 }) {
   const anchorRef = useRef<HTMLSpanElement>(null);
+  const hideTimerRef = useRef<number | null>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
 
   const show = useCallback(() => {
@@ -302,15 +308,40 @@ function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto b
     const estimatedHeight = 54
       + (subtitle ? 16 : 0)
       + (rows?.length ? 14 + rows.length * 18 : 0)
-      + (holdings?.length ? 32 + holdings.length * 18 : 0);
+      + (holdings?.length ? 32 + holdings.length * 18 : 0)
+      + (account ? 34 : 0);
     const top = Math.max(8, Math.min(
       window.innerHeight - estimatedHeight - 8,
       Math.max(8, rect.top + rect.height / 2 - estimatedHeight / 2),
     ));
     setCoords({ top, left });
-  }, [holdings, rows, subtitle]);
+  }, [account, holdings, rows, subtitle]);
 
-  const hide = useCallback(() => setCoords(null), []);
+  const cancelHide = useCallback(() => {
+    if (hideTimerRef.current === null) return;
+    window.clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = null;
+  }, []);
+
+  const hide = useCallback(() => {
+    cancelHide();
+    setCoords(null);
+  }, [cancelHide]);
+
+  // The card holds links now, so leaving the icon has to leave time to cross the
+  // gap into the portal. Entering the card cancels the pending close.
+  const scheduleHide = useCallback(() => {
+    cancelHide();
+    hideTimerRef.current = window.setTimeout(() => {
+      hideTimerRef.current = null;
+      setCoords(null);
+    }, 160);
+  }, [cancelHide]);
+
+  const reveal = useCallback(() => {
+    cancelHide();
+    show();
+  }, [cancelHide, show]);
 
   useEffect(() => {
     if (!coords) return;
@@ -319,24 +350,30 @@ function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto b
     return () => {
       window.removeEventListener("scroll", hide, true);
       window.removeEventListener("resize", hide);
+      cancelHide();
     };
-  }, [coords, hide]);
+  }, [cancelHide, coords, hide]);
 
   return (
     <span
       ref={anchorRef}
       className={anchorClassName}
-      onMouseEnter={show}
-      onMouseLeave={hide}
-      onFocusCapture={show}
-      onBlurCapture={hide}
+      onMouseEnter={reveal}
+      onMouseLeave={scheduleHide}
+      onFocusCapture={reveal}
+      onBlurCapture={scheduleHide}
     >
       {children}
       {coords && createPortal(
         <div
-          role="tooltip"
+          role="dialog"
+          aria-label={`${title} details`}
           style={{ position: "fixed", top: coords.top, left: coords.left, width: 232 }}
-          className="pointer-events-none z-[100] rounded-xl border border-white/10 bg-zinc-900 p-3 text-left shadow-2xl"
+          className="z-[100] rounded-xl border border-white/10 bg-zinc-900 p-3 text-left shadow-2xl"
+          onMouseEnter={cancelHide}
+          onMouseLeave={scheduleHide}
+          onFocusCapture={cancelHide}
+          onBlurCapture={scheduleHide}
         >
           <span aria-hidden className="absolute left-[-5px] top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-white/10 bg-zinc-900" />
           <p className="truncate text-xs font-semibold text-zinc-100">{title}</p>
@@ -355,13 +392,43 @@ function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto b
             <div className="mt-2 border-t border-white/[0.06] pt-2">
               <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-400">Holdings</p>
               <div className="space-y-1">
-                {holdings.map((holding) => (
+                {holdings.map((holding) => holding.onSelect ? (
+                  <button
+                    key={holding.id}
+                    type="button"
+                    onClick={holding.onSelect}
+                    aria-label={`Open ${holding.label}`}
+                    className="group/holding -mx-1 flex w-[calc(100%+0.5rem)] items-center justify-between gap-3 rounded px-1 py-0.5 text-left text-[11px] transition-colors hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                  >
+                    <span className="flex min-w-0 items-center gap-1">
+                      <span className="min-w-0 truncate text-zinc-300 group-hover/holding:text-white">{holding.label}</span>
+                      <ChevronRight className="h-3 w-3 shrink-0 text-zinc-500 group-hover/holding:text-zinc-300" aria-hidden />
+                    </span>
+                    <span className="shrink-0 tabular-nums text-zinc-300">{holding.value}</span>
+                  </button>
+                ) : (
                   <div key={holding.id} className="flex items-center justify-between gap-3 text-[11px]">
                     <span className="min-w-0 truncate text-zinc-400">{holding.label}</span>
                     <span className="shrink-0 tabular-nums text-zinc-300">{holding.value}</span>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          {account && (
+            <div className="mt-2 border-t border-white/[0.06] pt-1.5">
+              <button
+                type="button"
+                onClick={account.onSelect}
+                aria-label={`Open account ${account.name}`}
+                className="group/account -mx-1 flex w-[calc(100%+0.5rem)] items-center justify-between gap-3 rounded px-1 py-1 text-[11px] text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+              >
+                <span>Account</span>
+                <span className="flex min-w-0 items-center gap-1">
+                  <span className="min-w-0 truncate text-zinc-300 group-hover/account:text-white">{account.name}</span>
+                  <ChevronRight className="h-3 w-3 shrink-0 text-zinc-500 group-hover/account:text-zinc-300" aria-hidden />
+                </span>
+              </button>
             </div>
           )}
         </div>,
@@ -371,12 +438,13 @@ function RailTip({ title, subtitle, rows, holdings, anchorClassName = "mx-auto b
   );
 }
 
-function RailButton({ icon, label, subtitle, rows, holdings, active, onClick, href, color, level = 0 }: {
+function RailButton({ icon, label, subtitle, rows, holdings, account, active, onClick, href, color, level = 0 }: {
   icon: ReactNode;
   label: string;
   subtitle?: string;
   rows?: RailTipRow[];
   holdings?: RailTipHolding[];
+  account?: RailTipAccount;
   active?: boolean;
   onClick?: () => void;
   href?: string;
@@ -388,7 +456,7 @@ function RailButton({ icon, label, subtitle, rows, holdings, active, onClick, hr
   const style = { color: color ?? undefined, borderColor: active ? "rgba(255,255,255,0.12)" : "transparent" };
 
   return (
-    <RailTip title={label} subtitle={subtitle} rows={rows} holdings={holdings}>
+    <RailTip title={label} subtitle={subtitle} rows={rows} holdings={holdings} account={account}>
       {href ? (
         <Link href={href} onClick={onClick} aria-label={label} aria-current={active ? "page" : undefined} className={className} style={style}>
           {icon}
@@ -1171,6 +1239,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
         {railPortfolios.map((portfolio) => {
           const valuation = valuationFor(portfolio);
           const provider = portfolio.providerId ? providerById.get(portfolio.providerId) : undefined;
+          const accountId = accountIdForPortfolio(portfolio);
+          const account = accountId ? accountById.get(accountId) : undefined;
           return (
             <RailButton
               key={portfolio.id}
@@ -1188,27 +1258,40 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 id: holding.id,
                 label: holding.symbol,
                 value: fmtGBP(valuation.values.get(holding.id) ?? 0),
+                onSelect: () => selectHolding(holding),
               }))}
+              account={account ? {
+                name: account.name,
+                onSelect: () => { onSelectAccount?.(account.id); setMobileOpen(false); },
+              } : undefined}
               active={activeId === portfolio.id}
               color={resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette)}
               onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
             />
           );
         })}
-        {railDirectHoldings.map((holding) => (
-          <RailButton
-            key={holding.id}
-            icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />}
-            label={holding.name}
-            subtitle={holding.symbol}
-            rows={[
-              { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
-              { label: "Value", value: fmtGBP(holdingValueGBP(holding, settings.fxRates)) },
-            ]}
-            active={activeHoldingId === holding.id}
-            onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }}
-          />
-        ))}
+        {railDirectHoldings.map((holding) => {
+          const accountId = accountIdForHolding(holding);
+          const account = accountId ? accountById.get(accountId) : undefined;
+          return (
+            <RailButton
+              key={holding.id}
+              icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />}
+              label={holding.name}
+              subtitle={holding.symbol}
+              rows={[
+                { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
+                { label: "Value", value: fmtGBP(holdingValueGBP(holding, settings.fxRates)) },
+              ]}
+              account={account ? {
+                name: account.name,
+                onSelect: () => { onSelectAccount?.(account.id); setMobileOpen(false); },
+              } : undefined}
+              active={activeHoldingId === holding.id}
+              onClick={() => { onSelectHolding?.(holding); setMobileOpen(false); }}
+            />
+          );
+        })}
       </div>
     );
   };
