@@ -1,0 +1,121 @@
+"use client";
+
+import { useState, useSyncExternalStore } from "react";
+
+export type DesktopChangesState = "idle" | "checking" | "ready" | "error";
+
+export type DesktopRelease = {
+  version: string | null;
+  title: string | null;
+  /** ISO timestamp of the release, shown next to its notes. */
+  publishedAt: string | null;
+  url: string | null;
+  notes: string[];
+};
+
+export type DesktopChangesPayload = {
+  currentVersion: string | null;
+  checkedAt: string | null;
+  releases: DesktopRelease[];
+};
+
+type DesktopBridge = {
+  recentChanges?: () => Promise<unknown>;
+};
+
+const IDLE: DesktopChangesPayload = {
+  currentVersion: null,
+  checkedAt: null,
+  releases: [],
+};
+
+const MAX_RELEASES = 6;
+const MAX_NOTES = 8;
+
+function desktopBridge(): DesktopBridge | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as Window & { olantisDesktop?: DesktopBridge }).olantisDesktop;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readNotes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((note): note is string => typeof note === "string" && note.length > 0))].slice(0, MAX_NOTES);
+}
+
+function readRelease(value: unknown): DesktopRelease | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  return {
+    version: readString(raw.version),
+    title: readString(raw.title),
+    publishedAt: readString(raw.publishedAt),
+    url: readString(raw.url),
+    notes: readNotes(raw.notes),
+  };
+}
+
+/**
+ * The bridge hands over whatever the main process fetched. Normalize it once so
+ * a missing or malformed field cannot crash the panel or render junk.
+ */
+export function normalizeChangesPayload(value: unknown): DesktopChangesPayload {
+  if (typeof value !== "object" || value === null) return IDLE;
+  const raw = value as Record<string, unknown>;
+  const releases = Array.isArray(raw.releases)
+    ? raw.releases
+        .map(readRelease)
+        .filter((release): release is DesktopRelease => release !== null)
+        .slice(0, MAX_RELEASES)
+    : [];
+  return {
+    currentVersion: readString(raw.currentVersion),
+    checkedAt: readString(raw.checkedAt),
+    releases,
+  };
+}
+
+// The bridge is static for the life of the page, so the store never notifies.
+// Reading it this way keeps the server render (no bridge) and the hydrated
+// client render (bridge inside Electron) from disagreeing about the control.
+const subscribeDesktop = () => () => {};
+const getDesktopSnapshot = () => Boolean(desktopBridge());
+const getDesktopServerSnapshot = () => false;
+
+/**
+ * The desktop shell's manual changelog. Nothing is downloaded or installed and
+ * no timer checks on its own: the site updates independently, so the sidebar
+ * only reads recent releases when someone opens its refresh control.
+ */
+export function useDesktopChanges() {
+  const desktop = useSyncExternalStore(subscribeDesktop, getDesktopSnapshot, getDesktopServerSnapshot);
+  const [state, setState] = useState<DesktopChangesState>("idle");
+  const [changes, setChanges] = useState<DesktopChangesPayload>(IDLE);
+
+  return {
+    /** True only inside the packaged Electron shell. */
+    desktop,
+    state,
+    /** A read is in flight, so the control spins. */
+    busy: state === "checking",
+    currentVersion: changes.currentVersion,
+    checkedAt: changes.checkedAt,
+    releases: changes.releases,
+    /** Ask the shell for recent published changes. False when there is no bridge (web). */
+    check: async () => {
+      const bridge = desktopBridge();
+      if (!bridge?.recentChanges) return false;
+      setState("checking");
+      try {
+        setChanges(normalizeChangesPayload(await bridge.recentChanges()));
+        setState("ready");
+      } catch {
+        setState("error");
+      }
+      return true;
+    },
+  };
+}

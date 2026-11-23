@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { parseReleaseNotes } = require("../electron/update-machine.cjs");
+const { parseReleaseNotes } = require("../electron/release-notes.cjs");
 
 const generatedNotes = `## What's Changed
 * feat: show update changelog before relaunching by @mtlh in https://github.com/mtlh/olantis/pull/131

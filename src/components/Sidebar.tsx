@@ -2,7 +2,7 @@
 import { type Portfolio, type Account, type Provider, type Holding, useSettings, applyWorkspaceOrder } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, ArrowDownToLine, RotateCw, PanelLeftClose, PanelLeftOpen, Wallet, Activity, Coins, Tag, Percent } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen, Wallet, Activity, Coins, Tag, Percent } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -27,8 +27,8 @@ const DropdownMenuTrigger = dynamic(() => import("@/components/ui/dropdown-menu"
 const DropdownMenuContent = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuContent })), { ssr: false });
 const DropdownMenuItem = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuItem })), { ssr: false });
 const DropdownMenuSeparator = dynamic(() => import("@/components/ui/dropdown-menu").then((module) => ({ default: module.DropdownMenuSeparator })), { ssr: false });
-// The update changelog popover is only reachable while an update is pending, so
-// its Base UI chunk loads on demand like the menus above.
+// The recent-changes popover is only reachable by opening the control, so its
+// Base UI chunk loads on demand like the menus above.
 const Popover = dynamic(() => import("@/components/ui/popover").then((module) => ({ default: module.Popover })), { ssr: false });
 const PopoverTrigger = dynamic(() => import("@/components/ui/popover").then((module) => ({ default: module.PopoverTrigger })), { ssr: false });
 const PopoverContent = dynamic(() => import("@/components/ui/popover").then((module) => ({ default: module.PopoverContent })), { ssr: false });
@@ -36,8 +36,8 @@ const EditPortfolioDialog = dynamic(() => import("@/components/dashboard/EditPor
 import { Logo } from "@/components/Logo";
 import { BrandIcon, ProviderIcon } from "@/components/BrandIcon";
 import { EntityIcon } from "@/components/EntityIcon";
-import { useDesktopUpdate } from "@/components/useDesktopUpdate";
-import { DesktopUpdatePanel } from "@/components/DesktopUpdatePanel";
+import { useDesktopChanges } from "@/components/useDesktopChanges";
+import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { resolvePortfolioColor } from "@/lib/colors";
@@ -51,69 +51,6 @@ interface SearchResult { symbol: string; name: string; exchange: string; price?:
 
 const TOOL_BUTTON_CLASS = "text-zinc-400 hover:text-white";
 const TOOL_ICON_CLASS = "w-4 h-4";
-
-// The update download is shown as a ring around the control's icon, so the
-// sidebar shows how far along the download is without opening the changelog.
-function UpdateProgressRing({ percent, children }: { percent: number; children: ReactNode }) {
-  const radius = 7.5;
-  const circumference = 2 * Math.PI * radius;
-  const clamped = Math.min(100, Math.max(0, percent));
-  return (
-    <span className="relative grid h-[18px] w-[18px] place-items-center">
-      <svg className="pointer-events-none absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 18 18" aria-hidden>
-        <circle cx="9" cy="9" r={radius} fill="none" className="stroke-white/15" strokeWidth="1.5" />
-        <circle
-          cx="9"
-          cy="9"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - clamped / 100)}
-          strokeLinecap="round"
-          strokeWidth="1.5"
-          className="text-amber-300 transition-[stroke-dashoffset] duration-300"
-        />
-      </svg>
-      {children}
-    </span>
-  );
-}
-
-function DesktopUpdateIcon({ update }: { update: ReturnType<typeof useDesktopUpdate> }) {
-  if (update.state === "downloading") {
-    return (
-      <UpdateProgressRing percent={update.percent ?? 0}>
-        <ArrowDownToLine className="h-3 w-3 text-amber-300" />
-      </UpdateProgressRing>
-    );
-  }
-  if (update.state === "available") {
-    return (
-      <span className="relative grid place-items-center">
-        <ArrowDownToLine className={TOOL_ICON_CLASS} />
-        <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />
-      </span>
-    );
-  }
-  if (update.state === "ready") {
-    return (
-      <span className="relative grid place-items-center">
-        <RotateCw className={TOOL_ICON_CLASS} />
-        <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-zinc-950" aria-hidden />
-      </span>
-    );
-  }
-  if (update.state === "error") {
-    return (
-      <span className="relative grid place-items-center">
-        <RefreshCw className={TOOL_ICON_CLASS} />
-        <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-red-400 ring-2 ring-zinc-950" aria-hidden />
-      </span>
-    );
-  }
-  return <RefreshCw className={`${TOOL_ICON_CLASS} ${update.busy ? "animate-spin" : ""}`} />;
-}
 
 // Tree rows use a bare chevron instead of a boxed icon button so the hierarchy
 // reads as one calm list rather than a stack of nested controls.
@@ -525,7 +462,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
 }) {
   const pathname = usePathname();
   const page = pathname.split("/").filter(Boolean)[0] ?? "dashboard";
-  const update = useDesktopUpdate();
+  const changes = useDesktopChanges();
   const goDashboard = () => { onSelect(null); onClose(); };
   const navLink = (href: string, label: string, active: boolean, icon: ReactNode, detail: string) => {
     const link = (
@@ -561,96 +498,55 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
     )
   ) : navLink("/dashboard", "Dashboard", false, <LayoutDashboard className={TOOL_ICON_CLASS} />, "Portfolio overview");
 
-  const handleUpdateCheck = () => {
-    void update.check();
+  const checkChanges = () => {
+    void changes.check();
   };
 
-  const updatePercent = update.percent == null ? null : Math.round(update.percent);
-  const updateLabel = update.state === "ready"
-    ? `Update ready${update.version ? ` (v${update.version})` : ""} — open to restart`
-    : update.state === "downloading"
-      ? `Downloading update${update.version ? ` v${update.version}` : ""}${updatePercent == null ? "" : ` (${updatePercent}%)`}`
-      : update.state === "available"
-        ? `Update available${update.version ? `: v${update.version}` : ""}`
-        : update.state === "error"
-          ? "Update failed — open to retry"
-          : update.busy
-            ? "Checking for updates…"
-            : "Check for updates";
+  const changesLabel = changes.busy
+    ? "Checking recent changes…"
+    : changes.state === "error"
+      ? "Recent changes — check failed"
+      : "Recent changes";
+  const changesTipTitle = changes.busy
+    ? "Checking for changes"
+    : changes.state === "error"
+      ? "Recent changes failed"
+      : "Recent changes";
+  const changesTipSubtitle = changes.busy
+    ? "Reading GitHub releases"
+    : changes.state === "error"
+      ? "Open to try again"
+      : changes.releases.length > 0
+        ? "Latest releases with timestamps"
+        : "GitHub release notes";
 
-  const updateTipTitle = update.state === "ready"
-    ? "Update ready"
-    : update.state === "downloading"
-      ? "Downloading update"
-      : update.state === "available"
-        ? "Update available"
-        : update.state === "error"
-          ? "Update failed"
-          : update.busy
-            ? "Checking for updates"
-            : "Updates";
-  const updateTipSubtitle = update.state === "ready"
-    ? "Open to restart"
-    : update.state === "downloading"
-      ? `${update.version ? `v${update.version} · ` : ""}${updatePercent ?? 0}% downloaded`
-      : update.state === "available"
-        ? update.notes[0] ?? "Preparing the download"
-        : update.state === "error"
-          ? "Open to try again"
-          : update.busy
-            ? "Looking for a new build"
-            : "Check for updates";
-
-  // Desktop only. While an update is offered the control opens its changelog,
-  // so the commits are visible while the download runs and before the explicit
-  // restart. Without an update it keeps the one-click check. The browser has no
-  // updater at all, so the web app gets no control.
-  const updateButton = update.desktop ? (
-    update.offered ? (
-      <Popover>
-        <PopoverTrigger
-          openOnHover={!rail}
-          delay={350}
-          closeDelay={150}
-          render={
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className={`${TOOL_BUTTON_CLASS} relative ${update.ready ? "text-amber-300 hover:text-amber-200" : ""}`}
-              aria-label={updateLabel}
-              title={rail ? undefined : updateLabel}
-            />
-          }
-        >
-          <DesktopUpdateIcon update={update} />
-        </PopoverTrigger>
-        <PopoverContent side={rail ? "right" : "top"} align="end" aria-label="Update details">
-          <DesktopUpdatePanel
-            state={update.state}
-            version={update.version}
-            percent={update.percent}
-            releasedAt={update.releasedAt}
-            notes={update.notes}
-            releaseUrl={update.releaseUrl}
-            errorContext={update.errorContext}
-            onRestart={update.restart}
-            onRetry={handleUpdateCheck}
+  // Desktop only: the deployed site updates on its own, so this control is a
+  // manual read of recent releases. It never downloads, installs or restarts.
+  const changesButton = changes.desktop ? (
+    <Popover onOpenChange={(open) => { if (open) checkChanges(); }}>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={TOOL_BUTTON_CLASS}
+            aria-label={changesLabel}
+            title={rail ? undefined : changesLabel}
           />
-        </PopoverContent>
-      </Popover>
-    ) : (
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className={TOOL_BUTTON_CLASS}
-        onClick={handleUpdateCheck}
-        disabled={update.busy}
-        aria-label={updateLabel}
-        title={rail ? undefined : updateLabel}
+        }
       >
-        <DesktopUpdateIcon update={update} />
-      </Button>
-    )
+        <RefreshCw className={`${TOOL_ICON_CLASS} ${changes.busy ? "animate-spin" : ""}`} />
+      </PopoverTrigger>
+      <PopoverContent side={rail ? "right" : "top"} align="end" aria-label="Recent changes">
+        <DesktopChangesPanel
+          state={changes.state}
+          releases={changes.releases}
+          checkedAt={changes.checkedAt}
+          currentVersion={changes.currentVersion}
+          onRetry={checkChanges}
+        />
+      </PopoverContent>
+    </Popover>
   ) : null;
 
   const signOutLink = (
@@ -674,10 +570,10 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           {navLink("/goals", "Goals", page === "goals", <Target className={TOOL_ICON_CLASS} />, "Savings targets")}
           {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
           <div className="my-1 h-px w-6 bg-white/10" />
-          {update.desktop && withTip(
-            updateTipTitle,
-            updateTipSubtitle,
-            updateButton,
+          {changes.desktop && withTip(
+            changesTipTitle,
+            changesTipSubtitle,
+            changesButton,
             [{ label: "Tickers updated", value: lastRefreshLabel ?? "Not yet", icon: <RefreshCw className="h-3 w-3" /> }],
           )}
           {withTip(isDemo ? "Exit demo" : "Sign out", isDemo ? "Return to the landing page" : "End your session", signOutLink)}
@@ -698,7 +594,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
         {navLink("/settings", "Settings", page === "settings", <Settings className={TOOL_ICON_CLASS} />, "Preferences")}
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {updateButton}
+          {changesButton}
           {signOutLink}
         </div>
       </div>
