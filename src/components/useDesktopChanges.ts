@@ -13,10 +13,23 @@ export type DesktopRelease = {
   notes: string[];
 };
 
+/** A newer shell build whose installer can be downloaded from the panel. */
+export type DesktopUpdate = {
+  version: string | null;
+  title: string | null;
+  /** "0.1.74": the stamped app version of the offered build. */
+  appVersion: string | null;
+  publishedAt: string | null;
+  releaseUrl: string | null;
+  downloadUrl: string | null;
+  installerName: string | null;
+};
+
 export type DesktopChangesPayload = {
   currentVersion: string | null;
   checkedAt: string | null;
   releases: DesktopRelease[];
+  update: DesktopUpdate | null;
 };
 
 type DesktopBridge = {
@@ -27,6 +40,7 @@ const IDLE: DesktopChangesPayload = {
   currentVersion: null,
   checkedAt: null,
   releases: [],
+  update: null,
 };
 
 const MAX_RELEASES = 6;
@@ -58,6 +72,24 @@ function readRelease(value: unknown): DesktopRelease | null {
   };
 }
 
+function readUpdate(value: unknown): DesktopUpdate | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const downloadUrl = readString(raw.downloadUrl);
+  const releaseUrl = readString(raw.releaseUrl);
+  // No usable destination means no offer, even if the main process sent one.
+  if (!downloadUrl && !releaseUrl) return null;
+  return {
+    version: readString(raw.version),
+    title: readString(raw.title),
+    appVersion: readString(raw.appVersion),
+    publishedAt: readString(raw.publishedAt),
+    releaseUrl,
+    downloadUrl,
+    installerName: readString(raw.installerName),
+  };
+}
+
 /**
  * The bridge hands over whatever the main process fetched. Normalize it once so
  * a missing or malformed field cannot crash the panel or render junk.
@@ -75,6 +107,7 @@ export function normalizeChangesPayload(value: unknown): DesktopChangesPayload {
     currentVersion: readString(raw.currentVersion),
     checkedAt: readString(raw.checkedAt),
     releases,
+    update: readUpdate(raw.update),
   };
 }
 
@@ -104,6 +137,8 @@ export function useDesktopChanges() {
     currentVersion: changes.currentVersion,
     checkedAt: changes.checkedAt,
     releases: changes.releases,
+    /** A newer shell build with its platform installer, or null. */
+    update: changes.update,
     /** Ask the shell for recent published changes. False when there is no bridge (web). */
     check: async () => {
       const bridge = desktopBridge();

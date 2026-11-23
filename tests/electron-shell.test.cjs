@@ -106,7 +106,7 @@ test("the shell never updates or restarts itself", () => {
   assert.doesNotMatch(main, /olantis:update:restart/, "the page cannot trigger a restart");
   assert.doesNotMatch(main, /showMessageBox/, "the shell never blocks the window with an update prompt");
   // The recent-changes read is the only thing bridged into the app page.
-  assert.match(main, /net\.fetch\(RELEASES_API_URL/);
+  assert.match(main, /fetchGithubJson\("\/releases\?per_page=10"\)/);
   assert.match(main, /ipcMain\.handle\("olantis:changes:check"/);
 
   const appPreload = read("electron/app-preload.cjs");
@@ -115,16 +115,29 @@ test("the shell never updates or restarts itself", () => {
   assert.doesNotMatch(appPreload, /restartToUpdate|checkForUpdates/);
 });
 
+test("a download is offered only when the shell itself changed", () => {
+  // The release workflow only builds for desktop inputs, but the installed
+  // build is still compared with the newest release so a manual rebuild of
+  // untouched code cannot produce a download button.
+  assert.match(main, /packagedPathsChangedSince\(currentVersion, latest\.release\.version\)/);
+  assert.match(main, /packagedPathsChanged\(compare\?\.files\)/);
+  assert.match(main, /desktopUpdate\(\{ currentVersion, releases, platform: process\.platform, desktopChanged \}\)/);
+});
+
 test("the refresh control shows recent releases with timestamps", () => {
   const sidebar = read("src/components/Sidebar.tsx");
   const panel = read("src/components/DesktopChangesPanel.tsx");
 
   assert.match(sidebar, /const changesButton = changes\.desktop \?/, "the web app must not render a desktop control");
   assert.match(sidebar, /DesktopChangesPanel/, "the changelog panel is mounted by the refresh control");
+  assert.match(sidebar, /update=\{changes\.update\}/, "the panel receives the validated build offer");
   assert.match(sidebar, /onOpenChange=\{\(open\) => \{ if \(open\) checkChanges\(\); \}\}/, "opening the control checks the feed");
   assert.match(panel, /Recent changes/);
   assert.match(panel, /releases\.map/, "the recent releases are listed");
   assert.match(panel, /fmtDateTime\(release\.publishedAt\)/, "each release carries its timestamp");
+  assert.match(panel, /state === "ready" && update/, "the offer waits for a finished check");
+  assert.match(panel, /update\.downloadUrl/, "the matching installer is linked");
+  assert.match(panel, /Download installer/);
   assert.match(panel, /View release/);
   assert.doesNotMatch(panel, /Restart to update/, "nothing relaunches on its own");
 });
