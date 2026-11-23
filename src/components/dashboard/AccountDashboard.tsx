@@ -63,7 +63,6 @@ type AccountDashboardProps = {
   cost: number;
   gain: number;
   gainPct: number;
-  onBack: () => void;
   onRename: (name: string) => Promise<void>;
   onNewPortfolio: () => void;
   onDelete: () => void;
@@ -91,7 +90,6 @@ export function AccountDashboard({
   cost,
   gain,
   gainPct,
-  onBack,
   onRename,
   onNewPortfolio,
   onDelete,
@@ -114,7 +112,6 @@ export function AccountDashboard({
   return (
     <DashboardLevel label={`${name} account`}>
       <PageHeader
-        back={{ label: "Overview", onClick: onBack }}
         title={name}
         description={
           <>

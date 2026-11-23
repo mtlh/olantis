@@ -9,7 +9,7 @@ dialog markup. Screen-specific composites stay in
 
 | Component | Use it for |
 | --- | --- |
-| `PageHeader` | The title row at every level: optional back link, icon, title, actions, description, mobile metadata. |
+| `PageHeader` | The title row at every level: icon, title, actions, description, mobile metadata. |
 | `MetricStrip` / `Metric` / `MetricSkeleton` | The hairline label/value/sub band that leads every dashboard screen. Pick a `variant` for the column layout and a `position` for the dividers. |
 | `MetricStripSkeleton` | The loading frame for an overview metric band. |
 | `SectionHeading` | The heading row above lists, tables and panels (`title`, optional `meta` count, optional `action`, optional divider). |
