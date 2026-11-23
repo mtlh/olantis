@@ -865,6 +865,47 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     return holding.accountId ?? null;
   }, [providerById]);
 
+  // Only one row is selected at a time, but a drill-down still belongs to its
+  // parents. Resolving the selected row's ancestors lets the tree keep the
+  // account and portfolio highlighted while a child view is open, so moving
+  // between items never loses the group the screen came from.
+  const selectedPath = (() => {
+    if (activeHoldingId) {
+      for (const portfolio of portfolios) {
+        if (!portfolio.holdings.some((holding) => holding.id === activeHoldingId)) continue;
+        return {
+          accountId: accountIdForPortfolio(portfolio),
+          providerId: portfolio.providerId ?? null,
+          portfolioId: portfolio.id,
+        };
+      }
+      const holding = directHoldings.find((entry) => entry.id === activeHoldingId);
+      if (holding) {
+        return {
+          accountId: accountIdForHolding(holding),
+          providerId: holding.providerId ?? null,
+          portfolioId: null,
+        };
+      }
+    }
+    if (activeId) {
+      const portfolio = portfolios.find((entry) => entry.id === activeId);
+      if (portfolio) {
+        return {
+          accountId: accountIdForPortfolio(portfolio),
+          providerId: portfolio.providerId ?? activeProviderId ?? null,
+          portfolioId: portfolio.id,
+        };
+      }
+    }
+    const provider = activeProviderId ? providerById.get(activeProviderId) : undefined;
+    return {
+      accountId: provider?.accountId ?? activeAccountId ?? null,
+      providerId: activeProviderId ?? null,
+      portfolioId: null,
+    };
+  })();
+
   const portfolioValuations = useMemo(() => {
     const valuations = new Map<string, PortfolioValuation>();
     for (const portfolio of portfolios) {
@@ -940,6 +981,10 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
   };
   const selectHolding = (holding: Holding) => {
     if (activeId && activeId !== holding.portfolioId) pinPortfolioOpen(activeId);
+    // Pin the portfolio the holding lives in too, so opening its holdings from a
+    // different group does not collapse the list the moment the next row is
+    // clicked.
+    if (holding.portfolioId) pinPortfolioOpen(holding.portfolioId);
     onSelectHolding?.(holding);
     setMobileOpen(false);
   };
@@ -1021,6 +1066,9 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
     const providerName = provider?.name ?? null;
     const isActive = activeId === portfolio.id;
     const selectedHolding = holdingsInValueOrder.some((holding) => holding.id === activeHoldingId);
+    // The row a child holding was opened from keeps a softer highlight, so the
+    // sidebar still shows the path without competing with the selected row.
+    const isAncestorActive = !isActive && selectedPath.portfolioId === portfolio.id;
     const searchMatchesHolding = Boolean(searchTerm) && holdingsInValueOrder.some(matchesHolding);
     const isOpen = expandedPortfolio[portfolio.id] ?? (isActive || selectedHolding || searchMatchesHolding);
     const isDragging = drag != null && draggingRow?.group === drag.group && draggingRow.index === drag.index;
@@ -1033,7 +1081,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
       <div key={portfolio.id}>
         <div
           {...(drag ? rowDragProps("portfolios", drag.group, drag.list, drag.index) : {})}
-          className={`group/portfolio relative flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : "hover:bg-white/[0.035]"} ${isDragging ? "opacity-40" : ""} ${isDropTarget ? "ring-1 ring-inset ring-white/25" : ""}`}
+          className={`group/portfolio relative flex items-center gap-1.5 rounded-lg py-1.5 pl-1 pr-2 transition-colors ${isActive ? "bg-white/[0.07]" : isAncestorActive ? "bg-white/[0.045] hover:bg-white/[0.06]" : "hover:bg-white/[0.035]"} ${isDragging ? "opacity-40" : ""} ${isDropTarget ? "ring-1 ring-inset ring-white/25" : ""}`}
         >
           {/* The card itself opens the portfolio. The chevron, provider link and
               edit menu are lifted above it so they keep their own actions. */}
@@ -1054,11 +1102,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             ? <ProviderIcon provider={provider ?? { name: providerName }} size={22} />
             : <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: portfolioColor }} />}
           <div className="min-w-0 flex-1">
-            <span aria-hidden className={`block truncate text-xs font-medium ${isActive ? "text-white" : "text-zinc-200"}`}>
+            <span aria-hidden className={`block truncate text-xs font-medium ${isActive ? "text-white" : isAncestorActive ? "text-zinc-100" : "text-zinc-200"}`}>
               {portfolio.name}
             </span>
             {providerName ? (
-              <button type="button" onClick={() => { if (!provider) return; onSelectProvider?.(provider.id); setMobileOpen(false); }} className="relative z-10 mt-0.5 flex min-h-6 max-w-full items-center truncate rounded text-left text-[10px] text-zinc-400 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+              <button type="button" onClick={() => { if (!provider) return; onSelectProvider?.(provider.id); setMobileOpen(false); }} className={`relative z-10 mt-0.5 flex min-h-6 max-w-full items-center truncate rounded text-left text-[10px] transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${provider && provider.id === activeProviderId ? "text-zinc-100" : "text-zinc-400"}`}>
                 {providerName}
               </button>
             ) : (
@@ -1264,7 +1312,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 name: account.name,
                 onSelect: () => { onSelectAccount?.(account.id); setMobileOpen(false); },
               } : undefined}
-              active={activeId === portfolio.id}
+              active={selectedPath.portfolioId === portfolio.id}
               color={resolvePortfolioColor(portfolio, portfolios, providers, accounts, palette)}
               onClick={() => { onSelect(portfolio.id); setMobileOpen(false); }}
             />
@@ -1393,7 +1441,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
             {filteredAccounts.map((acc, accountRowIndex) => {
               const accountNameMatches = !searchTerm || acc.name.toLowerCase().includes(searchTerm);
               const total = accountTotalsById.get(acc.id) ?? 0;
-              const accountActive = activeAccountId === acc.id;
+              const accountActive = selectedPath.accountId === acc.id;
               const accColor = accColorFor(acc);
               const accountDragging = draggingRow?.group === "accounts" && draggingRow.index === accountRowIndex;
               const accountDropTarget = draggingRow?.group === "accounts"
@@ -1451,13 +1499,14 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                           <div className="px-1.5 pb-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-400">Direct</div>
                           {accountDirectHoldings.map((h: Holding) => {
                             const directValue = holdingValueGBP(h, settings.fxRates);
+                            const directActive = h.id === activeHoldingId;
                             const row = (
-                              <div key={h.id} className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-white/[0.035]">
-                                <button type="button" onClick={() => onSelectHolding?.(h)} className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
+                              <div key={h.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors ${directActive ? "bg-white/[0.08]" : "hover:bg-white/[0.035]"}`}>
+                                <button type="button" onClick={() => onSelectHolding?.(h)} aria-current={directActive ? "page" : undefined} className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30">
                                   <BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={22} />
                                   <span className="min-w-0 flex-1">
                                     <span className="flex min-w-0 items-center gap-1.5">
-                                      <span className="truncate text-[11px] font-medium text-zinc-200">{h.symbol}</span>
+                                      <span className={`truncate text-[11px] font-medium ${directActive ? "text-white" : "text-zinc-200"}`}>{h.symbol}</span>
                                       {isLiveHolding(h) && <LiveBadge />}
                                     </span>
                                     <span className="block truncate text-[9px] text-zinc-400">{h.providerId ? providerById.get(h.providerId)?.name ?? "Direct holding" : "Direct holding"}</span>
