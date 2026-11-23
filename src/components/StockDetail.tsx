@@ -162,10 +162,10 @@ export function StockDetail({ holding, portfolioId, portfolioValue, portfolioNam
     <>
       <PageHeader
         icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={32} shape="circle" />}
-        title={holding.symbol}
+        title={holding.name}
         description={
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <span>{holding.name}</span>
+            <span>{holding.symbol}</span>
             {holding.exchange && (
               <span className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-400">{holding.exchange}</span>
             )}
