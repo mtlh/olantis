@@ -2,7 +2,7 @@
 import { type Portfolio, type Account, type Provider, type Holding, useSettings, applyWorkspaceOrder } from "@/lib/store";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen, Wallet, Activity, Coins, Tag, Percent } from "lucide-react";
+import { LayoutDashboard, Eye, Target, Plus, FolderOpen, LogOut, Building2, ChevronDown, ChevronRight, Search, MoreVertical, Pencil, Move, Trash2, X, Menu, Layers, Settings, TrendingUp, RefreshCw, PanelLeftClose, PanelLeftOpen, Wallet, Activity, Coins } from "lucide-react";
 import { memo, useState, useMemo, useEffect, useLayoutEffect, useCallback, useDeferredValue, useRef, useSyncExternalStore, type ReactNode, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -1087,18 +1087,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               const allocation = total > 0 ? holdingValue / total * 100 : 0;
               const isHoldingActive = holding.id === activeHoldingId;
               const live = isLiveHolding(holding, portfolio.type);
-              // The expanded tree shows the numbers inline; the hover card
-              // repeats the rail tooltip so a row still has a detail view
-              // without leaving the sidebar.
-              const tipRows: RailTipRow[] = [
-                { label: "Value", value: fmtGBP(holdingValue), icon: <Wallet className="h-3 w-3" /> },
-                { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }), icon: <Coins className="h-3 w-3" /> },
-                { label: "Avg price", value: fmtPrice(holding.avgPrice, holding.currency), icon: <Tag className="h-3 w-3" /> },
-                ...(live
-                  ? [{ label: "Price", value: fmtPrice(holding.currentPrice, holding.currency), icon: <TrendingUp className="h-3 w-3" /> }]
-                  : []),
-                { label: "Allocation", value: `${allocation.toFixed(1)}%`, icon: <Percent className="h-3 w-3" /> },
-              ];
+              // The expanded tree already shows the numbers inline, so the rail
+              // tooltip is only for the collapsed rail — no hover card here.
               const row = (
                 <button key={holding.id} type="button" onClick={() => selectHolding(holding)} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
                   <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />
@@ -1115,20 +1105,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                   </span>
                 </button>
               );
-              // Touch layouts have no hover, and a card floating over the row
-              // would just cover the list it belongs to.
-              return desktopLayout ? (
-                <RailTip
-                  key={holding.id}
-                  title={holding.name}
-                  subtitle={holding.symbol}
-                  icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={20} />}
-                  rows={tipRows}
-                  anchorClassName="block w-full"
-                >
-                  {row}
-                </RailTip>
-              ) : row;
+              return row;
             }) : <p className="px-1.5 py-1.5 text-[10px] text-zinc-400">No holdings yet.</p>}
           </div>
         )}
@@ -1508,22 +1485,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                                 )}
                               </div>
                             );
-                            return desktopLayout ? (
-                              <RailTip
-                                key={h.id}
-                                title={h.symbol}
-                                subtitle={h.name}
-                                icon={<BrandIcon symbol={h.symbol} name={h.name} exchange={h.exchange} currency={h.currency} size={20} />}
-                                rows={[
-                                  { label: "Value", value: fmtGBP(directValue), icon: <Wallet className="h-3 w-3" /> },
-                                  { label: "Shares", value: h.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }), icon: <Coins className="h-3 w-3" /> },
-                                  { label: "Avg price", value: fmtPrice(h.avgPrice, h.currency), icon: <Tag className="h-3 w-3" /> },
-                                ]}
-                                anchorClassName="block w-full"
-                              >
-                                {row}
-                              </RailTip>
-                            ) : row;
+                            return row;
                           })}
                         </div>
                       )}
