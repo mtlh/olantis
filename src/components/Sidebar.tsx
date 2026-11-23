@@ -1031,11 +1031,11 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
                 <button key={holding.id} type="button" onClick={() => selectHolding(holding)} aria-current={isHoldingActive ? "page" : undefined} className={`flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors ${isHoldingActive ? "bg-white/[0.08]" : "hover:bg-white/[0.045]"}`}>
                   <BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />
                   <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[11px] font-medium text-zinc-200">{holding.name}</span>
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-[11px] font-medium text-zinc-200">{holding.symbol}</span>
+                      <span className="truncate text-[9px] text-zinc-400">{holding.symbol}</span>
                       {live && <LiveBadge />}
                     </span>
-                    <span className="block truncate text-[9px] text-zinc-400">{holding.name}</span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block text-[10px] font-medium tabular-nums text-zinc-300">{allocation.toFixed(1)}%</span>
@@ -1046,7 +1046,7 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
               // Touch layouts have no hover, and a card floating over the row
               // would just cover the list it belongs to.
               return desktopLayout ? (
-                <RailTip key={holding.id} title={holding.symbol} subtitle={holding.name} rows={tipRows} anchorClassName="block w-full">
+                <RailTip key={holding.id} title={holding.name} subtitle={holding.symbol} rows={tipRows} anchorClassName="block w-full">
                   {row}
                 </RailTip>
               ) : row;
@@ -1199,8 +1199,8 @@ export const Sidebar = memo(function Sidebar({ accounts, providers, portfolios, 
           <RailButton
             key={holding.id}
             icon={<BrandIcon symbol={holding.symbol} name={holding.name} exchange={holding.exchange} currency={holding.currency} size={22} />}
-            label={holding.symbol}
-            subtitle={holding.name}
+            label={holding.name}
+            subtitle={holding.symbol}
             rows={[
               { label: "Shares", value: holding.shares.toLocaleString("en-GB", { maximumFractionDigits: 4 }) },
               { label: "Value", value: fmtGBP(holdingValueGBP(holding, settings.fxRates)) },
