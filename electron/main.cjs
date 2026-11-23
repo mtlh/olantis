@@ -3,7 +3,15 @@ const path = require("node:path");
 const { app, BrowserWindow, Menu, WebContentsView, ipcMain, net, session, shell } = require("electron");
 const { isAllowedNavigation, isSafeExternalUrl } = require("./url-policy.cjs");
 const { resolveEntryUrl } = require("./entry-url.cjs");
-const { RELEASES_API_URL, normalizeReleaseFeed } = require("./release-feed.cjs");
+const {
+  desktopUpdate,
+  latestDesktopRelease,
+  normalizeReleaseFeed,
+  packagedPathsChanged,
+  versionBuildNumber,
+} = require("./release-feed.cjs");
+
+const GITHUB_API_BASE = "https://api.github.com/repos/mtlh/olantis";
 
 const DEFAULT_APP_URL = "https://olantis.vercel.app";
 const APP_URL = process.env.OLANTIS_ELECTRON_URL || DEFAULT_APP_URL;
@@ -702,7 +710,18 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   function emptyChangesPayload() {
-    return { currentVersion: app.getVersion(), releases: [], checkedAt: null };
+    return { currentVersion: app.getVersion(), releases: [], checkedAt: null, update: null };
+  }
+
+  /** The page only needs the visible fields; installer assets stay in main. */
+  function publicReleases(releases) {
+    return releases.map((release) => ({
+      version: release.version,
+      title: release.title,
+      publishedAt: release.publishedAt,
+      url: release.url,
+      notes: release.notes,
+    }));
   }
 
   /**
@@ -711,44 +730,50 @@ if (!app.requestSingleInstanceLock()) {
    * packaged app can never be steered by the env var.
    */
   function previewChanges() {
+    const releases = [
+      {
+        version: "desktop-138-preview",
+        title: "Olantis Desktop 138",
+        publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        url: "https://github.com/mtlh/olantis/releases",
+        notes: [
+          "feat: show recent changes on a manual refresh",
+          "fix: never restart the desktop app for an update",
+          "feat: download a new shell build from the changelog",
+        ],
+        assets: [
+          { name: "Olantis.Setup.0.1.138.exe", url: "https://github.com/mtlh/olantis/releases" },
+          { name: "Olantis-0.1.138.dmg", url: "https://github.com/mtlh/olantis/releases" },
+          { name: "Olantis-0.1.138.AppImage", url: "https://github.com/mtlh/olantis/releases" },
+        ],
+      },
+      {
+        version: "desktop-137-preview",
+        title: "Olantis Desktop 137",
+        publishedAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+        url: "https://github.com/mtlh/olantis/releases",
+        notes: [
+          "feat: collapse the sidebar to icons",
+          "fix: preserve the selected holding across pages",
+        ],
+        assets: [],
+      },
+    ];
     return {
       currentVersion: app.getVersion(),
       checkedAt: new Date().toISOString(),
-      releases: [
-        {
-          version: "0.1.137",
-          title: "Olantis Desktop 137",
-          publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          url: "https://github.com/mtlh/olantis/releases",
-          notes: [
-            "feat: show recent changes on a manual refresh",
-            "fix: never restart the desktop app for an update",
-            "fix: keep portfolio prices fresh after a sync",
-          ],
-        },
-        {
-          version: "0.1.136",
-          title: "Olantis Desktop 136",
-          publishedAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
-          url: "https://github.com/mtlh/olantis/releases",
-          notes: [
-            "feat: collapse the sidebar to icons",
-            "fix: preserve the selected holding across pages",
-          ],
-        },
-      ],
+      releases: publicReleases(releases),
+      update: desktopUpdate({
+        currentVersion: app.getVersion(),
+        releases,
+        platform: process.platform,
+        desktopChanged: true,
+      }),
     };
   }
 
-  /**
-   * Read the public release feed. Nothing is downloaded or installed: the
-   * desktop shell only changes when the Electron code does, while the deployed
-   * site updates on its own, so the panel is a changelog rather than an
-   * updater.
-   */
-  async function fetchRecentChanges() {
-    if (CHANGES_PREVIEW) return previewChanges();
-    const response = await net.fetch(RELEASES_API_URL, {
+  async function fetchGithubJson(pathname) {
+    const response = await net.fetch(`${GITHUB_API_BASE}${pathname}`, {
       headers: {
         Accept: "application/vnd.github+json",
         "User-Agent": "Olantis-Desktop",
@@ -756,8 +781,60 @@ if (!app.requestSingleInstanceLock()) {
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new Error(`GitHub responded with ${response.status}`);
-    const releases = normalizeReleaseFeed(await response.json());
-    return { currentVersion: app.getVersion(), releases, checkedAt: new Date().toISOString() };
+    return response.json();
+  }
+
+  function readSha(value) {
+    return typeof value === "string" && /^[0-9a-f]{7,40}$/i.test(value) ? value : null;
+  }
+
+  /**
+   * Compare the installed build with the newest release and ask whether the
+   * shell actually changed. A release can also be a manual rebuild of untouched
+   * code, which does not justify a download button.
+   */
+  async function packagedPathsChangedSince(currentVersion, latestTag) {
+    const currentBuild = versionBuildNumber(currentVersion);
+    if (currentBuild === null) return true;
+    try {
+      const refs = await fetchGithubJson("/git/refs/tags?per_page=100");
+      const installed = Array.isArray(refs)
+        ? refs.find((ref) => typeof ref?.ref === "string" && ref.ref.startsWith(`refs/tags/desktop-${currentBuild}-`))
+        : null;
+      const installedSha = readSha(installed?.object?.sha);
+      // A build too old to be in the recent tags still deserves the newer
+      // installer rather than no offer at all.
+      if (!installedSha) return true;
+      const compare = await fetchGithubJson(`/compare/${installedSha}...${latestTag}`);
+      return packagedPathsChanged(compare?.files);
+    } catch (error) {
+      logError("desktop change check failed", { message: errorMessage(error) });
+      return true;
+    }
+  }
+
+  /**
+   * Read the public release feed. Nothing is downloaded or installed: the
+   * desktop shell only changes when the Electron code does, while the deployed
+   * site updates on its own. The panel remains a changelog, but it offers the
+   * matching installer when a newer shell build exists.
+   */
+  async function fetchRecentChanges() {
+    if (CHANGES_PREVIEW) return previewChanges();
+    const currentVersion = app.getVersion();
+    const releases = normalizeReleaseFeed(await fetchGithubJson("/releases?per_page=10"));
+    const latest = latestDesktopRelease(releases);
+    const currentBuild = versionBuildNumber(currentVersion);
+    let desktopChanged = false;
+    if (latest && currentBuild !== null && latest.build > currentBuild) {
+      desktopChanged = await packagedPathsChangedSince(currentVersion, latest.release.version);
+    }
+    return {
+      currentVersion,
+      releases: publicReleases(releases),
+      checkedAt: new Date().toISOString(),
+      update: desktopUpdate({ currentVersion, releases, platform: process.platform, desktopChanged }),
+    };
   }
 
   app.whenReady().then(() => {

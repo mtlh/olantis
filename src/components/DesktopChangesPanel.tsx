@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { DesktopChangesState, DesktopRelease } from "@/components/useDesktopChanges";
+import type { DesktopChangesState, DesktopRelease, DesktopUpdate } from "@/components/useDesktopChanges";
 import { fmtDateTime } from "@/lib/format";
 
 function releaseLabel(release: DesktopRelease): string {
@@ -19,11 +19,12 @@ function releaseKey(release: DesktopRelease): string {
  * download or restart: the deployed site updates on its own, so this is only a
  * way to look at the changes.
  */
-export function DesktopChangesPanel({ state, releases, checkedAt, currentVersion, onRetry }: {
+export function DesktopChangesPanel({ state, releases, checkedAt, currentVersion, update, onRetry }: {
   state: DesktopChangesState;
   releases: DesktopRelease[];
   checkedAt: string | null;
   currentVersion: string | null;
+  update: DesktopUpdate | null;
   onRetry: () => void;
 }) {
   return (
@@ -32,6 +33,38 @@ export function DesktopChangesPanel({ state, releases, checkedAt, currentVersion
         <p className="text-sm font-medium text-zinc-100">Recent changes</p>
         {currentVersion && <span className="shrink-0 text-[10px] tabular-nums text-zinc-500">v{currentVersion}</span>}
       </div>
+
+      {state === "ready" && update && (
+        <div className="mt-2 rounded-lg border border-amber-300/20 bg-amber-300/[0.06] p-2">
+          <p className="text-[11px] font-medium text-amber-200">
+            {update.appVersion ? `Olantis ${update.appVersion} is available` : "A newer desktop build is available"}
+          </p>
+          <p className="mt-0.5 text-[10px] leading-4 text-zinc-400">
+            Only the desktop shell changed — the web app updates on its own.
+          </p>
+          {update.downloadUrl ? (
+            <a
+              href={update.downloadUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1.5 inline-flex items-center gap-1 rounded-sm text-[11px] font-medium text-amber-200 underline-offset-2 transition-colors hover:text-amber-100 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/40"
+            >
+              <ArrowDownToLine className="h-3 w-3" />
+              Download installer
+            </a>
+          ) : update.releaseUrl ? (
+            <a
+              href={update.releaseUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1.5 inline-flex items-center gap-1 rounded-sm text-[11px] font-medium text-amber-200 underline-offset-2 transition-colors hover:text-amber-100 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/40"
+            >
+              Open release page
+              <ArrowUpRight className="h-3 w-3" />
+            </a>
+          ) : null}
+        </div>
+      )}
 
       {state === "checking" && releases.length === 0 ? (
         <p className="mt-2 flex items-center gap-2 text-[11px] text-zinc-400">

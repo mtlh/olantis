@@ -543,6 +543,7 @@ function SidebarToolRow({ activeId, onSelect, onClose, lastRefreshLabel, isDemo,
           releases={changes.releases}
           checkedAt={changes.checkedAt}
           currentVersion={changes.currentVersion}
+          update={changes.update}
           onRetry={checkChanges}
         />
       </PopoverContent>
