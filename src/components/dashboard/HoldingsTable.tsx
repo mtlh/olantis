@@ -12,6 +12,7 @@ import { LiveBadge } from "@/components/shared/LiveBadge";
 import { SearchField } from "@/components/shared/SearchField";
 import { SectionHeading } from "@/components/shared/SectionHeading";
 import { fmtGBP, fmtPct, fmtPrice, fmtRelative, fmtTimestamp, holdingCostGBP, holdingCurrency, holdingValueGBP, isLiveHolding, type FxRates } from "@/lib/format";
+import { createSearchQuery, matchesSearch } from "@/lib/search";
 import type { Holding, Portfolio } from "@/lib/store";
 
 type HoldingSort = "value" | "gain" | "symbol";
@@ -50,16 +51,14 @@ export function HoldingsTable({
   // Keep the field immediate and let the table catch up in a lower-priority
   // render.
   const deferredQuery = useDeferredValue(query);
+  const search = useMemo(() => createSearchQuery(deferredQuery), [deferredQuery]);
 
   const staleHoldingIds = useMemo(() => new Set(staleHoldings.map((holding) => holding.id)), [staleHoldings]);
   const rows = useMemo(() => {
-    const normalizedQuery = deferredQuery.trim().toLowerCase();
     // Compute value/cost once per row; the previous comparator recomputed them
     // O(n log n) times while sorting.
     const scored = portfolio.holdings
-      .filter((holding) => !normalizedQuery
-        || holding.symbol.toLowerCase().includes(normalizedQuery)
-        || holding.name.toLowerCase().includes(normalizedQuery))
+      .filter((holding) => matchesSearch(search, holding.symbol, holding.name, holding.exchange))
       .map((holding) => ({
         holding,
         value: holdingValueGBP(holding, fxRates),
@@ -69,7 +68,7 @@ export function HoldingsTable({
     if (sort === "symbol") return scored.sort((a, b) => a.holding.symbol.localeCompare(b.holding.symbol));
     if (sort === "gain") return scored.sort((a, b) => (b.value - b.cost) - (a.value - a.cost));
     return scored.sort((a, b) => b.value - a.value);
-  }, [deferredQuery, fxRates, portfolio.holdings, sort]);
+  }, [fxRates, portfolio.holdings, search, sort]);
 
   const exportCsv = () => {
     const rows = ["Symbol,Name,Shares,AvgPrice,CurrentPrice,Value,Gain,PurchaseDate"];
